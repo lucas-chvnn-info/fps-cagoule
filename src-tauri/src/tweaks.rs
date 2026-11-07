@@ -19,17 +19,35 @@ pub struct Valeur {
     pub valeur: Value,
 }
 
+impl Valeur {
+    fn cle(&self) -> String {
+        format!(r"{}\{}\{}", self.ruche, self.chemin, self.nom)
+    }
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Tweak {
     pub id: String,
+    #[serde(default = "categorie_windows")]
+    pub categorie: String,
     pub titre: String,
     pub description: String,
     pub gain: String,
     pub redemarrage: bool,
+    /// Réglages qui ne sont pas de simples valeurs de registre : plan, adaptateur, nagle, usb
     #[serde(default)]
     pub special: Option<String>,
     #[serde(default)]
     pub valeurs: Vec<Valeur>,
+    /// Propriétés avancées de la carte réseau (special = adaptateur) et valeur voulue
+    #[serde(default)]
+    pub mots_cles: Vec<String>,
+    #[serde(default)]
+    pub cible: String,
+}
+
+fn categorie_windows() -> String {
+    "windows".into()
 }
 
 #[derive(Serialize)]
@@ -39,6 +57,8 @@ pub struct TweakEtat {
     pub actif: bool,
     /// Appliqué par FPS Cagoule (donc annulable)
     pub annulable: bool,
+    /// Faux si le matériel ne propose pas ce réglage (ex. carte réseau sans économie d'énergie)
+    pub disponible: bool,
 }
 
 #[derive(Serialize)]
@@ -88,38 +108,201 @@ fn identique(lu: &Option<Value>, cible: &Value) -> bool {
     }
 }
 
+/// Nagle : TcpAckFrequency et TCPNoDelay sur chaque interface réseau qui a une adresse IP.
+fn valeurs_nagle() -> Vec<Valeur> {
+    const BASE: &str = r"SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces";
+    let Ok(interfaces) = RegKey::predef(HKEY_LOCAL_MACHINE).open_subkey_with_flags(BASE, KEY_READ) else { return vec![] };
+    let mut v = Vec::new();
+    for nom in interfaces.enum_keys().flatten() {
+        let Ok(i) = interfaces.open_subkey_with_flags(&nom, KEY_READ) else { continue };
+        let ip = i.get_value::<String, _>("DhcpIPAddress").ok().filter(|a| !a.is_empty() && a != "0.0.0.0");
+        let fixe = i.get_value::<Vec<String>, _>("IPAddress").ok().filter(|l| l.iter().any(|a| !a.is_empty() && a != "0.0.0.0"));
+        if ip.is_none() && fixe.is_none() {
+            continue;
+        }
+        for cle in ["TcpAckFrequency", "TCPNoDelay"] {
+            v.push(Valeur { ruche: "HKLM".into(), chemin: format!(r"{BASE}\{nom}"), nom: cle.into(), type_: "dword".into(), valeur: json!(1) });
+        }
+    }
+    v
+}
+
+fn valeurs_de(t: &Tweak) -> Vec<Valeur> {
+    match t.special.as_deref() {
+        Some("nagle") => valeurs_nagle(),
+        _ => t.valeurs.clone(),
+    }
+}
+
+/* ---------- Carte réseau (propriétés avancées du pilote) ---------- */
+
+#[derive(Clone, Serialize, Deserialize)]
+struct ProprieteCarte {
+    a: String,
+    k: String,
+    v: String,
+}
+
+fn lire_cartes(mots_cles: &[String]) -> Vec<ProprieteCarte> {
+    if mots_cles.is_empty() {
+        return vec![];
+    }
+    let liste = mots_cles.iter().map(|m| ps::chaine(m)).collect::<Vec<_>>().join(",");
+    let script = format!(
+        "$mots = @({liste})
+ConvertTo-Json -Compress -InputObject @(Get-NetAdapter -Physical | Where-Object Status -eq 'Up' | ForEach-Object {{
+  $n = $_.Name
+  Get-NetAdapterAdvancedProperty -Name $n -AllProperties -ErrorAction SilentlyContinue |
+    Where-Object {{ $mots -contains $_.RegistryKeyword }} |
+    ForEach-Object {{ [ordered]@{{ a = $n; k = $_.RegistryKeyword; v = \"$($_.RegistryValue)\" }} }}
+}})"
+    );
+    ps::json(&script).ok().and_then(|v| serde_json::from_value(v).ok()).unwrap_or_default()
+}
+
+/// Change des propriétés de cartes réseau, puis redémarre chaque carte une seule fois.
+fn ecrire_cartes(proprietes: &[ProprieteCarte]) -> Result<(), String> {
+    if proprietes.is_empty() {
+        return Ok(());
+    }
+    let mut script = String::new();
+    let mut cartes: Vec<&str> = Vec::new();
+    for p in proprietes {
+        script += &format!(
+            "Set-NetAdapterAdvancedProperty -Name {} -RegistryKeyword {} -RegistryValue {} -NoRestart\n",
+            ps::chaine(&p.a),
+            ps::chaine(&p.k),
+            ps::chaine(&p.v)
+        );
+        if !cartes.contains(&p.a.as_str()) {
+            cartes.push(&p.a);
+        }
+    }
+    for c in cartes {
+        script += &format!("Restart-NetAdapter -Name {}\n", ps::chaine(c));
+    }
+    ps::executer(&script).map(|_| ())
+}
+
+/* ---------- Veille USB (réglage du plan d'alimentation) ---------- */
+
+const USB_SOUS_GROUPE: &str = "2a737441-1930-4402-8d77-b2bebba308a3";
+const USB_VEILLE: &str = "48e6b7a6-50f5-4782-a5d4-53bb8f07e226";
+
+fn plans_usb(plan_perso: Option<&str>) -> Vec<String> {
+    let mut plans: Vec<String> = systeme::plan_actif().into_iter().collect();
+    for p in [Some(systeme::PLAN_PERF), plan_perso].into_iter().flatten() {
+        if !plans.iter().any(|x| x == p) {
+            plans.push(p.to_string());
+        }
+    }
+    plans
+}
+
+/// Valeur « sur secteur » du réglage, None si le plan n'existe pas.
+fn lire_usb(plan: &str) -> Option<u32> {
+    let sortie = systeme::executer("powercfg", &["/query", plan, USB_SOUS_GROUPE, USB_VEILLE]).ok()?;
+    if !sortie.status.success() {
+        return None;
+    }
+    // Les deux dernières valeurs 0x… sont les index secteur puis batterie (quelle que soit la langue)
+    let texte = String::from_utf8_lossy(&sortie.stdout);
+    let hex: Vec<u32> = texte
+        .split_whitespace()
+        .filter_map(|m| m.strip_prefix("0x"))
+        .filter_map(|h| u32::from_str_radix(h, 16).ok())
+        .collect();
+    (hex.len() >= 2).then(|| hex[hex.len() - 2])
+}
+
+fn ecrire_usb(plan: &str, valeur: u32) -> bool {
+    systeme::executer("powercfg", &["/setacvalueindex", plan, USB_SOUS_GROUPE, USB_VEILLE, &valeur.to_string()]).is_ok_and(|s| s.status.success())
+}
+
+/* ---------- État, application et annulation ---------- */
+
 pub fn liste(stock: &Stockage) -> Vec<TweakEtat> {
-    let d = stock.donnees.lock().unwrap();
+    let (plan_perso, sauvegardes) = {
+        let d = stock.donnees.lock().unwrap();
+        (d.plan_perso.clone(), d.sauvegardes.clone())
+    };
+    // Une seule lecture PowerShell pour toutes les optimisations de carte réseau
+    let mots: Vec<String> = definitions().iter().flat_map(|t| t.mots_cles.clone()).collect();
+    let cartes = lire_cartes(&mots);
     definitions()
         .iter()
         .map(|t| {
-            let actif = match t.special.as_deref() {
-                Some("plan") => systeme::plan_actif().is_some_and(|g| systeme::est_plan_perf(&g, d.plan_perso.as_deref())),
-                _ => t.valeurs.iter().all(|v| identique(&lire(v), &v.valeur)),
+            let (actif, disponible) = match t.special.as_deref() {
+                Some("plan") => (systeme::plan_actif().is_some_and(|g| systeme::est_plan_perf(&g, plan_perso.as_deref())), true),
+                Some("adaptateur") => {
+                    let miennes: Vec<_> = cartes.iter().filter(|p| t.mots_cles.iter().any(|m| m.eq_ignore_ascii_case(&p.k))).collect();
+                    (!miennes.is_empty() && miennes.iter().all(|p| p.v == t.cible), !miennes.is_empty())
+                }
+                Some("usb") => {
+                    let valeurs: Vec<u32> = plans_usb(plan_perso.as_deref()).iter().filter_map(|p| lire_usb(p)).collect();
+                    (!valeurs.is_empty() && valeurs.iter().all(|v| *v == 0), !valeurs.is_empty())
+                }
+                _ => {
+                    let valeurs = valeurs_de(t);
+                    (!valeurs.is_empty() && valeurs.iter().all(|v| identique(&lire(v), &v.valeur)), !valeurs.is_empty())
+                }
             };
-            TweakEtat { tweak: t.clone(), actif, annulable: d.sauvegardes.contains_key(&t.id) }
+            TweakEtat { tweak: t.clone(), actif, annulable: sauvegardes.contains_key(&t.id), disponible }
         })
         .collect()
 }
 
 fn appliquer_un(stock: &Stockage, t: &Tweak) -> Result<(), String> {
     let mut d = stock.donnees.lock().unwrap();
-    if t.special.as_deref() == Some("plan") {
-        let avant = systeme::plan_actif();
-        if let Some(cree) = systeme::activer_plan_perf(d.plan_perso.as_deref())? {
-            d.plan_perso = Some(cree);
-        }
-        if let Some(avant) = avant {
-            d.sauvegardes.entry(t.id.clone()).or_insert(json!(avant));
-        }
-        return Ok(());
-    }
     // On ne sauvegarde qu'à la première application : c'est la vraie valeur d'origine
-    if !d.sauvegardes.contains_key(&t.id) {
-        let origine: Vec<Value> = t.valeurs.iter().map(|v| lire(v).unwrap_or(Value::Null)).collect();
-        d.sauvegardes.insert(t.id.clone(), Value::Array(origine));
+    let deja = d.sauvegardes.contains_key(&t.id);
+    match t.special.as_deref() {
+        Some("plan") => {
+            let avant = systeme::plan_actif();
+            if let Some(cree) = systeme::activer_plan_perf(d.plan_perso.as_deref())? {
+                d.plan_perso = Some(cree);
+            }
+            if let (false, Some(avant)) = (deja, avant) {
+                d.sauvegardes.insert(t.id.clone(), json!(avant));
+            }
+            Ok(())
+        }
+        Some("adaptateur") => {
+            let actuelles = lire_cartes(&t.mots_cles);
+            if actuelles.is_empty() {
+                return Err("Ta carte réseau ne propose pas ce réglage".into());
+            }
+            if !deja {
+                d.sauvegardes.insert(t.id.clone(), serde_json::to_value(&actuelles).unwrap_or_default());
+            }
+            drop(d);
+            let voulues: Vec<_> = actuelles.into_iter().filter(|p| p.v != t.cible).map(|p| ProprieteCarte { v: t.cible.clone(), ..p }).collect();
+            ecrire_cartes(&voulues)
+        }
+        Some("usb") => {
+            let plans = plans_usb(d.plan_perso.as_deref());
+            if !deja {
+                let origine: serde_json::Map<String, Value> = plans.iter().filter_map(|p| lire_usb(p).map(|v| (p.clone(), json!(v)))).collect();
+                d.sauvegardes.insert(t.id.clone(), Value::Object(origine));
+            }
+            for p in plans.iter().filter(|p| lire_usb(p).is_some()) {
+                ecrire_usb(p, 0);
+            }
+            systeme::executer("powercfg", &["/setactive", "SCHEME_CURRENT"]).map_err(|e| e.to_string())?;
+            Ok(())
+        }
+        _ => {
+            let valeurs = valeurs_de(t);
+            if valeurs.is_empty() {
+                return Err("Aucune interface réseau active".into());
+            }
+            if !deja {
+                let origine: serde_json::Map<String, Value> = valeurs.iter().map(|v| (v.cle(), lire(v).unwrap_or(Value::Null))).collect();
+                d.sauvegardes.insert(t.id.clone(), Value::Object(origine));
+            }
+            valeurs.iter().try_for_each(|v| ecrire(v, &v.valeur))
+        }
     }
-    t.valeurs.iter().try_for_each(|v| ecrire(v, &v.valeur))
 }
 
 fn annuler_un(stock: &Stockage, t: &Tweak) -> Result<(), String> {
@@ -127,15 +310,37 @@ fn annuler_un(stock: &Stockage, t: &Tweak) -> Result<(), String> {
     let Some(origine) = d.sauvegardes.get(&t.id).cloned() else {
         return Err("Aucune sauvegarde : ce réglage n'a pas été changé par FPS Cagoule".into());
     };
-    if t.special.as_deref() == Some("plan") {
-        let guid = origine.as_str().unwrap_or(systeme::PLAN_PERF);
-        if !systeme::activer_plan(guid) {
-            return Err("Impossible de remettre l'ancien plan d'alimentation".into());
+    match t.special.as_deref() {
+        Some("plan") => {
+            if !systeme::activer_plan(origine.as_str().unwrap_or(systeme::PLAN_PERF)) {
+                return Err("Impossible de remettre l'ancien plan d'alimentation".into());
+            }
         }
-    } else {
-        let valeurs = origine.as_array().cloned().unwrap_or_default();
-        for (v, o) in t.valeurs.iter().zip(valeurs) {
-            if o.is_null() { effacer(v) } else { ecrire(v, &o)? }
+        Some("adaptateur") => {
+            let proprietes: Vec<ProprieteCarte> = serde_json::from_value(origine).unwrap_or_default();
+            drop(d);
+            ecrire_cartes(&proprietes)?;
+            d = stock.donnees.lock().unwrap();
+        }
+        Some("usb") => {
+            for (plan, v) in origine.as_object().cloned().unwrap_or_default() {
+                ecrire_usb(&plan, v.as_u64().unwrap_or(1) as u32);
+            }
+            let _ = systeme::executer("powercfg", &["/setactive", "SCHEME_CURRENT"]);
+        }
+        _ => {
+            // Version 0.1 : tableau dans l'ordre de tweaks.json ; ensuite : objet clé → valeur
+            let paires: Vec<(Valeur, Value)> = match origine {
+                Value::Array(l) => t.valeurs.iter().cloned().zip(l).collect(),
+                Value::Object(m) => m
+                    .into_iter()
+                    .filter_map(|(cle, o)| valeurs_de(t).into_iter().chain(t.valeurs.iter().cloned()).find(|v| v.cle() == cle).map(|v| (v, o)))
+                    .collect(),
+                _ => vec![],
+            };
+            for (v, o) in paires {
+                if o.is_null() { effacer(&v) } else { ecrire(&v, &o)? }
+            }
         }
     }
     d.sauvegardes.remove(&t.id);

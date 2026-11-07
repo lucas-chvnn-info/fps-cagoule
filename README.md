@@ -5,6 +5,9 @@ Analyse, optimisation et boost par jeu pour Windows 11. Gratuit, pour moi et mes
 - **Analyse du PC** : matériel, réglages Windows, problèmes détectés et score sur 100.
 - **Optimisations** : réglages Windows réversibles (valeur d'origine sauvegardée, point de restauration).
 - **Boost par jeu** : quand un jeu se lance, plan Performances élevées, priorité haute, GPU le plus puissant, fermeture des programmes choisis. Tout revient comme avant à la fin.
+- **Connexion** : test de ping (box et Internet, gigue, pertes) et réglages réseau réversibles.
+- **Périphériques** : test de fréquence de la souris, veille USB, clavier, raccourcis d'accessibilité.
+- **Écrans** : fréquence, HDR, couleurs en jeu (luminosité, contraste, gamma, vibrance NVIDIA).
 - **Compteur FPS** : FPS moyen, 1 % low et 0,1 % low de chaque partie (avec [PresentMon](https://github.com/GameTechDev/PresentMon), Intel, licence MIT), comparaison avec et sans boost.
 
 ## Léger en arrière-plan

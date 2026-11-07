@@ -1,5 +1,6 @@
 // Réglages, profils de jeux et historique, stockés en JSON dans %APPDATA%\FPS Cagoule.
 
+use crate::ecrans::Couleurs;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -14,13 +15,15 @@ pub struct Reglages {
     pub mesure_fps: bool,
     pub overlay: bool,
     pub maj_auto: bool,
+    /// Appliquer les couleurs choisies dans « Écrans » pendant les parties
+    pub couleurs_en_jeu: bool,
     /// Programmes fermés au lancement d'un jeu (noms d'exe)
     pub fermer_applis: Vec<String>,
 }
 
 impl Default for Reglages {
     fn default() -> Self {
-        Self { boost_auto: true, mesure_fps: true, overlay: false, maj_auto: true, fermer_applis: vec![] }
+        Self { boost_auto: true, mesure_fps: true, overlay: false, maj_auto: true, couleurs_en_jeu: false, fermer_applis: vec![] }
     }
 }
 
@@ -75,6 +78,10 @@ pub struct Donnees {
     pub plan_perso: Option<String>,
     /// Plan actif avant le dernier boost : restauré au prochain lancement si l'app a été coupée en pleine partie
     pub plan_avant_jeu: Option<String>,
+    /// Couleurs en jeu, par écran (\\.\DISPLAY1…)
+    pub couleurs: HashMap<String, Couleurs>,
+    /// Vibrance NVIDIA d'avant la partie, remise au prochain lancement si l'app a été coupée en pleine partie
+    pub vibrance_avant: HashMap<String, i32>,
 }
 
 impl Default for Donnees {
@@ -85,6 +92,8 @@ impl Default for Donnees {
             sauvegardes: HashMap::new(),
             plan_perso: None,
             plan_avant_jeu: None,
+            couleurs: HashMap::new(),
+            vibrance_avant: HashMap::new(),
         }
     }
 }

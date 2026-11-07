@@ -19,7 +19,7 @@
   <path d="M190 88c20-12 42-18 66-18s46 6 66 18" stroke="#4a5060" stroke-width="10" fill="none" stroke-linecap="round"/>
   <!-- fente des yeux -->
   <rect x="132" y="214" width="248" height="74" rx="37" fill="#08090c"/>
-  <g filter="url(#lueur)" fill="#c6ff3d">
+  <g filter="url(#lueur)" fill="#4d8bff">
     <path d="M168 252c10-16 30-22 52-16l12 4c-8 20-30 28-52 22z"/>
     <path d="M344 252c-10-16-30-22-52-16l-12 4c8 20 30 28 52 22z"/>
   </g>

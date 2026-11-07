@@ -5,7 +5,8 @@
     "description": "Garde le processeur à pleine fréquence et évite les micro-latences quand il se réveille. Sur un portable, la batterie dure moins longtemps.",
     "gain": "moyen",
     "redemarrage": false,
-    "special": "plan"
+    "special": "plan",
+    "categorie": "windows"
   },
   {
     "id": "mode-jeu",
@@ -14,9 +15,22 @@
     "gain": "faible",
     "redemarrage": false,
     "valeurs": [
-      { "ruche": "HKCU", "chemin": "Software\\Microsoft\\GameBar", "nom": "AutoGameModeEnabled", "type": "dword", "valeur": 1 },
-      { "ruche": "HKCU", "chemin": "Software\\Microsoft\\GameBar", "nom": "AllowAutoGameMode", "type": "dword", "valeur": 1 }
-    ]
+      {
+        "ruche": "HKCU",
+        "chemin": "Software\\Microsoft\\GameBar",
+        "nom": "AutoGameModeEnabled",
+        "type": "dword",
+        "valeur": 1
+      },
+      {
+        "ruche": "HKCU",
+        "chemin": "Software\\Microsoft\\GameBar",
+        "nom": "AllowAutoGameMode",
+        "type": "dword",
+        "valeur": 1
+      }
+    ],
+    "categorie": "windows"
   },
   {
     "id": "game-dvr",
@@ -25,9 +39,22 @@
     "gain": "moyen",
     "redemarrage": false,
     "valeurs": [
-      { "ruche": "HKCU", "chemin": "System\\GameConfigStore", "nom": "GameDVR_Enabled", "type": "dword", "valeur": 0 },
-      { "ruche": "HKCU", "chemin": "Software\\Microsoft\\Windows\\CurrentVersion\\GameDVR", "nom": "AppCaptureEnabled", "type": "dword", "valeur": 0 }
-    ]
+      {
+        "ruche": "HKCU",
+        "chemin": "System\\GameConfigStore",
+        "nom": "GameDVR_Enabled",
+        "type": "dword",
+        "valeur": 0
+      },
+      {
+        "ruche": "HKCU",
+        "chemin": "Software\\Microsoft\\Windows\\CurrentVersion\\GameDVR",
+        "nom": "AppCaptureEnabled",
+        "type": "dword",
+        "valeur": 0
+      }
+    ],
+    "categorie": "windows"
   },
   {
     "id": "hags",
@@ -36,8 +63,15 @@
     "gain": "faible",
     "redemarrage": true,
     "valeurs": [
-      { "ruche": "HKLM", "chemin": "SYSTEM\\CurrentControlSet\\Control\\GraphicsDrivers", "nom": "HwSchMode", "type": "dword", "valeur": 2 }
-    ]
+      {
+        "ruche": "HKLM",
+        "chemin": "SYSTEM\\CurrentControlSet\\Control\\GraphicsDrivers",
+        "nom": "HwSchMode",
+        "type": "dword",
+        "valeur": 2
+      }
+    ],
+    "categorie": "windows"
   },
   {
     "id": "souris",
@@ -46,10 +80,29 @@
     "gain": "fort",
     "redemarrage": true,
     "valeurs": [
-      { "ruche": "HKCU", "chemin": "Control Panel\\Mouse", "nom": "MouseSpeed", "type": "sz", "valeur": "0" },
-      { "ruche": "HKCU", "chemin": "Control Panel\\Mouse", "nom": "MouseThreshold1", "type": "sz", "valeur": "0" },
-      { "ruche": "HKCU", "chemin": "Control Panel\\Mouse", "nom": "MouseThreshold2", "type": "sz", "valeur": "0" }
-    ]
+      {
+        "ruche": "HKCU",
+        "chemin": "Control Panel\\Mouse",
+        "nom": "MouseSpeed",
+        "type": "sz",
+        "valeur": "0"
+      },
+      {
+        "ruche": "HKCU",
+        "chemin": "Control Panel\\Mouse",
+        "nom": "MouseThreshold1",
+        "type": "sz",
+        "valeur": "0"
+      },
+      {
+        "ruche": "HKCU",
+        "chemin": "Control Panel\\Mouse",
+        "nom": "MouseThreshold2",
+        "type": "sz",
+        "valeur": "0"
+      }
+    ],
+    "categorie": "peripheriques"
   },
   {
     "id": "priorite-jeux",
@@ -58,12 +111,43 @@
     "gain": "faible",
     "redemarrage": true,
     "valeurs": [
-      { "ruche": "HKLM", "chemin": "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile", "nom": "SystemResponsiveness", "type": "dword", "valeur": 10 },
-      { "ruche": "HKLM", "chemin": "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile\\Tasks\\Games", "nom": "GPU Priority", "type": "dword", "valeur": 8 },
-      { "ruche": "HKLM", "chemin": "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile\\Tasks\\Games", "nom": "Priority", "type": "dword", "valeur": 6 },
-      { "ruche": "HKLM", "chemin": "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile\\Tasks\\Games", "nom": "Scheduling Category", "type": "sz", "valeur": "High" },
-      { "ruche": "HKLM", "chemin": "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile\\Tasks\\Games", "nom": "SFIO Priority", "type": "sz", "valeur": "High" }
-    ]
+      {
+        "ruche": "HKLM",
+        "chemin": "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile",
+        "nom": "SystemResponsiveness",
+        "type": "dword",
+        "valeur": 10
+      },
+      {
+        "ruche": "HKLM",
+        "chemin": "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile\\Tasks\\Games",
+        "nom": "GPU Priority",
+        "type": "dword",
+        "valeur": 8
+      },
+      {
+        "ruche": "HKLM",
+        "chemin": "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile\\Tasks\\Games",
+        "nom": "Priority",
+        "type": "dword",
+        "valeur": 6
+      },
+      {
+        "ruche": "HKLM",
+        "chemin": "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile\\Tasks\\Games",
+        "nom": "Scheduling Category",
+        "type": "sz",
+        "valeur": "High"
+      },
+      {
+        "ruche": "HKLM",
+        "chemin": "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile\\Tasks\\Games",
+        "nom": "SFIO Priority",
+        "type": "sz",
+        "valeur": "High"
+      }
+    ],
+    "categorie": "windows"
   },
   {
     "id": "transparence",
@@ -72,8 +156,15 @@
     "gain": "faible",
     "redemarrage": false,
     "valeurs": [
-      { "ruche": "HKCU", "chemin": "Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize", "nom": "EnableTransparency", "type": "dword", "valeur": 0 }
-    ]
+      {
+        "ruche": "HKCU",
+        "chemin": "Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+        "nom": "EnableTransparency",
+        "type": "dword",
+        "valeur": 0
+      }
+    ],
+    "categorie": "windows"
   },
   {
     "id": "effets-visuels",
@@ -82,8 +173,15 @@
     "gain": "faible",
     "redemarrage": true,
     "valeurs": [
-      { "ruche": "HKCU", "chemin": "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\VisualEffects", "nom": "VisualFXSetting", "type": "dword", "valeur": 2 }
-    ]
+      {
+        "ruche": "HKCU",
+        "chemin": "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\VisualEffects",
+        "nom": "VisualFXSetting",
+        "type": "dword",
+        "valeur": 2
+      }
+    ],
+    "categorie": "windows"
   },
   {
     "id": "notifications",
@@ -92,7 +190,137 @@
     "gain": "faible",
     "redemarrage": false,
     "valeurs": [
-      { "ruche": "HKCU", "chemin": "Software\\Microsoft\\Windows\\CurrentVersion\\PushNotifications", "nom": "ToastEnabled", "type": "dword", "valeur": 0 }
+      {
+        "ruche": "HKCU",
+        "chemin": "Software\\Microsoft\\Windows\\CurrentVersion\\PushNotifications",
+        "nom": "ToastEnabled",
+        "type": "dword",
+        "valeur": 0
+      }
+    ],
+    "categorie": "windows"
+  },
+  {
+    "id": "reseau-eco",
+    "categorie": "reseau",
+    "titre": "Couper l'économie d'énergie de la carte réseau",
+    "description": "L'Ethernet économe en énergie (EEE, Green Ethernet) endort la carte entre deux paquets, ce qui peut provoquer des pics de ping. La connexion se coupe 2 à 5 secondes pendant le changement.",
+    "gain": "moyen",
+    "redemarrage": false,
+    "special": "adaptateur",
+    "mots_cles": [
+      "*EEE",
+      "EEE",
+      "EEELinkAdvertisement",
+      "AdvancedEEE",
+      "EnableGreenEthernet",
+      "GreenEthernet",
+      "*GreenEthernet",
+      "PowerSavingMode"
+    ],
+    "cible": "0"
+  },
+  {
+    "id": "reseau-interruptions",
+    "categorie": "reseau",
+    "titre": "Désactiver la modération des interruptions",
+    "description": "La carte réseau prévient le processeur à chaque paquet au lieu de les regrouper : un peu moins de latence, un peu plus de travail pour le processeur. La connexion se coupe 2 à 5 secondes pendant le changement.",
+    "gain": "faible",
+    "redemarrage": false,
+    "special": "adaptateur",
+    "mots_cles": [
+      "*InterruptModeration"
+    ],
+    "cible": "0"
+  },
+  {
+    "id": "nagle",
+    "categorie": "reseau",
+    "titre": "Désactiver l'algorithme de Nagle",
+    "description": "Windows n'attend plus pour regrouper les petits paquets TCP. Utile pour les jeux qui passent par TCP (League of Legends, MMO) ; la plupart des FPS utilisent UDP et ne sont pas concernés.",
+    "gain": "faible",
+    "redemarrage": true,
+    "special": "nagle"
+  },
+  {
+    "id": "limitation-reseau",
+    "categorie": "reseau",
+    "titre": "Couper la limitation réseau de Windows",
+    "description": "Windows bride le réseau quand un son ou une vidéo est lu, pour protéger la lecture. Sans cette limite, le jeu n'est plus freiné quand Discord ou de la musique tournent.",
+    "gain": "faible",
+    "redemarrage": true,
+    "valeurs": [
+      {
+        "ruche": "HKLM",
+        "chemin": "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile",
+        "nom": "NetworkThrottlingIndex",
+        "type": "dword",
+        "valeur": 4294967295
+      }
+    ]
+  },
+  {
+    "id": "usb-veille",
+    "categorie": "peripheriques",
+    "titre": "Couper la mise en veille des ports USB",
+    "description": "Windows peut endormir un périphérique USB inactif : au réveil, la souris ou le casque répond en retard ou se déconnecte. Appliqué au plan d'alimentation actuel et au plan Performances élevées, sur secteur.",
+    "gain": "moyen",
+    "redemarrage": false,
+    "special": "usb"
+  },
+  {
+    "id": "clavier",
+    "categorie": "peripheriques",
+    "titre": "Clavier plus réactif",
+    "description": "Délai avant répétition le plus court et répétition la plus rapide. Prend effet à la prochaine ouverture de session.",
+    "gain": "faible",
+    "redemarrage": true,
+    "valeurs": [
+      {
+        "ruche": "HKCU",
+        "chemin": "Control Panel\\Keyboard",
+        "nom": "KeyboardDelay",
+        "type": "sz",
+        "valeur": "0"
+      },
+      {
+        "ruche": "HKCU",
+        "chemin": "Control Panel\\Keyboard",
+        "nom": "KeyboardSpeed",
+        "type": "sz",
+        "valeur": "31"
+      }
+    ]
+  },
+  {
+    "id": "accessibilite",
+    "categorie": "peripheriques",
+    "titre": "Bloquer les fenêtres « Touches rémanentes »",
+    "description": "Appuyer 5 fois sur Maj (ou garder Maj droite enfoncée) en pleine partie n'ouvre plus de fenêtre qui te sort du jeu. Prend effet à la prochaine ouverture de session.",
+    "gain": "faible",
+    "redemarrage": true,
+    "valeurs": [
+      {
+        "ruche": "HKCU",
+        "chemin": "Control Panel\\Accessibility\\StickyKeys",
+        "nom": "Flags",
+        "type": "sz",
+        "valeur": "506"
+      },
+      {
+        "ruche": "HKCU",
+        "chemin": "Control Panel\\Accessibility\\ToggleKeys",
+        "nom": "Flags",
+        "type": "sz",
+        "valeur": "58"
+      },
+      {
+        "ruche": "HKCU",
+        "chemin": "Control Panel\\Accessibility\\Keyboard Response",
+        "nom": "Flags",
+        "type": "sz",
+        "valeur": "122"
+      }
     ]
   }
 ]

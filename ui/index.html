@@ -17,6 +17,9 @@
       <button data-page="analyse">Analyse du PC</button>
       <button data-page="optimisations">Optimisations</button>
       <button data-page="jeux">Boost par jeu</button>
+      <button data-page="connexion">Connexion</button>
+      <button data-page="peripheriques">Périphériques</button>
+      <button data-page="ecrans">Écrans</button>
       <button data-page="fps">Statistiques FPS</button>
       <button data-page="reglages">Réglages</button>
     </nav>
@@ -44,7 +47,7 @@
           <h2>Partie en cours</h2>
           <div id="jeu-vide" class="discret">Aucun jeu détecté. Lance un jeu : FPS Cagoule le repère et le boost tout seul.</div>
           <div id="jeu-actif" hidden>
-            <div class="jeu-ligne"><strong id="jeu-nom"></strong><span id="jeu-badge" class="badge vert">Boosté</span></div>
+            <div class="jeu-ligne"><strong id="jeu-nom"></strong><span id="jeu-badge" class="badge accent">Boosté</span></div>
             <div class="fps-geant"><span id="jeu-fps">–</span><small>FPS</small></div>
             <ul id="jeu-actions" class="liste-actions"></ul>
           </div>
@@ -66,13 +69,10 @@
     <section id="page-optimisations" class="page">
       <header>
         <h1>Optimisations Windows</h1>
-        <div class="actions-entete">
-          <label class="case"><input type="checkbox" id="restauration" checked> Point de restauration avant</label>
-          <button id="btn-appliquer" class="principal" disabled>Appliquer la sélection</button>
-        </div>
+        <label class="case"><input type="checkbox" id="restauration" checked> Point de restauration avant chaque changement</label>
       </header>
       <p class="discret">Chaque réglage est réversible : FPS Cagoule garde la valeur d'origine et le bouton « Annuler » la remet.</p>
-      <ul id="tweaks" class="tweaks"></ul>
+      <ul class="tweaks" data-categorie="windows"></ul>
       <div class="grille-2">
         <div class="carte">
           <h2>Fichiers temporaires</h2>
@@ -114,6 +114,48 @@
           <button id="btn-fermer-ajout">Ajouter</button>
         </div>
       </div>
+    </section>
+
+    <!-- Connexion -->
+    <section id="page-connexion" class="page">
+      <header><h1>Connexion internet</h1></header>
+      <div class="grille-2">
+        <div class="carte">
+          <h2>Ta connexion</h2>
+          <div id="cartes-reseau"><p class="discret">Chargement…</p></div>
+        </div>
+        <div class="carte">
+          <h2>Test de ping</h2>
+          <p class="discret">25 pings vers ta box et vers Internet. La gigue (variation du ping) compte plus que le ping lui-même : c'est elle qui donne des tirs qui ne partent pas.</p>
+          <button id="btn-ping" class="principal">Lancer le test</button>
+          <div id="ping-resultats" class="ping-resultats"></div>
+        </div>
+      </div>
+      <ul class="tweaks" data-categorie="reseau"></ul>
+    </section>
+
+    <!-- Périphériques -->
+    <section id="page-peripheriques" class="page">
+      <header><h1>Périphériques</h1></header>
+      <div class="carte">
+        <h2>Test de ta souris</h2>
+        <p class="discret">Bouge ta souris rapidement en rond dans la zone. Une souris gaming envoie sa position 1000 fois par seconde (1 ms) ou plus ; à 125 Hz (8 ms), monte la fréquence d'interrogation (polling rate) dans le logiciel de ta souris.</p>
+        <div id="zone-souris" class="zone-souris">
+          <div><span id="souris-hz">–</span><small>Hz</small></div>
+          <div><span id="souris-ms">–</span><small>ms entre deux positions</small></div>
+        </div>
+      </div>
+      <ul class="tweaks" data-categorie="peripheriques"></ul>
+    </section>
+
+    <!-- Écrans -->
+    <section id="page-ecrans" class="page">
+      <header><h1>Écrans</h1></header>
+      <div class="carte interrupteurs">
+        <label class="bascule"><input type="checkbox" id="couleurs-en-jeu"><span></span> Appliquer mes couleurs de jeu pendant les parties (remises comme avant à la fin)</label>
+        <p class="discret retrait">La vibrance ne fonctionne qu'avec une carte NVIDIA. Luminosité, contraste et gamma passent par Windows : ils n'ont pas d'effet en HDR ni dans certains jeux en plein écran exclusif.</p>
+      </div>
+      <div id="ecrans" class="grille-2"><p class="discret">Chargement…</p></div>
     </section>
 
     <!-- FPS -->

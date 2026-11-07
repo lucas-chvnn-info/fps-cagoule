@@ -39,7 +39,9 @@ document.querySelectorAll('nav button').forEach((b) =>
     document.querySelectorAll('nav button, .page').forEach((e) => e.classList.remove('actif'));
     b.classList.add('actif');
     $(`#page-${b.dataset.page}`).classList.add('actif');
-    if (b.dataset.page === 'optimisations') chargerTweaks();
+    if (['optimisations', 'connexion', 'peripheriques'].includes(b.dataset.page)) chargerTweaks();
+    if (b.dataset.page === 'connexion') chargerCartes();
+    if (b.dataset.page === 'ecrans') chargerEcrans();
     if (b.dataset.page === 'fps') chargerSessions();
     if (b.dataset.page === 'jeux') chargerChoixFermer();
   })
@@ -128,57 +130,51 @@ function afficherMateriel() {
 
 /* ---------- Optimisations ---------- */
 
-const gainBadge = { fort: '<span class="badge vert">Gain fort</span>', moyen: '<span class="badge bleu">Gain moyen</span>', faible: '<span class="badge">Gain faible</span>' };
+const gainBadge = { fort: '<span class="badge accent">Gain fort</span>', moyen: '<span class="badge bleu">Gain moyen</span>', faible: '<span class="badge">Gain faible</span>' };
+
+function ligneTweak(t) {
+  let droite;
+  if (!t.disponible) droite = '<span class="badge">Non disponible sur ton PC</span>';
+  else if (t.actif) droite = `<span class="badge accent">Actif</span>${t.annulable ? `<button class="petit" data-annuler="${esc(t.id)}">Annuler</button>` : ''}`;
+  else droite = `${t.annulable ? `<button class="petit" data-annuler="${esc(t.id)}">Annuler</button>` : ''}<button class="petit principal" data-activer="${esc(t.id)}">Activer</button>`;
+  return `<li class="tweak">
+      <div>
+        <div class="titre">${esc(t.titre)} ${gainBadge[t.gain] || ''} ${t.redemarrage ? '<span class="badge orange">Après redémarrage</span>' : ''}</div>
+        <p>${esc(t.description)}</p>
+      </div>
+      <div class="droite">${droite}</div>
+    </li>`;
+}
 
 async function chargerTweaks() {
   tweaks = await appel('tweaks_liste');
-  $('#tweaks').innerHTML = tweaks
-    .map(
-      (t) => `<li class="tweak">
-        <input type="checkbox" data-id="${esc(t.id)}" ${t.actif ? 'disabled' : ''} aria-label="Sélectionner">
-        <div>
-          <div class="titre">${esc(t.titre)} ${gainBadge[t.gain] || ''} ${t.redemarrage ? '<span class="badge orange">Après redémarrage</span>' : ''}</div>
-          <p>${esc(t.description)}</p>
-        </div>
-        <div class="droite">
-          ${t.actif ? '<span class="badge vert">Actif</span>' : '<span class="badge">Inactif</span>'}
-          ${t.annulable ? `<button class="petit" data-annuler="${esc(t.id)}">Annuler</button>` : ''}
-        </div>
-      </li>`
-    )
-    .join('');
-  majBoutonAppliquer();
+  document.querySelectorAll('.tweaks[data-categorie]').forEach((ul) => {
+    ul.innerHTML = tweaks.filter((t) => t.categorie === ul.dataset.categorie).map(ligneTweak).join('');
+  });
   afficherScore();
 }
 
-function majBoutonAppliquer() {
-  $('#btn-appliquer').disabled = !document.querySelector('#tweaks input:checked');
-}
-
-$('#tweaks').addEventListener('change', majBoutonAppliquer);
-$('#tweaks').addEventListener('click', async (e) => {
-  const id = e.target.closest('button')?.dataset.annuler;
-  if (!id) return;
-  const [r] = await appel('tweaks_annuler', { ids: [id] }, e.target);
-  toast(r.ok ? 'Réglage remis comme avant' : `Impossible d'annuler : ${r.erreur}`);
-  chargerTweaks();
-});
+document.querySelectorAll('.tweaks[data-categorie]').forEach((ul) =>
+  ul.addEventListener('click', async (e) => {
+    const b = e.target.closest('button');
+    if (b?.dataset.activer) return appliquerTweaks([b.dataset.activer], b);
+    if (!b?.dataset.annuler) return;
+    const [r] = await appel('tweaks_annuler', { ids: [b.dataset.annuler] }, b);
+    toast(r.ok ? 'Réglage remis comme avant' : `Impossible d'annuler : ${r.erreur}`);
+    chargerTweaks();
+  })
+);
 
 async function appliquerTweaks(ids, bouton) {
   const [point, resultats] = await appel('tweaks_appliquer', { ids, restauration: $('#restauration').checked }, bouton);
   const echecs = resultats.filter((r) => !r.ok);
   const redemarrage = tweaks.some((t) => ids.includes(t.id) && t.redemarrage);
-  let msg = echecs.length ? `${echecs.length} échec(s) : ${echecs.map((r) => r.erreur).join(' ; ')}` : `${resultats.length} optimisation(s) appliquée(s).`;
-  if (redemarrage && !echecs.length) msg += ' Certaines prennent effet au prochain redémarrage.';
+  let msg = echecs.length ? `Échec : ${echecs.map((r) => r.erreur).join(' ; ')}` : 'Optimisation appliquée.';
+  if (redemarrage && !echecs.length) msg += ' Elle prend effet au prochain redémarrage.';
   if (point) msg = `${point}. ${msg}`;
   toast(msg, 7000);
   await chargerTweaks();
 }
-
-$('#btn-appliquer').addEventListener('click', (e) => {
-  const ids = [...document.querySelectorAll('#tweaks input:checked')].map((c) => c.dataset.id);
-  if (ids.length) appliquerTweaks(ids, e.target);
-});
 
 async function nettoyer(bouton) {
   const r = await appel('nettoyer', {}, bouton);
@@ -245,12 +241,13 @@ function afficherReglages() {
   $('#mesure-fps').checked = reglages.mesure_fps;
   $('#overlay').checked = reglages.overlay;
   $('#maj-auto').checked = reglages.maj_auto;
+  $('#couleurs-en-jeu').checked = reglages.couleurs_en_jeu;
   $('#fermer-liste').innerHTML = reglages.fermer_applis.length
     ? reglages.fermer_applis.map((a, i) => `<span class="puce">${esc(a)}<button data-retirer="${i}" title="Retirer">✕</button></span>`).join('')
     : '<span class="discret">Aucun programme.</span>';
 }
 
-for (const [id, champ] of [['#boost-auto', 'boost_auto'], ['#mesure-fps', 'mesure_fps'], ['#overlay', 'overlay'], ['#maj-auto', 'maj_auto']]) {
+for (const [id, champ] of [['#boost-auto', 'boost_auto'], ['#mesure-fps', 'mesure_fps'], ['#overlay', 'overlay'], ['#maj-auto', 'maj_auto'], ['#couleurs-en-jeu', 'couleurs_en_jeu']]) {
   $(id).addEventListener('change', (e) => {
     reglages[champ] = e.target.checked;
     sauverReglages();
@@ -297,6 +294,179 @@ function afficherJeu(jeu) {
 listen('jeu', (e) => afficherJeu(e.payload));
 listen('fps', (e) => ($('#jeu-fps').textContent = Math.round(e.payload)));
 
+/* ---------- Connexion ---------- */
+
+async function chargerCartes() {
+  const cartes = await appel('reseau_cartes').catch(() => []);
+  $('#cartes-reseau').innerHTML = cartes.length
+    ? cartes
+        .map(
+          (c) =>
+            `${ligne(c.nom, `${c.wifi ? 'Wi-Fi' : 'Câble'} · ${c.vitesse}`)}<p class="discret">${esc(c.description)}</p>${
+              c.wifi ? '<p class="alerte">Tu joues en Wi-Fi : un câble Ethernet supprime la plupart des pics de ping, plus que n\'importe quel réglage.</p>' : ''
+            }`
+        )
+        .join('')
+    : '<p class="discret">Aucune carte réseau connectée.</p>';
+}
+
+$('#btn-ping').addEventListener('click', async (e) => {
+  const b = e.target;
+  b.disabled = true;
+  b.textContent = 'Test en cours…';
+  try {
+    const res = await appel('reseau_ping');
+    $('#ping-resultats').innerHTML = res
+      .map((r) => {
+        if (r.moyenne == null) return `<div class="ping"><strong>${esc(r.cible)}</strong><p class="verdict alerte">Aucune réponse.</p></div>`;
+        const box = r.cible.startsWith('Ta box');
+        const mauvais = r.pertes > 0 || r.gigue > (box ? 2 : 5) || (box && r.moyenne > 5);
+        const verdict = mauvais
+          ? box
+            ? 'Instable entre ton PC et ta box : c\'est souvent le Wi-Fi. Essaie un câble.'
+            : r.pertes > 0
+              ? 'Des paquets se perdent : relance le test ; si ça persiste, redémarre ta box.'
+              : 'Ping irrégulier : ferme les téléchargements et les vidéos sur les autres appareils.'
+          : 'Stable, rien à signaler.';
+        return `<div class="ping">
+          <strong>${esc(r.cible)}<small class="discret"> ${esc(r.adresse)}</small></strong>
+          <div class="valeur">${r.moyenne.toFixed(0)} ms<small>ping moyen</small></div>
+          <div class="valeur">${r.gigue.toFixed(1)} ms<small>gigue</small></div>
+          <div class="valeur">${r.pertes.toFixed(0)} %<small>pertes</small></div>
+          <p class="verdict ${mauvais ? 'alerte' : 'ok'}">${verdict}</p>
+        </div>`;
+      })
+      .join('');
+  } finally {
+    b.disabled = false;
+    b.textContent = 'Relancer le test';
+  }
+});
+
+/* ---------- Périphériques : fréquence de la souris ---------- */
+
+{
+  const zone = $('#zone-souris');
+  // pointerrawupdate donne chaque position envoyée par la souris ; pointermove est limité à la fréquence de l'écran
+  const evenement = 'onpointerrawupdate' in window ? 'pointerrawupdate' : 'pointermove';
+  let compte = 0;
+  let debut = 0;
+  let meilleur = 0;
+  zone.addEventListener(evenement, () => {
+    const t = performance.now();
+    if (!debut) debut = t;
+    compte++;
+    if (t - debut >= 250) {
+      const hz = (compte * 1000) / (t - debut);
+      meilleur = Math.max(meilleur, hz);
+      $('#souris-hz').textContent = Math.round(meilleur);
+      $('#souris-ms').textContent = (1000 / meilleur).toFixed(meilleur > 900 ? 2 : 1);
+      compte = 0;
+      debut = t;
+    }
+  });
+  zone.addEventListener('pointerleave', () => {
+    compte = 0;
+    debut = 0;
+  });
+  zone.addEventListener('dblclick', () => {
+    meilleur = 0;
+    $('#souris-hz').textContent = $('#souris-ms').textContent = '–';
+  });
+}
+
+/* ---------- Écrans ---------- */
+
+let couleurs = {};
+const NEUTRE = { luminosite: 0, contraste: 1, gamma: 1, vibrance: null };
+const CURSEURS = [
+  { champ: 'luminosite', titre: 'Luminosité', min: -0.3, max: 0.3, pas: 0.01, aff: (v) => `${v > 0 ? '+' : ''}${Math.round(v * 100)}` },
+  { champ: 'contraste', titre: 'Contraste', min: 0.7, max: 1.3, pas: 0.01, aff: (v) => `${Math.round(v * 100)} %` },
+  { champ: 'gamma', titre: 'Gamma', min: 0.7, max: 1.5, pas: 0.01, aff: (v) => v.toFixed(2) },
+];
+
+async function chargerEcrans() {
+  const [ecrans, c] = await Promise.all([appel('ecrans_liste'), appel('couleurs_get')]);
+  couleurs = c;
+  $('#ecrans').innerHTML = ecrans.length
+    ? ecrans
+        .map((e) => {
+          const r = { ...NEUTRE, ...couleurs[e.id] };
+          if (e.vibrance != null && r.vibrance == null) r.vibrance = e.vibrance;
+          const max = Math.max(...e.frequences, e.hz);
+          const curseurs = CURSEURS.map(
+            (k) => `<label class="curseur"><span>${k.titre}</span><input type="range" data-champ="${k.champ}" min="${k.min}" max="${k.max}" step="${k.pas}" value="${r[k.champ]}"><output>${k.aff(r[k.champ])}</output></label>`
+          ).join('');
+          const vibrance =
+            e.vibrance != null
+              ? `<label class="curseur"><span>Vibrance</span><input type="range" data-champ="vibrance" min="50" max="100" step="1" value="${r.vibrance}"><output>${r.vibrance} %</output></label>`
+              : '<p class="discret">Vibrance : disponible seulement sur les écrans branchés à une carte NVIDIA.</p>';
+          return `<div class="carte ecran" data-id="${esc(e.id)}">
+            <div class="entete"><h2>${esc(e.nom)}</h2>${e.principal ? '<span class="badge">Principal</span>' : ''}${e.hdr_actif ? '<span class="badge bleu">HDR actif</span>' : e.hdr_supporte ? '<span class="badge">HDR possible</span>' : ''}</div>
+            ${ligne('Résolution', `${e.largeur} × ${e.hauteur}`)}
+            <div class="ligne-info"><span>Fréquence</span><span>
+              <select data-hz>${e.frequences.map((f) => `<option ${f === e.hz ? 'selected' : ''}>${f}</option>`).join('')}</select> Hz
+              ${e.hz < max ? `<span class="alerte"> (max ${max} Hz)</span>` : ''}
+            </span></div>
+            <h2 style="margin-top:14px">Couleurs en jeu</h2>
+            ${curseurs}${vibrance}
+            <div class="boutons">
+              <button class="principal" data-action="enregistrer">Enregistrer</button>
+              <button data-action="essayer">Essayer maintenant</button>
+              <button data-action="retablir">Rétablir</button>
+              <button class="discret-btn" data-action="neutre">Valeurs neutres</button>
+            </div>
+          </div>`;
+        })
+        .join('')
+    : '<p class="discret">Aucun écran trouvé.</p>';
+}
+
+function lireCarteEcran(carte) {
+  const r = { ...NEUTRE };
+  carte.querySelectorAll('input[type="range"]').forEach((i) => (r[i.dataset.champ] = Number(i.value)));
+  return r;
+}
+
+$('#ecrans').addEventListener('input', (e) => {
+  const i = e.target;
+  if (i.type !== 'range') return;
+  const k = CURSEURS.find((c) => c.champ === i.dataset.champ);
+  i.nextElementSibling.textContent = k ? k.aff(Number(i.value)) : `${i.value} %`;
+});
+
+$('#ecrans').addEventListener('change', async (e) => {
+  if (!e.target.matches('[data-hz]')) return;
+  const carte = e.target.closest('.ecran');
+  const hz = Number(e.target.value);
+  await appel('ecran_frequence', { id: carte.dataset.id, hz }).then(() => toast(`Écran réglé à ${hz} Hz.`)).catch(() => {});
+  chargerEcrans();
+});
+
+$('#ecrans').addEventListener('click', async (e) => {
+  const b = e.target.closest('button');
+  const carte = b?.closest('.ecran');
+  if (!carte) return;
+  const id = carte.dataset.id;
+  const r = lireCarteEcran(carte);
+  if (b.dataset.action === 'enregistrer') {
+    couleurs[id] = r;
+    await appel('couleurs_set', { couleurs });
+    toast(reglages.couleurs_en_jeu ? 'Couleurs enregistrées : elles seront appliquées pendant tes parties.' : 'Couleurs enregistrées. Active « Appliquer mes couleurs de jeu pendant les parties » en haut de la page.', 6000);
+  } else if (b.dataset.action === 'essayer') {
+    const erreurs = await appel('couleurs_essayer', { couleurs: { [id]: r } }, b);
+    toast(erreurs.length ? erreurs.join(' ; ') : 'Aperçu appliqué. « Rétablir » remet les couleurs d\'avant.', 6000);
+  } else if (b.dataset.action === 'retablir') {
+    await appel('couleurs_retablir', {}, b);
+    toast('Couleurs remises comme avant.');
+  } else if (b.dataset.action === 'neutre') {
+    carte.querySelectorAll('input[type="range"]').forEach((i) => {
+      i.value = i.dataset.champ === 'vibrance' ? 50 : NEUTRE[i.dataset.champ];
+      i.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+  }
+});
+
 /* ---------- Statistiques ---------- */
 
 const moyenne = (l, f) => l.reduce((s, x) => s + f(x), 0) / l.length;
@@ -307,7 +477,7 @@ async function chargerSessions() {
   $('#sessions tbody').innerHTML = sessions.length
     ? sessions
         .map(
-          (s) => `<tr><td>${new Date(s.debut * 1000).toLocaleString('fr-CH', { dateStyle: 'short', timeStyle: 'short' })}</td><td>${esc(s.jeu)}</td><td>${duree(s.duree_s)}</td><td>${s.boost ? '<span class="badge vert">Oui</span>' : '<span class="badge">Non</span>'}</td><td>${Math.round(s.moyenne)}</td><td>${Math.round(s.low1)}</td><td>${Math.round(s.low01)}</td></tr>`
+          (s) => `<tr><td>${new Date(s.debut * 1000).toLocaleString('fr-CH', { dateStyle: 'short', timeStyle: 'short' })}</td><td>${esc(s.jeu)}</td><td>${duree(s.duree_s)}</td><td>${s.boost ? '<span class="badge accent">Oui</span>' : '<span class="badge">Non</span>'}</td><td>${Math.round(s.moyenne)}</td><td>${Math.round(s.low1)}</td><td>${Math.round(s.low01)}</td></tr>`
         )
         .join('')
     : '<tr><td colspan="7" class="discret">Aucune partie mesurée pour l\'instant.</td></tr>';

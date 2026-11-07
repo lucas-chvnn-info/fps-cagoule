@@ -2,11 +2,14 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod config;
+mod ecrans;
 mod fenetres;
 mod fps;
 mod jeux;
 mod maj;
 mod ps;
+mod rampe;
+mod reseau;
 mod stats;
 mod systeme;
 mod tweaks;
@@ -14,6 +17,7 @@ mod tweaks;
 use config::{Profil, Reglages, Session, Stockage};
 use jeux::{Etat, InfoJeu};
 use serde::Serialize;
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Manager, RunEvent};
 
@@ -176,6 +180,57 @@ async fn maj_installer(app: AppHandle) -> Res<bool> {
     maj::installer(&app).await
 }
 
+#[tauri::command(async)]
+fn ecrans_liste() -> Vec<ecrans::Ecran> {
+    ecrans::liste()
+}
+
+#[tauri::command(async)]
+fn ecran_frequence(id: String, hz: u32) -> Res<()> {
+    ecrans::changer_frequence(&id, hz)
+}
+
+#[tauri::command]
+fn couleurs_get(app: AppHandle) -> HashMap<String, ecrans::Couleurs> {
+    etat(&app).stock.donnees.lock().unwrap().couleurs.clone()
+}
+
+#[tauri::command]
+fn couleurs_set(app: AppHandle, couleurs: HashMap<String, ecrans::Couleurs>) {
+    let e = etat(&app);
+    e.stock.donnees.lock().unwrap().couleurs = couleurs;
+    e.stock.sauver();
+}
+
+/// Aperçu immédiat des couleurs (remises comme avant avec couleurs_retablir).
+#[tauri::command(async)]
+fn couleurs_essayer(app: AppHandle, couleurs: HashMap<String, ecrans::Couleurs>) -> Vec<String> {
+    let erreurs = ecrans::appliquer(&couleurs);
+    let e = etat(&app);
+    e.stock.donnees.lock().unwrap().vibrance_avant = ecrans::vibrances_modifiees();
+    e.stock.sauver();
+    erreurs
+}
+
+#[tauri::command(async)]
+fn couleurs_retablir(app: AppHandle) {
+    let e = etat(&app);
+    // Pendant une partie, les couleurs de jeu restent en place
+    if e.session.lock().unwrap().is_none() {
+        jeux::restaurer_couleurs(&e);
+    }
+}
+
+#[tauri::command(async)]
+fn reseau_ping() -> Vec<reseau::ResultatPing> {
+    reseau::tester()
+}
+
+#[tauri::command(async)]
+fn reseau_cartes() -> Res<serde_json::Value> {
+    reseau::cartes()
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _dossier| fenetres::ouvrir_principale(app)))
@@ -191,6 +246,7 @@ fn main() {
             });
             // L'app a été coupée en pleine partie : on remet le plan d'alimentation d'avant
             jeux::restaurer_plan(&etat);
+            jeux::restaurer_couleurs(&etat);
             app.manage(etat);
 
             fenetres::creer_icone(app.handle())?;
@@ -221,6 +277,14 @@ fn main() {
             demarrage_auto_set,
             maj_verifier,
             maj_installer,
+            ecrans_liste,
+            ecran_frequence,
+            couleurs_get,
+            couleurs_set,
+            couleurs_essayer,
+            couleurs_retablir,
+            reseau_ping,
+            reseau_cartes,
         ])
         .build(tauri::generate_context!())
         .expect("démarrage de FPS Cagoule")
@@ -261,10 +325,20 @@ mod tests_windows {
     }
 
     #[test]
+    fn ecrans_et_reseau() {
+        // Le PC de GitHub a un écran virtuel : la liste ne doit pas planter, même vide
+        let _ = ecrans::liste();
+        let ping = reseau::tester();
+        assert!(!ping.is_empty());
+        assert!(reseau::cartes().is_ok());
+    }
+
+    #[test]
     fn lecture_des_optimisations() {
         let dossier = std::env::temp_dir().join("fps-cagoule-test");
         let stock = Stockage::ouvrir(dossier);
         let liste = tweaks::liste(&stock);
-        assert_eq!(liste.len(), 9);
+        assert_eq!(liste.len(), 16);
+        assert!(liste.iter().any(|t| t.tweak.categorie == "reseau"));
     }
 }

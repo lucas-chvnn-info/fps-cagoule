@@ -1,6 +1,6 @@
 [package]
 name = "fps-cagoule"
-version = "0.1.0"
+version = "0.2.0"
 description = "Analyse, optimisation et boost par jeu pour Windows 11"
 authors = ["Lucas Chavanne"]
 license = "MIT"
@@ -23,6 +23,12 @@ windows-sys = { version = "0.61", features = [
   "Win32_System_Threading",
   "Win32_System_Diagnostics_ToolHelp",
   "Win32_System_ProcessStatus",
+  "Win32_System_LibraryLoader",
+  "Win32_Graphics_Gdi",
+  "Win32_UI_ColorSystem",
+  "Win32_Devices_Display",
+  "Win32_NetworkManagement_IpHelper",
+  "Win32_Networking_WinSock",
 ] }
 
 # Binaire le plus petit possible : il tourne en permanence en arrière-plan

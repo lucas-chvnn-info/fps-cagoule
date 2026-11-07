@@ -169,6 +169,17 @@ fn demarrer(app: &AppHandle, etat: &Etat, profil: &crate::config::Profil, pid: u
         actions,
         capture,
     });
+    if reglages.couleurs_en_jeu {
+        let couleurs = etat.stock.donnees.lock().unwrap().couleurs.clone();
+        if !couleurs.is_empty() {
+            let erreurs = crate::ecrans::appliquer(&couleurs);
+            etat.stock.donnees.lock().unwrap().vibrance_avant = crate::ecrans::vibrances_modifiees();
+            etat.stock.sauver();
+            if let Some(s) = etat.session.lock().unwrap().as_mut() {
+                s.actions.push(if erreurs.is_empty() { "Couleurs de jeu appliquées".into() } else { erreurs.join(" ; ") });
+            }
+        }
+    }
     if reglages.overlay && reglages.mesure_fps {
         crate::fenetres::ouvrir_overlay(app);
     }
@@ -180,6 +191,7 @@ fn demarrer(app: &AppHandle, etat: &Etat, profil: &crate::config::Profil, pid: u
 pub fn terminer(app: &AppHandle, etat: &Etat) {
     let Some(s) = etat.session.lock().unwrap().take() else { return };
     restaurer_plan(etat);
+    restaurer_couleurs(etat);
     *etat.fps_live.lock().unwrap() = None;
     crate::fenetres::fermer_overlay(app);
     crate::fenetres::infobulle(app, "FPS Cagoule");
@@ -206,6 +218,16 @@ pub fn restaurer_plan(etat: &Etat) {
     let avant = etat.stock.donnees.lock().unwrap().plan_avant_jeu.take();
     if let Some(guid) = avant {
         systeme::activer_plan(&guid);
+        etat.stock.sauver();
+    }
+}
+
+pub fn restaurer_couleurs(etat: &Etat) {
+    crate::ecrans::restaurer();
+    let avant = std::mem::take(&mut etat.stock.donnees.lock().unwrap().vibrance_avant);
+    if !avant.is_empty() {
+        // Cas d'une app coupée en pleine partie : la rampe gamma est déjà revenue, pas la vibrance
+        crate::ecrans::restaurer_vibrances(&avant);
         etat.stock.sauver();
     }
 }

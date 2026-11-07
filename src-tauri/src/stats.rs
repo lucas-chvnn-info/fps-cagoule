@@ -89,6 +89,32 @@ impl Accumulateur {
     }
 }
 
+/// Résumé d'une série de pings (None = paquet perdu).
+#[derive(Debug, Clone, PartialEq)]
+pub struct ResumePing {
+    pub moyenne: f64,
+    pub min: u32,
+    pub max: u32,
+    /// Variation moyenne entre deux pings successifs : c'est elle qui rend le jeu saccadé
+    pub gigue: f64,
+    pub pertes: f64,
+}
+
+pub fn resumer_ping(mesures: &[Option<u32>]) -> Option<ResumePing> {
+    let recus: Vec<u32> = mesures.iter().flatten().copied().collect();
+    if recus.is_empty() {
+        return None;
+    }
+    let ecarts: Vec<f64> = recus.windows(2).map(|w| (w[1] as f64 - w[0] as f64).abs()).collect();
+    Some(ResumePing {
+        moyenne: recus.iter().sum::<u32>() as f64 / recus.len() as f64,
+        min: *recus.iter().min().unwrap(),
+        max: *recus.iter().max().unwrap(),
+        gigue: if ecarts.is_empty() { 0.0 } else { ecarts.iter().sum::<f64>() / ecarts.len() as f64 },
+        pertes: (mesures.len() - recus.len()) as f64 / mesures.len() as f64 * 100.0,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -142,5 +168,15 @@ mod tests {
         assert!((a.fps_instantane().unwrap() - 100.0).abs() < 1e-9);
         assert_eq!(a.fps_instantane(), None);
         assert_eq!(a.principale().len(), 100);
+    }
+
+    #[test]
+    fn ping_gigue_et_pertes() {
+        let r = resumer_ping(&[Some(10), Some(20), None, Some(10), Some(10)]).unwrap();
+        assert_eq!((r.min, r.max), (10, 20));
+        assert!((r.moyenne - 12.5).abs() < 1e-9);
+        assert!((r.gigue - 20.0 / 3.0).abs() < 1e-9);
+        assert!((r.pertes - 20.0).abs() < 1e-9);
+        assert_eq!(resumer_ping(&[None, None]), None);
     }
 }
