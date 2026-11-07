@@ -64,7 +64,9 @@ export function evaluer(info, { planPerso = null, maintenant = new Date() } = {}
   const guid = (info.plan?.guid || '').toLowerCase();
   // Le plan peut être une copie de Performances élevées (autre GUID) : on regarde aussi son nom
   const nomPerf = /performances? (élevées|optimales)|high performance|ultimate performance/i.test(info.plan?.nom || '');
-  if (guid && !PLANS_PERF.includes(guid) && guid !== planPerso && !nomPerf) {
+  // planPerso : GUID (ou liste de GUID) des copies de plans créées par l'app
+  const persos = [].concat(planPerso).filter(Boolean);
+  if (guid && !PLANS_PERF.includes(guid) && !persos.includes(guid) && !nomPerf) {
     ajoute('plan', 'moyenne', `Plan d'alimentation « ${info.plan.nom || 'inconnu'} »`,
       'Le plan Performances élevées garde le processeur à pleine fréquence et évite les micro-latences.', 'plan-alimentation');
   }

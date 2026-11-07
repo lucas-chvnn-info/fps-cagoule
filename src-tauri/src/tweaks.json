@@ -6,7 +6,8 @@
     "gain": "moyen",
     "redemarrage": false,
     "special": "plan",
-    "categorie": "windows"
+    "categorie": "alimentation",
+    "niveau": "recommande"
   },
   {
     "id": "mode-jeu",
@@ -30,7 +31,8 @@
         "valeur": 1
       }
     ],
-    "categorie": "windows"
+    "categorie": "windows",
+    "niveau": "recommande"
   },
   {
     "id": "game-dvr",
@@ -54,7 +56,8 @@
         "valeur": 0
       }
     ],
-    "categorie": "windows"
+    "categorie": "windows",
+    "niveau": "recommande"
   },
   {
     "id": "hags",
@@ -71,7 +74,8 @@
         "valeur": 2
       }
     ],
-    "categorie": "windows"
+    "categorie": "windows",
+    "niveau": "recommande"
   },
   {
     "id": "souris",
@@ -102,7 +106,8 @@
         "valeur": "0"
       }
     ],
-    "categorie": "peripheriques"
+    "categorie": "peripheriques",
+    "niveau": "recommande"
   },
   {
     "id": "priorite-jeux",
@@ -147,7 +152,8 @@
         "valeur": "High"
       }
     ],
-    "categorie": "windows"
+    "categorie": "windows",
+    "niveau": "recommande"
   },
   {
     "id": "transparence",
@@ -164,7 +170,8 @@
         "valeur": 0
       }
     ],
-    "categorie": "windows"
+    "categorie": "windows",
+    "niveau": "recommande"
   },
   {
     "id": "effets-visuels",
@@ -181,7 +188,8 @@
         "valeur": 2
       }
     ],
-    "categorie": "windows"
+    "categorie": "windows",
+    "niveau": "max"
   },
   {
     "id": "notifications",
@@ -198,7 +206,8 @@
         "valeur": 0
       }
     ],
-    "categorie": "windows"
+    "categorie": "windows",
+    "niveau": "max"
   },
   {
     "id": "reseau-eco",
@@ -218,7 +227,8 @@
       "*GreenEthernet",
       "PowerSavingMode"
     ],
-    "cible": "0"
+    "cible": "0",
+    "niveau": "recommande"
   },
   {
     "id": "reseau-interruptions",
@@ -231,7 +241,8 @@
     "mots_cles": [
       "*InterruptModeration"
     ],
-    "cible": "0"
+    "cible": "0",
+    "niveau": "max"
   },
   {
     "id": "nagle",
@@ -240,7 +251,8 @@
     "description": "Windows n'attend plus pour regrouper les petits paquets TCP. Utile pour les jeux qui passent par TCP (League of Legends, MMO) ; la plupart des FPS utilisent UDP et ne sont pas concernés.",
     "gain": "faible",
     "redemarrage": true,
-    "special": "nagle"
+    "special": "nagle",
+    "niveau": "max"
   },
   {
     "id": "limitation-reseau",
@@ -257,7 +269,8 @@
         "type": "dword",
         "valeur": 4294967295
       }
-    ]
+    ],
+    "niveau": "recommande"
   },
   {
     "id": "usb-veille",
@@ -266,7 +279,11 @@
     "description": "Windows peut endormir un périphérique USB inactif : au réveil, la souris ou le casque répond en retard ou se déconnecte. Appliqué au plan d'alimentation actuel et au plan Performances élevées, sur secteur.",
     "gain": "moyen",
     "redemarrage": false,
-    "special": "usb"
+    "special": "powercfg",
+    "niveau": "recommande",
+    "sous_groupe": "2a737441-1930-4402-8d77-b2bebba308a3",
+    "parametre": "48e6b7a6-50f5-4782-a5d4-53bb8f07e226",
+    "index": 0
   },
   {
     "id": "clavier",
@@ -290,7 +307,8 @@
         "type": "sz",
         "valeur": "31"
       }
-    ]
+    ],
+    "niveau": "recommande"
   },
   {
     "id": "accessibilite",
@@ -321,6 +339,365 @@
         "type": "sz",
         "valeur": "122"
       }
+    ],
+    "niveau": "recommande"
+  },
+  {
+    "id": "coeurs-actifs",
+    "categorie": "alimentation",
+    "titre": "Garder tous les cœurs du processeur éveillés",
+    "description": "Windows « parque » les cœurs inutilisés pour économiser l'énergie ; les réveiller prend du temps au moment où le jeu en a besoin.",
+    "gain": "moyen",
+    "redemarrage": false,
+    "special": "powercfg",
+    "sous_groupe": "54533251-82be-4824-96c1-47b60b740d00",
+    "parametre": "0cc5b647-c1df-4637-891a-dec35c318583",
+    "index": 100,
+    "niveau": "recommande"
+  },
+  {
+    "id": "processeur-100",
+    "categorie": "alimentation",
+    "titre": "Processeur toujours à pleine vitesse",
+    "description": "L'état minimal du processeur passe à 100 % : plus aucune montée en fréquence à attendre. Plus de chaleur et de consommation au repos.",
+    "gain": "faible",
+    "redemarrage": false,
+    "special": "powercfg",
+    "sous_groupe": "54533251-82be-4824-96c1-47b60b740d00",
+    "parametre": "893dee8e-2bef-41e0-89c6-b55d0929964c",
+    "index": 100,
+    "niveau": "max"
+  },
+  {
+    "id": "turbo-agressif",
+    "categorie": "alimentation",
+    "titre": "Turbo du processeur en mode agressif",
+    "description": "Le processeur passe en fréquence turbo dès qu'il y a du travail, sans attendre. Plus de chaleur.",
+    "gain": "faible",
+    "redemarrage": false,
+    "special": "powercfg",
+    "sous_groupe": "54533251-82be-4824-96c1-47b60b740d00",
+    "parametre": "be337238-0d82-4146-a960-4f3749d470c7",
+    "index": 2,
+    "niveau": "max"
+  },
+  {
+    "id": "epp-performance",
+    "categorie": "alimentation",
+    "titre": "Préférence énergétique : performances",
+    "description": "Indique aux processeurs récents (Intel 12e gén.+, AMD Ryzen) de privilégier la vitesse sur l'économie d'énergie.",
+    "gain": "moyen",
+    "redemarrage": false,
+    "special": "powercfg",
+    "sous_groupe": "54533251-82be-4824-96c1-47b60b740d00",
+    "parametre": "36687f9e-e3a5-4dbf-b1dc-15eb381c6863",
+    "index": 0,
+    "niveau": "max"
+  },
+  {
+    "id": "pcie-veille",
+    "categorie": "alimentation",
+    "titre": "Couper l'économie d'énergie PCI Express",
+    "description": "La carte graphique et le SSD ne passent plus en veille partielle entre deux demandes : moins de micro-latences.",
+    "gain": "faible",
+    "redemarrage": false,
+    "special": "powercfg",
+    "sous_groupe": "501a4d13-42af-4429-9fd1-a8218c268e20",
+    "parametre": "ee12f906-d277-404b-b6da-e5fa1a576df5",
+    "index": 0,
+    "niveau": "recommande"
+  },
+  {
+    "id": "disque-veille",
+    "categorie": "alimentation",
+    "titre": "Ne jamais arrêter les disques",
+    "description": "Évite l'arrêt des disques après quelques minutes d'inactivité, et la pause au moment où le jeu charge.",
+    "gain": "faible",
+    "redemarrage": false,
+    "special": "powercfg",
+    "sous_groupe": "0012ee47-9041-4b5d-9b77-535fba8b1442",
+    "parametre": "6738e2c4-e8a5-4a42-b16a-e040e769756e",
+    "index": 0,
+    "niveau": "recommande"
+  },
+  {
+    "id": "bridage-energie",
+    "categorie": "alimentation",
+    "titre": "Couper le bridage d'énergie de Windows",
+    "description": "Windows ralentit les programmes en arrière-plan pour économiser l'énergie (Power Throttling), parfois à tort, par exemple Discord ou un enregistreur pendant la partie.",
+    "gain": "faible",
+    "redemarrage": true,
+    "niveau": "recommande",
+    "valeurs": [
+      {
+        "ruche": "HKLM",
+        "chemin": "SYSTEM\\CurrentControlSet\\Control\\Power\\PowerThrottling",
+        "nom": "PowerThrottlingOff",
+        "type": "dword",
+        "valeur": 1
+      }
     ]
+  },
+  {
+    "id": "demarrage-rapide",
+    "categorie": "windows",
+    "titre": "Arrêter = vraiment arrêter",
+    "description": "Coupe le démarrage rapide : chaque arrêt remet Windows à zéro (mémoire, pilotes), comme un redémarrage. Le PC démarre quelques secondes plus lentement.",
+    "gain": "moyen",
+    "redemarrage": false,
+    "niveau": "recommande",
+    "valeurs": [
+      {
+        "ruche": "HKLM",
+        "chemin": "SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Power",
+        "nom": "HiberbootEnabled",
+        "type": "dword",
+        "valeur": 0
+      }
+    ]
+  },
+  {
+    "id": "jeux-fenetres",
+    "categorie": "windows",
+    "titre": "Optimisations pour les jeux en fenêtre",
+    "description": "Les jeux en fenêtré sans bordure utilisent le même mode d'affichage que le plein écran : moins de latence, et le G-Sync/FreeSync fonctionne.",
+    "gain": "moyen",
+    "redemarrage": false,
+    "niveau": "recommande",
+    "valeurs": [
+      {
+        "ruche": "HKCU",
+        "chemin": "Software\\Microsoft\\DirectX\\UserGpuPreferences",
+        "nom": "DirectXUserGlobalSettings",
+        "type": "sz",
+        "valeur": "SwapEffectUpgradeEnable=1;"
+      }
+    ]
+  },
+  {
+    "id": "plein-ecran",
+    "categorie": "windows",
+    "titre": "Désactiver les optimisations plein écran",
+    "description": "Les jeux en plein écran gardent l'accès exclusif à l'écran au lieu du mode hybride de Windows. Gagnant dans certains jeux anciens (DirectX 9 à 11), sans effet sur les autres.",
+    "gain": "faible",
+    "redemarrage": false,
+    "niveau": "max",
+    "valeurs": [
+      {
+        "ruche": "HKCU",
+        "chemin": "System\\GameConfigStore",
+        "nom": "GameDVR_FSEBehaviorMode",
+        "type": "dword",
+        "valeur": 2
+      },
+      {
+        "ruche": "HKCU",
+        "chemin": "System\\GameConfigStore",
+        "nom": "GameDVR_HonorUserFSEBehaviorMode",
+        "type": "dword",
+        "valeur": 1
+      },
+      {
+        "ruche": "HKCU",
+        "chemin": "System\\GameConfigStore",
+        "nom": "GameDVR_FSEBehavior",
+        "type": "dword",
+        "valeur": 2
+      },
+      {
+        "ruche": "HKCU",
+        "chemin": "System\\GameConfigStore",
+        "nom": "GameDVR_DXGIHonorFSEWindowsCompatible",
+        "type": "dword",
+        "valeur": 1
+      }
+    ]
+  },
+  {
+    "id": "premier-plan",
+    "categorie": "windows",
+    "titre": "Priorité au programme au premier plan",
+    "description": "Le jeu reçoit des tranches de temps processeur plus longues que les programmes en arrière-plan.",
+    "gain": "faible",
+    "redemarrage": false,
+    "niveau": "max",
+    "valeurs": [
+      {
+        "ruche": "HKLM",
+        "chemin": "SYSTEM\\CurrentControlSet\\Control\\PriorityControl",
+        "nom": "Win32PrioritySeparation",
+        "type": "dword",
+        "valeur": 38
+      }
+    ]
+  },
+  {
+    "id": "minuteur-global",
+    "categorie": "windows",
+    "titre": "Autoriser le minuteur précis partout",
+    "description": "Depuis Windows 11, le minuteur à 0,5 ms du Boost max ne s'applique qu'au programme qui le demande. Ce réglage l'étend à tout le système, dont le jeu.",
+    "gain": "faible",
+    "redemarrage": true,
+    "niveau": "max",
+    "valeurs": [
+      {
+        "ruche": "HKLM",
+        "chemin": "SYSTEM\\CurrentControlSet\\Control\\Session Manager\\kernel",
+        "nom": "GlobalTimerResolutionRequests",
+        "type": "dword",
+        "valeur": 1
+      }
+    ]
+  },
+  {
+    "id": "widgets",
+    "categorie": "arriere-plan",
+    "titre": "Désactiver les widgets",
+    "description": "Le panneau d'actualités et de météo tourne en permanence et occupe 100 à 300 Mo de mémoire.",
+    "gain": "moyen",
+    "redemarrage": true,
+    "niveau": "recommande",
+    "valeurs": [
+      {
+        "ruche": "HKLM",
+        "chemin": "SOFTWARE\\Policies\\Microsoft\\Dsh",
+        "nom": "AllowNewsAndInterests",
+        "type": "dword",
+        "valeur": 0
+      }
+    ]
+  },
+  {
+    "id": "edge-arriere-plan",
+    "categorie": "arriere-plan",
+    "titre": "Empêcher Edge de tourner en arrière-plan",
+    "description": "Edge se précharge au démarrage et reste ouvert après sa fermeture. Il démarrera une seconde plus lentement.",
+    "gain": "moyen",
+    "redemarrage": false,
+    "niveau": "recommande",
+    "valeurs": [
+      {
+        "ruche": "HKLM",
+        "chemin": "SOFTWARE\\Policies\\Microsoft\\Edge",
+        "nom": "StartupBoostEnabled",
+        "type": "dword",
+        "valeur": 0
+      },
+      {
+        "ruche": "HKLM",
+        "chemin": "SOFTWARE\\Policies\\Microsoft\\Edge",
+        "nom": "BackgroundModeEnabled",
+        "type": "dword",
+        "valeur": 0
+      }
+    ]
+  },
+  {
+    "id": "partage-maj",
+    "categorie": "reseau",
+    "titre": "Ne plus partager les mises à jour en P2P",
+    "description": "Windows envoie des morceaux de mises à jour à d'autres PC sur Internet, ce qui occupe ta connexion. Les mises à jour se téléchargent toujours normalement.",
+    "gain": "moyen",
+    "redemarrage": false,
+    "niveau": "recommande",
+    "valeurs": [
+      {
+        "ruche": "HKLM",
+        "chemin": "SOFTWARE\\Policies\\Microsoft\\Windows\\DeliveryOptimization",
+        "nom": "DODownloadMode",
+        "type": "dword",
+        "valeur": 0
+      }
+    ]
+  },
+  {
+    "id": "telemetrie",
+    "categorie": "arriere-plan",
+    "titre": "Réduire la télémétrie",
+    "description": "Limite les données de diagnostic envoyées à Microsoft et arrête le service qui les collecte. Windows Famille garde un minimum obligatoire.",
+    "gain": "faible",
+    "redemarrage": true,
+    "niveau": "recommande",
+    "valeurs": [
+      {
+        "ruche": "HKLM",
+        "chemin": "SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection",
+        "nom": "AllowTelemetry",
+        "type": "dword",
+        "valeur": 0
+      },
+      {
+        "ruche": "HKLM",
+        "chemin": "SYSTEM\\CurrentControlSet\\Services\\DiagTrack",
+        "nom": "Start",
+        "type": "dword",
+        "valeur": 4
+      }
+    ]
+  },
+  {
+    "id": "applis-arriere-plan",
+    "categorie": "arriere-plan",
+    "titre": "Bloquer les applis du Store en arrière-plan",
+    "description": "Les applis du Microsoft Store (Courrier, Teams, Xbox…) ne tournent plus quand elles sont fermées. Elles ne pourront plus t'envoyer de notifications.",
+    "gain": "faible",
+    "redemarrage": false,
+    "niveau": "max",
+    "valeurs": [
+      {
+        "ruche": "HKLM",
+        "chemin": "SOFTWARE\\Policies\\Microsoft\\Windows\\AppPrivacy",
+        "nom": "LetAppsRunInBackground",
+        "type": "dword",
+        "valeur": 2
+      }
+    ]
+  },
+  {
+    "id": "sysmain",
+    "categorie": "arriere-plan",
+    "titre": "Désactiver SysMain (préchargement)",
+    "description": "SysMain précharge tes programmes en mémoire et lit beaucoup le disque. Utile sur un disque dur, inutile sur un SSD rapide. Prend effet au redémarrage.",
+    "gain": "faible",
+    "redemarrage": true,
+    "niveau": "max",
+    "valeurs": [
+      {
+        "ruche": "HKLM",
+        "chemin": "SYSTEM\\CurrentControlSet\\Services\\SysMain",
+        "nom": "Start",
+        "type": "dword",
+        "valeur": 4
+      }
+    ]
+  },
+  {
+    "id": "reseau-controle-flux",
+    "categorie": "reseau",
+    "titre": "Couper le contrôle de flux",
+    "description": "La carte réseau n'accepte plus les demandes de pause de la box ou du switch, qui retardent les paquets. La connexion se coupe 2 à 5 secondes pendant le changement.",
+    "gain": "faible",
+    "redemarrage": false,
+    "niveau": "max",
+    "special": "adaptateur",
+    "mots_cles": [
+      "*FlowControl"
+    ],
+    "cible": "0"
+  },
+  {
+    "id": "reseau-lso",
+    "categorie": "reseau",
+    "titre": "Couper le délestage des gros envois (LSO)",
+    "description": "La carte ne regroupe plus les envois en gros paquets, ce qui peut retarder les petits paquets du jeu. La connexion se coupe 2 à 5 secondes pendant le changement.",
+    "gain": "faible",
+    "redemarrage": false,
+    "niveau": "max",
+    "special": "adaptateur",
+    "mots_cles": [
+      "*LsoV2IPv4",
+      "*LsoV2IPv6"
+    ],
+    "cible": "0"
   }
 ]

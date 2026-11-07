@@ -140,30 +140,105 @@ pub fn plan_actif() -> Option<String> {
     extraire_guid(&String::from_utf8_lossy(&sortie.stdout))
 }
 
-pub fn activer_plan(guid: &str) -> bool {
+pub fn activer_plan_guid(guid: &str) -> bool {
     executer("powercfg", &["/setactive", guid]).map_or(false, |s| s.status.success())
 }
 
-/// Active Performances élevées. Certains PC (portables récents) ne l'ont plus :
+/// Active un plan intégré (Performances élevées ou optimales). Certains PC (portables récents) ne l'ont plus :
 /// on en crée alors une copie, dont le GUID est renvoyé pour être mémorisé.
-pub fn activer_plan_perf(plan_perso: Option<&str>) -> Result<Option<String>, String> {
-    if let Some(p) = plan_perso {
-        if activer_plan(p) {
+pub fn activer_plan(modele: &str, copie: Option<&str>) -> Result<Option<String>, String> {
+    if let Some(p) = copie {
+        if activer_plan_guid(p) {
             return Ok(None);
         }
     }
-    if activer_plan(PLAN_PERF) {
+    if activer_plan_guid(modele) {
         return Ok(None);
     }
-    let sortie = executer("powercfg", &["-duplicatescheme", PLAN_PERF]).map_err(|e| e.to_string())?;
-    let guid = extraire_guid(&String::from_utf8_lossy(&sortie.stdout)).ok_or("Windows refuse de créer le plan Performances élevées")?;
-    if activer_plan(&guid) {
+    let sortie = executer("powercfg", &["-duplicatescheme", modele]).map_err(|e| e.to_string())?;
+    let guid = extraire_guid(&String::from_utf8_lossy(&sortie.stdout)).ok_or("Windows refuse de créer ce plan d'alimentation")?;
+    if activer_plan_guid(&guid) {
         Ok(Some(guid))
     } else {
-        Err("Impossible d'activer le plan Performances élevées".into())
+        Err("Impossible d'activer le plan d'alimentation".into())
     }
 }
 
-pub fn est_plan_perf(guid: &str, plan_perso: Option<&str>) -> bool {
-    guid == PLAN_PERF || guid == PLAN_OPTIMAL || Some(guid) == plan_perso
+/// Plans considérés comme « performances » : les intégrés et leurs copies créées par l'app.
+pub fn est_plan_perf(guid: &str, persos: &[Option<String>]) -> bool {
+    guid == PLAN_PERF || guid == PLAN_OPTIMAL || persos.iter().flatten().any(|p| p == guid)
+}
+
+/* ---------- Boost max : minuteur et mémoire en veille (fonctions de ntdll) ---------- */
+
+fn ntdll(nom: &[u8]) -> Option<unsafe extern "system" fn() -> isize> {
+    use windows_sys::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryW};
+    let dll: Vec<u16> = "ntdll.dll\0".encode_utf16().collect();
+    unsafe {
+        let module = LoadLibraryW(dll.as_ptr());
+        if module.is_null() {
+            return None;
+        }
+        GetProcAddress(module, nom.as_ptr())
+    }
+}
+
+/// Minuteur système à 0,5 ms (au lieu de 15,6 ms) : les jeux réveillent leurs fils plus précisément,
+/// ce qui régularise le rythme des images. `false` rend la main à Windows.
+pub fn minuteur_precis(actif: bool) -> bool {
+    type SetTimer = unsafe extern "system" fn(u32, u8, *mut u32) -> i32;
+    let Some(f) = ntdll(b"NtSetTimerResolution\0") else { return false };
+    let f: SetTimer = unsafe { std::mem::transmute(f) };
+    let mut actuel = 0u32;
+    unsafe { f(5000, actif as u8, &mut actuel) == 0 }
+}
+
+/// Mémoire disponible (octets).
+pub fn memoire_libre() -> u64 {
+    use windows_sys::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
+    unsafe {
+        let mut m: MEMORYSTATUSEX = std::mem::zeroed();
+        m.dwLength = std::mem::size_of::<MEMORYSTATUSEX>() as u32;
+        if GlobalMemoryStatusEx(&mut m) != 0 { m.ullAvailPhys } else { 0 }
+    }
+}
+
+/// Vide la liste de mémoire en veille (comme l'outil ISLC) : évite les saccades quand Windows
+/// tarde à libérer de la mémoire pour le jeu. Renvoie le nombre d'octets rendus disponibles.
+pub fn vider_memoire_veille() -> Result<u64, String> {
+    use windows_sys::Win32::Foundation::LUID;
+    use windows_sys::Win32::Security::{
+        AdjustTokenPrivileges, LookupPrivilegeValueW, LUID_AND_ATTRIBUTES, SE_PRIVILEGE_ENABLED, TOKEN_ADJUST_PRIVILEGES,
+        TOKEN_PRIVILEGES, TOKEN_QUERY,
+    };
+    use windows_sys::Win32::System::Threading::OpenProcessToken;
+    type SetInfo = unsafe extern "system" fn(u32, *mut core::ffi::c_void, u32) -> i32;
+    const SYSTEM_MEMORY_LIST_INFORMATION: u32 = 80;
+    const MEMORY_PURGE_STANDBY_LIST: i32 = 4;
+
+    let avant = memoire_libre();
+    unsafe {
+        // Le privilège « profiler un seul processus » est nécessaire, même en administrateur
+        let mut jeton: HANDLE = std::ptr::null_mut();
+        if OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &mut jeton) == 0 {
+            return Err("Droits administrateur nécessaires".into());
+        }
+        let nom: Vec<u16> = "SeProfileSingleProcessPrivilege\0".encode_utf16().collect();
+        let mut luid: LUID = std::mem::zeroed();
+        let ok = LookupPrivilegeValueW(std::ptr::null(), nom.as_ptr(), &mut luid) != 0 && {
+            let tp = TOKEN_PRIVILEGES { PrivilegeCount: 1, Privileges: [LUID_AND_ATTRIBUTES { Luid: luid, Attributes: SE_PRIVILEGE_ENABLED }] };
+            AdjustTokenPrivileges(jeton, 0, &tp, 0, std::ptr::null_mut(), std::ptr::null_mut()) != 0
+        };
+        CloseHandle(jeton);
+        if !ok {
+            return Err("Privilège refusé par Windows".into());
+        }
+        let f: SetInfo = std::mem::transmute(ntdll(b"NtSetSystemInformation\0").ok_or("Fonction Windows introuvable")?);
+        let mut commande = MEMORY_PURGE_STANDBY_LIST;
+        let statut = f(SYSTEM_MEMORY_LIST_INFORMATION, &mut commande as *mut i32 as *mut core::ffi::c_void, 4);
+        if statut != 0 {
+            return Err(format!("Windows a refusé (code {statut:#x})"));
+        }
+    }
+    Ok(memoire_libre().saturating_sub(avant))
 }

@@ -100,21 +100,43 @@ fn demarrer(app: &AppHandle, etat: &Etat, profil: &crate::config::Profil, pid: u
     let mut actions = Vec::new();
 
     if boost {
-        // Plan d'alimentation : l'ancien est mémorisé sur disque, au cas où l'app serait coupée en pleine partie
-        let plan_perso = etat.stock.donnees.lock().unwrap().plan_perso.clone();
-        if let Some(avant) = systeme::plan_actif().filter(|g| !systeme::est_plan_perf(g, plan_perso.as_deref())) {
-            match systeme::activer_plan_perf(plan_perso.as_deref()) {
+        // Plan d'alimentation : l'ancien est mémorisé sur disque, au cas où l'app serait coupée en pleine partie.
+        // Boost max : Performances optimales ; sinon Performances élevées (déjà actif = rien à faire).
+        let (plan_perso, plan_max) = {
+            let d = etat.stock.donnees.lock().unwrap();
+            (d.plan_perso.clone(), d.plan_max.clone())
+        };
+        let actuel = systeme::plan_actif();
+        let (modele, copie, nom_plan) = if reglages.boost_max {
+            (systeme::PLAN_OPTIMAL, plan_max.clone(), "Performances optimales")
+        } else {
+            (systeme::PLAN_PERF, plan_perso.clone(), "Performances élevées")
+        };
+        let deja = actuel.as_deref().is_some_and(|g| {
+            if reglages.boost_max { g == systeme::PLAN_OPTIMAL || Some(g) == plan_max.as_deref() } else { systeme::est_plan_perf(g, &[plan_perso.clone(), plan_max.clone()]) }
+        });
+        if let (Some(avant), false) = (actuel, deja) {
+            match systeme::activer_plan(modele, copie.as_deref()) {
                 Ok(cree) => {
                     let mut d = etat.stock.donnees.lock().unwrap();
                     d.plan_avant_jeu = Some(avant);
                     if cree.is_some() {
-                        d.plan_perso = cree;
+                        if reglages.boost_max { d.plan_max = cree } else { d.plan_perso = cree }
                     }
                     drop(d);
                     etat.stock.sauver();
-                    actions.push("Plan Performances élevées activé".into());
+                    actions.push(format!("Plan {nom_plan} activé"));
                 }
                 Err(e) => actions.push(format!("Plan d'alimentation : {e}")),
+            }
+        }
+        if reglages.boost_max {
+            if systeme::minuteur_precis(true) {
+                actions.push("Minuteur système à 0,5 ms".into());
+            }
+            match systeme::vider_memoire_veille() {
+                Ok(o) => actions.push(format!("Mémoire en veille vidée ({:.1} Go libérés)", o as f64 / 1073741824.0)),
+                Err(e) => actions.push(format!("Mémoire en veille : {e}")),
             }
         }
         if profil.priorite_haute {
@@ -192,6 +214,7 @@ pub fn terminer(app: &AppHandle, etat: &Etat) {
     let Some(s) = etat.session.lock().unwrap().take() else { return };
     restaurer_plan(etat);
     restaurer_couleurs(etat);
+    systeme::minuteur_precis(false);
     *etat.fps_live.lock().unwrap() = None;
     crate::fenetres::fermer_overlay(app);
     crate::fenetres::infobulle(app, "FPS Cagoule");
@@ -217,7 +240,7 @@ pub fn terminer(app: &AppHandle, etat: &Etat) {
 pub fn restaurer_plan(etat: &Etat) {
     let avant = etat.stock.donnees.lock().unwrap().plan_avant_jeu.take();
     if let Some(guid) = avant {
-        systeme::activer_plan(&guid);
+        systeme::activer_plan_guid(&guid);
         etat.stock.sauver();
     }
 }

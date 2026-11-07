@@ -59,7 +59,7 @@ function memoriserAnalyse(info) {
 function afficherScore() {
   if (!derniereAnalyse) return;
   const info = demarrage ? { ...derniereAnalyse, demarrage: demarrage.filter((p) => p.actif) } : derniereAnalyse;
-  const { score, problemes } = evaluer(info, { planPerso: etat.plan_perso });
+  const { score, problemes } = evaluer(info, { planPerso: [etat.plan_perso, etat.plan_max] });
   $('#score').textContent = score;
   const anneau = $('#anneau');
   anneau.style.strokeDashoffset = 326.7 * (1 - score / 100);
@@ -147,7 +147,7 @@ function ligneTweak(t) {
   else droite = `${t.annulable ? `<button class="petit" data-annuler="${esc(t.id)}">Annuler</button>` : ''}<button class="petit principal" data-activer="${esc(t.id)}">Activer</button>`;
   return `<li class="tweak">
       <div>
-        <div class="titre">${esc(t.titre)} ${gainBadge[t.gain] || ''} ${t.redemarrage ? '<span class="badge orange">Après redémarrage</span>' : ''}</div>
+        <div class="titre">${esc(t.titre)} ${gainBadge[t.gain] || ''} ${t.niveau === 'max' ? '<span class="badge violet">Boost max</span>' : ''} ${t.redemarrage ? '<span class="badge orange">Après redémarrage</span>' : ''}</div>
         <p>${esc(t.description)}</p>
       </div>
       <div class="droite">${droite}</div>
@@ -159,6 +159,10 @@ async function chargerTweaks() {
   document.querySelectorAll('.tweaks[data-categorie]').forEach((ul) => {
     ul.innerHTML = tweaks.filter((t) => t.categorie === ul.dataset.categorie).map(ligneTweak).join('');
   });
+  const dispo = tweaks.filter((t) => t.disponible);
+  const actifs = dispo.filter((t) => t.actif).length;
+  $('#resume-tweaks').textContent = `${actifs} optimisation${actifs > 1 ? 's' : ''} active${actifs > 1 ? 's' : ''} sur ${dispo.length} disponibles sur ton PC.`;
+  $('#btn-tout-annuler').disabled = !tweaks.some((t) => t.annulable);
   afficherScore();
 }
 
@@ -177,12 +181,59 @@ async function appliquerTweaks(ids, bouton) {
   const [point, resultats] = await appel('tweaks_appliquer', { ids, restauration: $('#restauration').checked }, bouton);
   const echecs = resultats.filter((r) => !r.ok);
   const redemarrage = tweaks.some((t) => ids.includes(t.id) && t.redemarrage);
-  let msg = echecs.length ? `Échec : ${echecs.map((r) => r.erreur).join(' ; ')}` : 'Optimisation appliquée.';
-  if (redemarrage && !echecs.length) msg += ' Elle prend effet au prochain redémarrage.';
+  const reussis = resultats.length - echecs.length;
+  let msg = echecs.length ? `${reussis} appliquée(s), ${echecs.length} échec(s) : ${echecs.map((r) => r.erreur).join(' ; ')}` : ids.length > 1 ? `${reussis} optimisations appliquées.` : 'Optimisation appliquée.';
+  if (redemarrage && !echecs.length) msg += ids.length > 1 ? ' Redémarre ton PC pour en profiter pleinement.' : ' Elle prend effet au prochain redémarrage.';
   if (point) msg = `${point}. ${msg}`;
   toast(msg, 7000);
   await chargerTweaks();
 }
+
+function confirmer(titre, html, libelle = 'Confirmer') {
+  return new Promise((resoudre) => {
+    $('#fenetre-titre').textContent = titre;
+    $('#fenetre-texte').innerHTML = html;
+    $('#fenetre-oui').textContent = libelle;
+    $('#fenetre').hidden = false;
+    const fin = (r) => {
+      $('#fenetre').hidden = true;
+      resoudre(r);
+    };
+    $('#fenetre-oui').onclick = () => fin(true);
+    $('#fenetre-non').onclick = () => fin(false);
+  });
+}
+
+async function optimiserTout(max, bouton) {
+  if (!tweaks.length) tweaks = await appel('tweaks_liste');
+  const a = tweaks.filter((t) => t.disponible && !t.actif && (max || t.niveau !== 'max'));
+  if (!a.length) return toast('Tout est déjà optimisé.');
+  const reseau = a.some((t) => t.special === 'adaptateur');
+  const redemarrage = a.some((t) => t.redemarrage);
+  const ok = await confirmer(
+    max ? 'Boost maximum' : 'Optimisation recommandée',
+    `<p>${a.length} réglage${a.length > 1 ? 's' : ''} vont être appliqués :</p><ul>${a.map((t) => `<li>${esc(t.titre)}</li>`).join('')}</ul>
+     ${max ? '<p>Le Boost maximum inclut des réglages plus agressifs : le PC chauffe et consomme davantage, et les applis du Store ne t\'enverront plus de notifications.</p>' : ''}
+     ${reseau ? '<p class="alerte">La connexion internet va se couper quelques secondes.</p>' : ''}
+     ${redemarrage ? '<p>Certains réglages prennent effet au prochain redémarrage.</p>' : ''}`,
+    'Appliquer'
+  );
+  if (!ok) return;
+  await appliquerTweaks(a.map((t) => t.id), bouton);
+}
+
+$('#btn-recommande').addEventListener('click', (e) => optimiserTout(false, e.target));
+$('#btn-max').addEventListener('click', (e) => optimiserTout(true, e.target));
+$('#btn-tout-annuler').addEventListener('click', async (e) => {
+  const a = tweaks.filter((t) => t.annulable);
+  if (!a.length) return;
+  const ok = await confirmer('Tout annuler', `<p>Les ${a.length} réglages changés par FPS Cagoule vont reprendre leur valeur d'origine.</p>`, 'Tout annuler');
+  if (!ok) return;
+  const r = await appel('tweaks_annuler', { ids: a.map((t) => t.id) }, e.target);
+  const echecs = r.filter((x) => !x.ok);
+  toast(echecs.length ? `${echecs.length} réglage(s) n'ont pas pu être annulés : ${echecs.map((x) => x.erreur).join(' ; ')}` : 'Ton PC est revenu à ses réglages d\'origine.', 7000);
+  chargerTweaks();
+});
 
 async function nettoyer(bouton) {
   const r = await appel('nettoyer', {}, bouton);
@@ -274,6 +325,7 @@ async function sauverReglages() {
 
 function afficherReglages() {
   $('#boost-auto').checked = reglages.boost_auto;
+  $('#boost-max').checked = reglages.boost_max;
   $('#mesure-fps').checked = reglages.mesure_fps;
   $('#overlay').checked = reglages.overlay;
   $('#maj-auto').checked = reglages.maj_auto;
@@ -283,7 +335,7 @@ function afficherReglages() {
     : '<span class="discret">Aucun programme.</span>';
 }
 
-for (const [id, champ] of [['#boost-auto', 'boost_auto'], ['#mesure-fps', 'mesure_fps'], ['#overlay', 'overlay'], ['#maj-auto', 'maj_auto'], ['#couleurs-en-jeu', 'couleurs_en_jeu']]) {
+for (const [id, champ] of [['#boost-auto', 'boost_auto'], ['#boost-max', 'boost_max'], ['#mesure-fps', 'mesure_fps'], ['#overlay', 'overlay'], ['#maj-auto', 'maj_auto'], ['#couleurs-en-jeu', 'couleurs_en_jeu']]) {
   $(id).addEventListener('change', (e) => {
     reglages[champ] = e.target.checked;
     sauverReglages();

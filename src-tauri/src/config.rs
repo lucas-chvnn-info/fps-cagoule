@@ -12,6 +12,8 @@ use std::sync::Mutex;
 #[serde(default)]
 pub struct Reglages {
     pub boost_auto: bool,
+    /// Pendant les parties : plan Performances optimales, minuteur 0,5 ms, mémoire en veille vidée
+    pub boost_max: bool,
     pub mesure_fps: bool,
     pub overlay: bool,
     pub maj_auto: bool,
@@ -23,7 +25,7 @@ pub struct Reglages {
 
 impl Default for Reglages {
     fn default() -> Self {
-        Self { boost_auto: true, mesure_fps: true, overlay: false, maj_auto: true, couleurs_en_jeu: false, fermer_applis: vec![] }
+        Self { boost_auto: true, boost_max: false, mesure_fps: true, overlay: false, maj_auto: true, couleurs_en_jeu: false, fermer_applis: vec![] }
     }
 }
 
@@ -76,6 +78,8 @@ pub struct Donnees {
     pub sauvegardes: HashMap<String, Value>,
     /// Plan Performances élevées créé par l'app quand Windows ne l'avait pas
     pub plan_perso: Option<String>,
+    /// Copie de Performances optimales créée par l'app (boost max)
+    pub plan_max: Option<String>,
     /// Plan actif avant le dernier boost : restauré au prochain lancement si l'app a été coupée en pleine partie
     pub plan_avant_jeu: Option<String>,
     /// Couleurs en jeu, par écran (\\.\DISPLAY1…)
@@ -91,6 +95,7 @@ impl Default for Donnees {
             profils: profils_par_defaut(),
             sauvegardes: HashMap::new(),
             plan_perso: None,
+            plan_max: None,
             plan_avant_jeu: None,
             couleurs: HashMap::new(),
             vibrance_avant: HashMap::new(),

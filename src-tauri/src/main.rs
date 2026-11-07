@@ -39,17 +39,22 @@ struct EtatApp {
     version: String,
     jeu: Option<InfoJeu>,
     plan_perso: Option<String>,
+    plan_max: Option<String>,
     presentmon: bool,
 }
 
 #[tauri::command]
 fn etat_app(app: AppHandle) -> EtatApp {
     let e = etat(&app);
-    let plan_perso = e.stock.donnees.lock().unwrap().plan_perso.clone();
+    let (plan_perso, plan_max) = {
+        let d = e.stock.donnees.lock().unwrap();
+        (d.plan_perso.clone(), d.plan_max.clone())
+    };
     EtatApp {
         version: app.package_info().version.to_string(),
         jeu: e.info_jeu(),
         plan_perso,
+        plan_max,
         presentmon: e.presentmon.exists(),
     }
 }
@@ -434,7 +439,7 @@ mod tests_windows {
         let dossier = std::env::temp_dir().join("fps-cagoule-test");
         let stock = Stockage::ouvrir(dossier);
         let liste = tweaks::liste(&stock);
-        assert_eq!(liste.len(), 16);
+        assert_eq!(liste.len(), 36);
         assert!(liste.iter().any(|t| t.tweak.categorie == "reseau"));
     }
 }

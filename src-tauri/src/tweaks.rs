@@ -34,7 +34,7 @@ pub struct Tweak {
     pub description: String,
     pub gain: String,
     pub redemarrage: bool,
-    /// Réglages qui ne sont pas de simples valeurs de registre : plan, adaptateur, nagle, usb
+    /// Réglages qui ne sont pas de simples valeurs de registre : plan, adaptateur, nagle, powercfg
     #[serde(default)]
     pub special: Option<String>,
     #[serde(default)]
@@ -44,6 +44,20 @@ pub struct Tweak {
     pub mots_cles: Vec<String>,
     #[serde(default)]
     pub cible: String,
+    /// Réglage du plan d'alimentation (special = powercfg) : sous-groupe, paramètre et valeur voulue
+    #[serde(default)]
+    pub sous_groupe: String,
+    #[serde(default)]
+    pub parametre: String,
+    #[serde(default)]
+    pub index: u32,
+    /// recommande : sans contrepartie notable ; max : plus agressif (consommation, confort), inclus dans « Boost maximum »
+    #[serde(default = "niveau_recommande")]
+    pub niveau: String,
+}
+
+fn niveau_recommande() -> String {
+    "recommande".into()
 }
 
 fn categorie_windows() -> String {
@@ -184,24 +198,22 @@ fn ecrire_cartes(proprietes: &[ProprieteCarte]) -> Result<(), String> {
     ps::executer(&script).map(|_| ())
 }
 
-/* ---------- Veille USB (réglage du plan d'alimentation) ---------- */
+/* ---------- Réglages du plan d'alimentation (veille USB, cœurs, PCIe…) ---------- */
 
-const USB_SOUS_GROUPE: &str = "2a737441-1930-4402-8d77-b2bebba308a3";
-const USB_VEILLE: &str = "48e6b7a6-50f5-4782-a5d4-53bb8f07e226";
-
-fn plans_usb(plan_perso: Option<&str>) -> Vec<String> {
+/// Plans concernés : l'actuel et ceux que FPS Cagoule active pendant les parties.
+fn plans_alimentation(perso: &[Option<String>]) -> Vec<String> {
     let mut plans: Vec<String> = systeme::plan_actif().into_iter().collect();
-    for p in [Some(systeme::PLAN_PERF), plan_perso].into_iter().flatten() {
-        if !plans.iter().any(|x| x == p) {
-            plans.push(p.to_string());
+    let fixes = [Some(systeme::PLAN_PERF.to_string()), Some(systeme::PLAN_OPTIMAL.to_string())];
+    for p in fixes.iter().chain(perso).flatten() {
+        if !plans.contains(p) {
+            plans.push(p.clone());
         }
     }
     plans
 }
 
-/// Valeur « sur secteur » du réglage, None si le plan n'existe pas.
-fn lire_usb(plan: &str) -> Option<u32> {
-    let sortie = systeme::executer("powercfg", &["/query", plan, USB_SOUS_GROUPE, USB_VEILLE]).ok()?;
+fn interroger(plan: &str, t: &Tweak) -> Option<u32> {
+    let sortie = systeme::executer("powercfg", &["/query", plan, &t.sous_groupe, &t.parametre]).ok()?;
     if !sortie.status.success() {
         return None;
     }
@@ -215,17 +227,28 @@ fn lire_usb(plan: &str) -> Option<u32> {
     (hex.len() >= 2).then(|| hex[hex.len() - 2])
 }
 
-fn ecrire_usb(plan: &str, valeur: u32) -> bool {
-    systeme::executer("powercfg", &["/setacvalueindex", plan, USB_SOUS_GROUPE, USB_VEILLE, &valeur.to_string()]).is_ok_and(|s| s.status.success())
+/// Valeur « sur secteur » du réglage, None si le plan n'existe pas.
+/// Certains réglages (cœurs, turbo) sont masqués par Windows : on les rend visibles.
+fn lire_alimentation(plan: &str, t: &Tweak) -> Option<u32> {
+    interroger(plan, t).or_else(|| {
+        let _ = systeme::executer("powercfg", &["-attributes", &t.sous_groupe, &t.parametre, "-ATTRIB_HIDE"]);
+        interroger(plan, t)
+    })
+}
+
+fn ecrire_alimentation(plan: &str, t: &Tweak, valeur: u32) -> bool {
+    systeme::executer("powercfg", &["/setacvalueindex", plan, &t.sous_groupe, &t.parametre, &valeur.to_string()]).is_ok_and(|s| s.status.success())
 }
 
 /* ---------- État, application et annulation ---------- */
 
 pub fn liste(stock: &Stockage) -> Vec<TweakEtat> {
-    let (plan_perso, sauvegardes) = {
+    let (plan_perso, plan_max, sauvegardes) = {
         let d = stock.donnees.lock().unwrap();
-        (d.plan_perso.clone(), d.sauvegardes.clone())
+        (d.plan_perso.clone(), d.plan_max.clone(), d.sauvegardes.clone())
     };
+    let persos = [plan_perso.clone(), plan_max.clone()];
+    let plans = plans_alimentation(&persos);
     // Une seule lecture PowerShell pour toutes les optimisations de carte réseau
     let mots: Vec<String> = definitions().iter().flat_map(|t| t.mots_cles.clone()).collect();
     let cartes = lire_cartes(&mots);
@@ -233,14 +256,14 @@ pub fn liste(stock: &Stockage) -> Vec<TweakEtat> {
         .iter()
         .map(|t| {
             let (actif, disponible) = match t.special.as_deref() {
-                Some("plan") => (systeme::plan_actif().is_some_and(|g| systeme::est_plan_perf(&g, plan_perso.as_deref())), true),
+                Some("plan") => (systeme::plan_actif().is_some_and(|g| systeme::est_plan_perf(&g, &persos)), true),
                 Some("adaptateur") => {
                     let miennes: Vec<_> = cartes.iter().filter(|p| t.mots_cles.iter().any(|m| m.eq_ignore_ascii_case(&p.k))).collect();
                     (!miennes.is_empty() && miennes.iter().all(|p| p.v == t.cible), !miennes.is_empty())
                 }
-                Some("usb") => {
-                    let valeurs: Vec<u32> = plans_usb(plan_perso.as_deref()).iter().filter_map(|p| lire_usb(p)).collect();
-                    (!valeurs.is_empty() && valeurs.iter().all(|v| *v == 0), !valeurs.is_empty())
+                Some("powercfg") => {
+                    let valeurs: Vec<u32> = plans.iter().filter_map(|p| lire_alimentation(p, t)).collect();
+                    (!valeurs.is_empty() && valeurs.iter().all(|v| *v == t.index), !valeurs.is_empty())
                 }
                 _ => {
                     let valeurs = valeurs_de(t);
@@ -259,7 +282,7 @@ fn appliquer_un(stock: &Stockage, t: &Tweak) -> Result<(), String> {
     match t.special.as_deref() {
         Some("plan") => {
             let avant = systeme::plan_actif();
-            if let Some(cree) = systeme::activer_plan_perf(d.plan_perso.as_deref())? {
+            if let Some(cree) = systeme::activer_plan(systeme::PLAN_PERF, d.plan_perso.as_deref())? {
                 d.plan_perso = Some(cree);
             }
             if let (false, Some(avant)) = (deja, avant) {
@@ -279,14 +302,17 @@ fn appliquer_un(stock: &Stockage, t: &Tweak) -> Result<(), String> {
             let voulues: Vec<_> = actuelles.into_iter().filter(|p| p.v != t.cible).map(|p| ProprieteCarte { v: t.cible.clone(), ..p }).collect();
             ecrire_cartes(&voulues)
         }
-        Some("usb") => {
-            let plans = plans_usb(d.plan_perso.as_deref());
-            if !deja {
-                let origine: serde_json::Map<String, Value> = plans.iter().filter_map(|p| lire_usb(p).map(|v| (p.clone(), json!(v)))).collect();
-                d.sauvegardes.insert(t.id.clone(), Value::Object(origine));
+        Some("powercfg") => {
+            let plans = plans_alimentation(&[d.plan_perso.clone(), d.plan_max.clone()]);
+            let origine: serde_json::Map<String, Value> = plans.iter().filter_map(|p| lire_alimentation(p, t).map(|v| (p.clone(), json!(v)))).collect();
+            if origine.is_empty() {
+                return Err("Ce réglage n'existe pas sur ton PC".into());
             }
-            for p in plans.iter().filter(|p| lire_usb(p).is_some()) {
-                ecrire_usb(p, 0);
+            if !deja {
+                d.sauvegardes.insert(t.id.clone(), Value::Object(origine.clone()));
+            }
+            for p in origine.keys() {
+                ecrire_alimentation(p, t, t.index);
             }
             systeme::executer("powercfg", &["/setactive", "SCHEME_CURRENT"]).map_err(|e| e.to_string())?;
             Ok(())
@@ -312,7 +338,7 @@ fn annuler_un(stock: &Stockage, t: &Tweak) -> Result<(), String> {
     };
     match t.special.as_deref() {
         Some("plan") => {
-            if !systeme::activer_plan(origine.as_str().unwrap_or(systeme::PLAN_PERF)) {
+            if !systeme::activer_plan_guid(origine.as_str().unwrap_or(systeme::PLAN_PERF)) {
                 return Err("Impossible de remettre l'ancien plan d'alimentation".into());
             }
         }
@@ -322,9 +348,9 @@ fn annuler_un(stock: &Stockage, t: &Tweak) -> Result<(), String> {
             ecrire_cartes(&proprietes)?;
             d = stock.donnees.lock().unwrap();
         }
-        Some("usb") => {
+        Some("powercfg") => {
             for (plan, v) in origine.as_object().cloned().unwrap_or_default() {
-                ecrire_usb(&plan, v.as_u64().unwrap_or(1) as u32);
+                ecrire_alimentation(&plan, t, v.as_u64().unwrap_or(1) as u32);
             }
             let _ = systeme::executer("powercfg", &["/setactive", "SCHEME_CURRENT"]);
         }

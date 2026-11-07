@@ -72,8 +72,24 @@
         <h1>Optimisations Windows</h1>
         <label class="case"><input type="checkbox" id="restauration" checked> Point de restauration avant chaque changement</label>
       </header>
-      <p class="discret">Chaque réglage est réversible : FPS Cagoule garde la valeur d'origine et le bouton « Annuler » la remet.</p>
+      <div class="carte boost-global">
+        <div>
+          <h2>Optimiser en un clic</h2>
+          <p class="discret">Toutes les pages comprises (Windows, alimentation, arrière-plan, connexion, périphériques). Chaque réglage reste réversible : FPS Cagoule garde la valeur d'origine, et « Tout annuler » remet ton PC comme avant.</p>
+          <p id="resume-tweaks" class="discret"></p>
+        </div>
+        <div class="boutons-boost">
+          <button class="principal" id="btn-recommande">Optimisation recommandée</button>
+          <button class="principal max" id="btn-max">Boost maximum</button>
+          <button id="btn-tout-annuler">Tout annuler</button>
+        </div>
+      </div>
+      <h2 class="section">Windows</h2>
       <ul class="tweaks" data-categorie="windows"></ul>
+      <h2 class="section">Alimentation et processeur</h2>
+      <ul class="tweaks" data-categorie="alimentation"></ul>
+      <h2 class="section">Arrière-plan</h2>
+      <ul class="tweaks" data-categorie="arriere-plan"></ul>
       <div class="pile">
         <div class="carte">
           <h2>Fichiers temporaires</h2>
@@ -119,6 +135,8 @@
       <header><h1>Boost par jeu</h1></header>
       <div class="carte interrupteurs">
         <label class="bascule"><input type="checkbox" id="boost-auto"><span></span> Boost automatique au lancement d'un jeu</label>
+        <label class="bascule"><input type="checkbox" id="boost-max"><span></span> Mode Boost max pendant les parties</label>
+        <p class="discret retrait">En plus du boost : plan Performances optimales, minuteur système à 0,5 ms et mémoire en veille vidée au lancement. Le PC chauffe et consomme un peu plus pendant la partie ; tout revient à la normale à la fin.</p>
         <label class="bascule"><input type="checkbox" id="mesure-fps"><span></span> Mesurer les FPS pendant les parties</label>
       </div>
       <p class="discret">Pendant une partie, le boost active le plan Performances élevées, donne la priorité haute au jeu, choisit la carte graphique la plus puissante et ferme les programmes de ta liste. Tout est remis comme avant à la fin.</p>
@@ -215,6 +233,13 @@
   </main>
 
   <div id="toast" role="status" hidden></div>
+  <div id="fenetre" class="fenetre" hidden>
+    <div class="boite" role="dialog" aria-modal="true" aria-labelledby="fenetre-titre">
+      <h2 id="fenetre-titre"></h2>
+      <div id="fenetre-texte" class="discret"></div>
+      <div class="boutons"><button id="fenetre-non">Annuler</button><button class="principal" id="fenetre-oui">Confirmer</button></div>
+    </div>
+  </div>
   <script type="module" src="app.js"></script>
 </body>
 </html>
