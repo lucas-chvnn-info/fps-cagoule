@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FPS Cagoule</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <aside class="menu">
+    <div class="marque">
+      <img src="icone.png" alt="" width="36" height="36">
+      <div><strong>FPS Cagoule</strong><span id="version"></span></div>
+    </div>
+    <nav>
+      <button data-page="accueil" class="actif">Accueil</button>
+      <button data-page="analyse">Analyse du PC</button>
+      <button data-page="optimisations">Optimisations</button>
+      <button data-page="jeux">Boost par jeu</button>
+      <button data-page="fps">Statistiques FPS</button>
+      <button data-page="reglages">Réglages</button>
+    </nav>
+    <div class="conso" title="Ressources utilisées par FPS Cagoule elle-même">
+      <span class="etiquette">FPS Cagoule utilise</span>
+      <span id="conso">…</span>
+      <span class="note">L'interface est libérée de la mémoire quand tu fermes cette fenêtre.</span>
+    </div>
+  </aside>
+
+  <main>
+    <!-- Accueil -->
+    <section id="page-accueil" class="page actif">
+      <header><h1>Accueil</h1><button id="btn-analyser" class="principal">Analyser mon PC</button></header>
+      <div class="grille-accueil">
+        <div class="carte score-carte">
+          <svg viewBox="0 0 120 120" class="anneau" aria-hidden="true">
+            <circle cx="60" cy="60" r="52" class="anneau-fond"/>
+            <circle cx="60" cy="60" r="52" class="anneau-valeur" id="anneau"/>
+          </svg>
+          <div class="score"><span id="score">–</span><small>/100</small></div>
+          <p id="score-texte" class="discret">Lance une analyse pour obtenir ton score.</p>
+        </div>
+        <div class="carte" id="carte-jeu">
+          <h2>Partie en cours</h2>
+          <div id="jeu-vide" class="discret">Aucun jeu détecté. Lance un jeu : FPS Cagoule le repère et le boost tout seul.</div>
+          <div id="jeu-actif" hidden>
+            <div class="jeu-ligne"><strong id="jeu-nom"></strong><span id="jeu-badge" class="badge vert">Boosté</span></div>
+            <div class="fps-geant"><span id="jeu-fps">–</span><small>FPS</small></div>
+            <ul id="jeu-actions" class="liste-actions"></ul>
+          </div>
+        </div>
+      </div>
+      <div class="carte">
+        <h2>Problèmes détectés</h2>
+        <ul id="problemes" class="problemes"><li class="discret">Pas encore d'analyse.</li></ul>
+      </div>
+    </section>
+
+    <!-- Analyse -->
+    <section id="page-analyse" class="page">
+      <header><h1>Analyse du PC</h1><span id="date-analyse" class="discret"></span></header>
+      <div id="materiel" class="grille-materiel"><p class="discret">Lance une analyse depuis l'accueil.</p></div>
+    </section>
+
+    <!-- Optimisations -->
+    <section id="page-optimisations" class="page">
+      <header>
+        <h1>Optimisations Windows</h1>
+        <div class="actions-entete">
+          <label class="case"><input type="checkbox" id="restauration" checked> Point de restauration avant</label>
+          <button id="btn-appliquer" class="principal" disabled>Appliquer la sélection</button>
+        </div>
+      </header>
+      <p class="discret">Chaque réglage est réversible : FPS Cagoule garde la valeur d'origine et le bouton « Annuler » la remet.</p>
+      <ul id="tweaks" class="tweaks"></ul>
+      <div class="grille-2">
+        <div class="carte">
+          <h2>Fichiers temporaires</h2>
+          <p class="discret">Supprime les fichiers temporaires de plus de 24 h de Windows et des applications.</p>
+          <button id="btn-nettoyer">Nettoyer</button> <span id="nettoyage-resultat" class="discret"></span>
+        </div>
+        <div class="carte">
+          <h2>Programmes au démarrage</h2>
+          <p class="discret">Chaque programme lancé avec Windows tourne en permanence en arrière-plan.</p>
+          <button id="btn-demarrage">Gérer les programmes au démarrage</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Jeux -->
+    <section id="page-jeux" class="page">
+      <header><h1>Boost par jeu</h1></header>
+      <div class="carte interrupteurs">
+        <label class="bascule"><input type="checkbox" id="boost-auto"><span></span> Boost automatique au lancement d'un jeu</label>
+        <label class="bascule"><input type="checkbox" id="mesure-fps"><span></span> Mesurer les FPS pendant les parties</label>
+      </div>
+      <p class="discret">Pendant une partie, le boost active le plan Performances élevées, donne la priorité haute au jeu, choisit la carte graphique la plus puissante et ferme les programmes de ta liste. Tout est remis comme avant à la fin.</p>
+      <table class="tableau" id="profils">
+        <thead><tr><th>Jeu</th><th>Détecté</th><th>Boost</th><th>Priorité haute</th><th>GPU puissant</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <form id="ajout-jeu" class="ligne-form">
+        <input id="ajout-nom" placeholder="Nom du jeu" required>
+        <input id="ajout-exe" placeholder="Exécutable, par ex. jeu.exe" required>
+        <button>Ajouter</button>
+        <button type="button" id="btn-profils-defaut" class="discret-btn">Remettre la liste d'origine</button>
+      </form>
+      <div class="carte">
+        <h2>Programmes à fermer pendant les jeux</h2>
+        <p class="discret">Ils sont fermés au lancement d'un jeu boosté et ne sont pas relancés ensuite.</p>
+        <div id="fermer-liste" class="puces"></div>
+        <div class="ligne-form">
+          <select id="fermer-choix"><option value="">Choisir un programme ouvert…</option></select>
+          <button id="btn-fermer-ajout">Ajouter</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- FPS -->
+    <section id="page-fps" class="page">
+      <header><h1>Statistiques FPS</h1></header>
+      <p class="discret">Le « 1 % low » est le FPS des pires moments : c'est lui qui donne la sensation de saccades. Pour mesurer l'effet du boost, joue une partie avec et une sans (désactive le boost du jeu dans « Boost par jeu »).</p>
+      <div id="comparaisons" class="grille-2"></div>
+      <table class="tableau" id="sessions">
+        <thead><tr><th>Date</th><th>Jeu</th><th>Durée</th><th>Boost</th><th>FPS moyen</th><th>1 % low</th><th>0,1 % low</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <!-- Réglages -->
+    <section id="page-reglages" class="page">
+      <header><h1>Réglages</h1></header>
+      <div class="carte interrupteurs">
+        <label class="bascule"><input type="checkbox" id="demarrage-auto"><span></span> Lancer FPS Cagoule avec Windows (discrètement, dans la zone de notification)</label>
+        <label class="bascule"><input type="checkbox" id="overlay"><span></span> Afficher le compteur FPS par-dessus le jeu</label>
+        <p class="discret retrait">Le compteur utilise environ 40 Mo de plus pendant les parties et ne s'affiche que si le jeu est en mode fenêtré sans bordure. Les FPS sont mesurés même sans lui.</p>
+        <label class="bascule"><input type="checkbox" id="maj-auto"><span></span> Installer les mises à jour automatiquement (jamais pendant une partie)</label>
+      </div>
+      <div class="carte">
+        <h2>Mises à jour</h2>
+        <p id="maj-texte" class="discret"></p>
+        <button id="btn-maj">Rechercher une mise à jour</button>
+        <button id="btn-maj-installer" class="principal" hidden>Installer maintenant</button>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast" role="status" hidden></div>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

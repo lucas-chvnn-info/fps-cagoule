@@ -1,0 +1,16 @@
+{
+  "name": "fps-cagoule",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/",
+    "icone": "node scripts/icone.mjs && tauri icon build/icone.png",
+    "presentmon": "node scripts/presentmon.mjs",
+    "tauri": "tauri"
+  },
+  "devDependencies": {
+    "@resvg/resvg-js": "^2.6.2",
+    "@tauri-apps/cli": "^2.12.4"
+  }
+}

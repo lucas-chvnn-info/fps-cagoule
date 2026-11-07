@@ -1,0 +1,22 @@
+# FPS Cagoule
+
+Analyse, optimisation et boost par jeu pour Windows 11. Gratuit, pour moi et mes potes.
+
+- **Analyse du PC** : matériel, réglages Windows, problèmes détectés et score sur 100.
+- **Optimisations** : réglages Windows réversibles (valeur d'origine sauvegardée, point de restauration).
+- **Boost par jeu** : quand un jeu se lance, plan Performances élevées, priorité haute, GPU le plus puissant, fermeture des programmes choisis. Tout revient comme avant à la fin.
+- **Compteur FPS** : FPS moyen, 1 % low et 0,1 % low de chaque partie (avec [PresentMon](https://github.com/GameTechDev/PresentMon), Intel, licence MIT), comparaison avec et sans boost.
+
+## Léger en arrière-plan
+
+L'app est écrite avec [Tauri](https://tauri.app) (Rust) : en arrière-plan, il ne reste qu'un petit programme natif qui regarde la liste des processus toutes les 4 secondes. L'interface (WebView2) n'existe que quand la fenêtre est ouverte. PresentMon ne tourne que pendant les parties. L'app affiche sa propre consommation en bas du menu.
+
+## Installer
+
+Télécharge `FPS Cagoule_x.y.z_x64-setup.exe` dans la [dernière version](https://github.com/lucas-chvnn-info/fps-cagoule/releases/latest). Windows SmartScreen prévient que l'éditeur est inconnu (l'app n'est pas signée) : « Informations complémentaires » → « Exécuter quand même ». Les mises à jour s'installent ensuite toutes seules.
+
+## Développement
+
+- `npm test` : tests de l'évaluation (Node).
+- `cargo test --manifest-path src-tauri/Cargo.toml` : tests Rust (sous Windows).
+- Publier une version : changer la version dans `package.json`, `src-tauri/Cargo.toml` et `src-tauri/tauri.conf.json`, puis pousser un tag `vX.Y.Z`. GitHub Actions compile l'installateur sur Windows et publie la version, que les apps installées récupèrent toutes seules.

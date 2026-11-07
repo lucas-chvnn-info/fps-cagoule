@@ -1,0 +1,98 @@
+[
+  {
+    "id": "plan-alimentation",
+    "titre": "Plan d'alimentation Performances élevées",
+    "description": "Garde le processeur à pleine fréquence et évite les micro-latences quand il se réveille. Sur un portable, la batterie dure moins longtemps.",
+    "gain": "moyen",
+    "redemarrage": false,
+    "special": "plan"
+  },
+  {
+    "id": "mode-jeu",
+    "titre": "Mode Jeu de Windows",
+    "description": "Donne la priorité au jeu au premier plan et bloque les mises à jour Windows pendant les parties.",
+    "gain": "faible",
+    "redemarrage": false,
+    "valeurs": [
+      { "ruche": "HKCU", "chemin": "Software\\Microsoft\\GameBar", "nom": "AutoGameModeEnabled", "type": "dword", "valeur": 1 },
+      { "ruche": "HKCU", "chemin": "Software\\Microsoft\\GameBar", "nom": "AllowAutoGameMode", "type": "dword", "valeur": 1 }
+    ]
+  },
+  {
+    "id": "game-dvr",
+    "titre": "Couper l'enregistrement de la Xbox Game Bar",
+    "description": "La Game Bar peut enregistrer tes parties en continu. Medal, ShadowPlay ou AMD ReLive ne sont pas concernés.",
+    "gain": "moyen",
+    "redemarrage": false,
+    "valeurs": [
+      { "ruche": "HKCU", "chemin": "System\\GameConfigStore", "nom": "GameDVR_Enabled", "type": "dword", "valeur": 0 },
+      { "ruche": "HKCU", "chemin": "Software\\Microsoft\\Windows\\CurrentVersion\\GameDVR", "nom": "AppCaptureEnabled", "type": "dword", "valeur": 0 }
+    ]
+  },
+  {
+    "id": "hags",
+    "titre": "Planification GPU accélérée",
+    "description": "La carte graphique gère elle-même sa file d'images : un peu moins de latence sur les cartes récentes. Nécessaire pour la génération d'images DLSS 3.",
+    "gain": "faible",
+    "redemarrage": true,
+    "valeurs": [
+      { "ruche": "HKLM", "chemin": "SYSTEM\\CurrentControlSet\\Control\\GraphicsDrivers", "nom": "HwSchMode", "type": "dword", "valeur": 2 }
+    ]
+  },
+  {
+    "id": "souris",
+    "titre": "Désactiver la précision du pointeur",
+    "description": "Supprime l'accélération de la souris : le même geste donne toujours le même mouvement, indispensable pour viser. Prend effet à la prochaine ouverture de session.",
+    "gain": "fort",
+    "redemarrage": true,
+    "valeurs": [
+      { "ruche": "HKCU", "chemin": "Control Panel\\Mouse", "nom": "MouseSpeed", "type": "sz", "valeur": "0" },
+      { "ruche": "HKCU", "chemin": "Control Panel\\Mouse", "nom": "MouseThreshold1", "type": "sz", "valeur": "0" },
+      { "ruche": "HKCU", "chemin": "Control Panel\\Mouse", "nom": "MouseThreshold2", "type": "sz", "valeur": "0" }
+    ]
+  },
+  {
+    "id": "priorite-jeux",
+    "titre": "Priorité multimédia aux jeux",
+    "description": "Indique au planificateur de Windows de favoriser les jeux et de réserver moins de temps aux tâches de fond. Gain modeste, surtout sur les processeurs avec peu de cœurs.",
+    "gain": "faible",
+    "redemarrage": true,
+    "valeurs": [
+      { "ruche": "HKLM", "chemin": "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile", "nom": "SystemResponsiveness", "type": "dword", "valeur": 10 },
+      { "ruche": "HKLM", "chemin": "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile\\Tasks\\Games", "nom": "GPU Priority", "type": "dword", "valeur": 8 },
+      { "ruche": "HKLM", "chemin": "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile\\Tasks\\Games", "nom": "Priority", "type": "dword", "valeur": 6 },
+      { "ruche": "HKLM", "chemin": "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile\\Tasks\\Games", "nom": "Scheduling Category", "type": "sz", "valeur": "High" },
+      { "ruche": "HKLM", "chemin": "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile\\Tasks\\Games", "nom": "SFIO Priority", "type": "sz", "valeur": "High" }
+    ]
+  },
+  {
+    "id": "transparence",
+    "titre": "Couper les effets de transparence",
+    "description": "Le flou de la barre des tâches et des menus sollicite un peu la carte graphique en permanence.",
+    "gain": "faible",
+    "redemarrage": false,
+    "valeurs": [
+      { "ruche": "HKCU", "chemin": "Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize", "nom": "EnableTransparency", "type": "dword", "valeur": 0 }
+    ]
+  },
+  {
+    "id": "effets-visuels",
+    "titre": "Effets visuels réglés pour les performances",
+    "description": "Supprime les animations des fenêtres et des menus. Windows paraît plus réactif ; c'est surtout utile sur les PC modestes. Prend effet à la prochaine ouverture de session.",
+    "gain": "faible",
+    "redemarrage": true,
+    "valeurs": [
+      { "ruche": "HKCU", "chemin": "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\VisualEffects", "nom": "VisualFXSetting", "type": "dword", "valeur": 2 }
+    ]
+  },
+  {
+    "id": "notifications",
+    "titre": "Couper les notifications",
+    "description": "Plus de bannières qui s'affichent par-dessus le jeu. Tu ne recevras plus non plus les notifications en dehors des jeux.",
+    "gain": "faible",
+    "redemarrage": false,
+    "valeurs": [
+      { "ruche": "HKCU", "chemin": "Software\\Microsoft\\Windows\\CurrentVersion\\PushNotifications", "nom": "ToastEnabled", "type": "dword", "valeur": 0 }
+    ]
+  }
+]

@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="fond" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1a1d26"/>
+      <stop offset="1" stop-color="#0b0c10"/>
+    </linearGradient>
+    <linearGradient id="tissu" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3a3f4d"/>
+      <stop offset="1" stop-color="#22252e"/>
+    </linearGradient>
+    <filter id="lueur" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="9" result="f"/>
+      <feMerge><feMergeNode in="f"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#fond)"/>
+  <!-- cagoule -->
+  <path d="M256 70c-92 0-152 70-152 168v86c0 70 58 118 152 118s152-48 152-118v-86c0-98-60-168-152-168z" fill="url(#tissu)"/>
+  <path d="M190 88c20-12 42-18 66-18s46 6 66 18" stroke="#4a5060" stroke-width="10" fill="none" stroke-linecap="round"/>
+  <!-- fente des yeux -->
+  <rect x="132" y="214" width="248" height="74" rx="37" fill="#08090c"/>
+  <g filter="url(#lueur)" fill="#c6ff3d">
+    <path d="M168 252c10-16 30-22 52-16l12 4c-8 20-30 28-52 22z"/>
+    <path d="M344 252c-10-16-30-22-52-16l-12 4c8 20 30 28 52 22z"/>
+  </g>
+  <!-- bouche -->
+  <ellipse cx="256" cy="370" rx="40" ry="20" fill="#08090c"/>
+</svg>
