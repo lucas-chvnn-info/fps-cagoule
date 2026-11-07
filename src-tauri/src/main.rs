@@ -426,6 +426,15 @@ mod tests_windows {
     }
 
     #[test]
+    fn boost_max() {
+        assert!(systeme::minuteur_precis(true), "minuteur 0,5 ms");
+        assert!(systeme::minuteur_precis(false));
+        // Le PC de GitHub tourne en administrateur, comme l'app
+        systeme::vider_memoire_veille().expect("mémoire en veille");
+        assert!(systeme::memoire_libre() > 0);
+    }
+
+    #[test]
     fn pilotes() {
         let liste = pilotes::peripheriques().expect("liste des périphériques");
         assert!(liste.as_array().is_some_and(|l| l.len() > 10));
