@@ -15,8 +15,19 @@ pub struct InfoMaj {
     pub notes: Option<String>,
 }
 
+/// Erreurs du module de mise à jour, en clair.
+fn message(e: tauri_plugin_updater::Error) -> String {
+    match e {
+        tauri_plugin_updater::Error::ReleaseNotFound => {
+            "Impossible de lire les versions en ligne : le dépôt GitHub de FPS Cagoule est privé, ou ton PC n'est pas connecté à Internet.".into()
+        }
+        tauri_plugin_updater::Error::Reqwest(_) => "Pas de connexion à GitHub : vérifie ta connexion Internet.".into(),
+        autre => format!("Recherche de mise à jour impossible : {autre}"),
+    }
+}
+
 pub async fn verifier(app: &AppHandle) -> Result<InfoMaj, String> {
-    let maj = app.updater().map_err(|e| e.to_string())?.check().await.map_err(|e| e.to_string())?;
+    let maj = app.updater().map_err(|e| e.to_string())?.check().await.map_err(message)?;
     Ok(InfoMaj {
         actuelle: app.package_info().version.to_string(),
         disponible: maj.as_ref().map(|m| m.version.clone()),
@@ -25,12 +36,12 @@ pub async fn verifier(app: &AppHandle) -> Result<InfoMaj, String> {
 }
 
 pub async fn installer(app: &AppHandle) -> Result<bool, String> {
-    let Some(maj) = app.updater().map_err(|e| e.to_string())?.check().await.map_err(|e| e.to_string())? else {
+    let Some(maj) = app.updater().map_err(|e| e.to_string())?.check().await.map_err(message)? else {
         return Ok(false);
     };
     // Remet le plan d'alimentation d'origine avant que l'installateur ferme l'app
     crate::jeux::terminer(app, &app.state::<Arc<Etat>>());
-    maj.download_and_install(|_, _| {}, || {}).await.map_err(|e| e.to_string())?;
+    maj.download_and_install(|_, _| {}, || {}).await.map_err(message)?;
     app.restart();
 }
 

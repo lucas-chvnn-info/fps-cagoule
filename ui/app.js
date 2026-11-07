@@ -1000,10 +1000,21 @@ $('#demarrage-auto').addEventListener('change', async (e) => {
 });
 
 $('#btn-maj').addEventListener('click', async (e) => {
-  const r = await appel('maj_verifier', {}, e.target);
-  $('#maj-texte').textContent = r.disponible ? `Version ${r.disponible} disponible (tu as la ${r.actuelle}).` : `Tu as la dernière version (${r.actuelle}).`;
-  $('#btn-maj-installer').hidden = !r.disponible;
+  const texte = $('#maj-texte');
+  e.target.classList.add('chargement');
+  try {
+    const r = await invoke('maj_verifier');
+    texte.className = 'discret';
+    texte.textContent = r.disponible ? `Version ${r.disponible} disponible (tu as la ${r.actuelle}).` : `Tu as la dernière version (${r.actuelle}).`;
+    $('#btn-maj-installer').hidden = !r.disponible;
+  } catch (err) {
+    texte.className = 'alerte';
+    texte.textContent = String(err);
+  } finally {
+    e.target.classList.remove('chargement');
+  }
 });
+
 $('#btn-maj-installer').addEventListener('click', async (e) => {
   toast("Téléchargement de la mise à jour… L'app va redémarrer.", 10000);
   await appel('maj_installer', {}, e.target);
