@@ -6,6 +6,7 @@ mod ecrans;
 mod fenetres;
 mod fps;
 mod jeux;
+mod pilotes;
 mod maj;
 mod ps;
 mod rampe;
@@ -231,6 +232,55 @@ fn reseau_cartes() -> Res<serde_json::Value> {
     reseau::cartes()
 }
 
+#[tauri::command(async)]
+fn pilotes_installes() -> Res<serde_json::Value> {
+    pilotes::installes()
+}
+
+#[tauri::command(async)]
+fn pilote_nvidia() -> Res<serde_json::Value> {
+    pilotes::nvidia()
+}
+
+#[tauri::command(async)]
+fn pilotes_wu_rechercher() -> Res<serde_json::Value> {
+    pilotes::wu_rechercher()
+}
+
+#[tauri::command(async)]
+fn pilotes_wu_installer(ids: Vec<String>) -> Res<serde_json::Value> {
+    pilotes::wu_installer(&ids)
+}
+
+#[tauri::command]
+fn pilote_nvidia_telecharger(url: String, version: String) -> Res<()> {
+    pilotes::telecharger_nvidia(&url, &version)
+}
+
+#[tauri::command]
+fn pilote_nvidia_progression() -> Option<pilotes::Telechargement> {
+    pilotes::progression()
+}
+
+#[tauri::command]
+fn pilote_nvidia_installer() -> Res<()> {
+    pilotes::installer_nvidia()
+}
+
+/// Pages officielles des fabricants (liste fermée : l'interface ne peut pas ouvrir n'importe quoi).
+#[tauri::command]
+fn ouvrir_lien(lien: String) -> Res<()> {
+    const AUTORISES: [&str; 3] = [
+        "https://www.amd.com/fr/support/download/drivers.html",
+        "https://www.intel.com/content/www/us/en/download-center/home.html",
+        "https://www.nvidia.com/fr-fr/drivers/",
+    ];
+    if !AUTORISES.contains(&lien.as_str()) {
+        return Err("Lien non autorisé".into());
+    }
+    systeme::executer("explorer", &[&lien]).map(|_| ()).map_err(|e| e.to_string())
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _dossier| fenetres::ouvrir_principale(app)))
@@ -285,6 +335,14 @@ fn main() {
             couleurs_retablir,
             reseau_ping,
             reseau_cartes,
+            pilotes_installes,
+            pilote_nvidia,
+            pilotes_wu_rechercher,
+            pilotes_wu_installer,
+            pilote_nvidia_telecharger,
+            pilote_nvidia_progression,
+            pilote_nvidia_installer,
+            ouvrir_lien,
         ])
         .build(tauri::generate_context!())
         .expect("démarrage de FPS Cagoule")
@@ -331,6 +389,14 @@ mod tests_windows {
         let ping = reseau::tester();
         assert!(!ping.is_empty());
         assert!(reseau::cartes().is_ok());
+    }
+
+    #[test]
+    fn pilotes() {
+        assert!(pilotes::installes().expect("liste des pilotes").is_array());
+        // Pas de carte NVIDIA sur le PC de GitHub : la réponse doit être null, sans erreur
+        assert!(pilotes::nvidia().expect("recherche NVIDIA").is_null());
+        assert!(pilotes::wu_rechercher().expect("recherche Windows Update").is_array());
     }
 
     #[test]

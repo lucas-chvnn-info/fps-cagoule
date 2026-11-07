@@ -8,6 +8,7 @@ Analyse, optimisation et boost par jeu pour Windows 11. Gratuit, pour moi et mes
 - **Connexion** : test de ping (box et Internet, gigue, pertes) et réglages réseau réversibles.
 - **Périphériques** : test de fréquence de la souris, veille USB, clavier, raccourcis d'accessibilité.
 - **Écrans** : fréquence, HDR, couleurs en jeu (luminosité, contraste, gamma, vibrance NVIDIA).
+- **Pilotes** : dernier pilote NVIDIA téléchargé directement (sans NVIDIA App), autres pilotes via Windows Update, liste des pilotes installés.
 - **Compteur FPS** : FPS moyen, 1 % low et 0,1 % low de chaque partie (avec [PresentMon](https://github.com/GameTechDev/PresentMon), Intel, licence MIT), comparaison avec et sans boost.
 
 ## Léger en arrière-plan

@@ -55,7 +55,7 @@ export function evaluer(info, { planPerso = null, maintenant = new Date() } = {}
     const mois = (maintenant - new Date(g.datePilote)) / (30 * 24 * 3600 * 1000);
     if (mois > 6) {
       ajoute('pilote-gpu', 'moyenne', `Pilote graphique daté de ${Math.floor(mois)} mois`,
-        `${g.nom} : installe le dernier pilote (NVIDIA App, AMD Adrenalin ou Intel). Les nouveaux pilotes contiennent souvent des optimisations pour les jeux récents.`);
+        `${g.nom} : installe le dernier pilote depuis la page Pilotes. Les nouveaux pilotes contiennent souvent des optimisations pour les jeux récents.`, 'pilotes');
       break;
     }
   }

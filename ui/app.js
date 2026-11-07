@@ -42,6 +42,7 @@ document.querySelectorAll('nav button').forEach((b) =>
     if (['optimisations', 'connexion', 'peripheriques'].includes(b.dataset.page)) chargerTweaks();
     if (b.dataset.page === 'connexion') chargerCartes();
     if (b.dataset.page === 'ecrans') chargerEcrans();
+    if (b.dataset.page === 'pilotes') chargerPilotes();
     if (b.dataset.page === 'fps') chargerSessions();
     if (b.dataset.page === 'jeux') chargerChoixFermer();
   })
@@ -70,6 +71,7 @@ function afficherScore() {
         .map((p) => {
           let bouton = '';
           if (p.correctif === 'nettoyage') bouton = '<button class="petit" data-action="nettoyer">Nettoyer</button>';
+          else if (p.correctif === 'pilotes') bouton = '<button class="petit principal" data-action="pilotes">Voir</button>';
           else if (p.correctif === 'demarrage') bouton = '<button class="petit" data-action="demarrage">Gérer</button>';
           else if (p.correctif && (ids.has(p.correctif) || !tweaks.length)) bouton = `<button class="petit principal" data-tweak="${esc(p.correctif)}">Corriger</button>`;
           return `<li class="probleme"><span class="point ${p.gravite}"></span><div><strong>${esc(p.titre)}</strong><p>${esc(p.detail)}</p></div>${bouton}</li>`;
@@ -84,6 +86,7 @@ $('#problemes').addEventListener('click', async (e) => {
   if (!b) return;
   if (b.dataset.action === 'nettoyer') return nettoyer(b);
   if (b.dataset.action === 'demarrage') return appel('ouvrir_demarrage');
+  if (b.dataset.action === 'pilotes') return document.querySelector('nav [data-page="pilotes"]').click();
   if (b.dataset.tweak) {
     await appliquerTweaks([b.dataset.tweak], b);
     await analyser();
@@ -464,6 +467,142 @@ $('#ecrans').addEventListener('click', async (e) => {
       i.value = i.dataset.champ === 'vibrance' ? 50 : NEUTRE[i.dataset.champ];
       i.dispatchEvent(new Event('input', { bubbles: true }));
     });
+  }
+});
+
+/* ---------- Pilotes ---------- */
+
+const LIENS = {
+  amd: 'https://www.amd.com/fr/support/download/drivers.html',
+  intel: 'https://www.intel.com/content/www/us/en/download-center/home.html',
+  nvidia: 'https://www.nvidia.com/fr-fr/drivers/',
+};
+const Mo = (o) => `${(o / 1048576).toFixed(0)} Mo`;
+let suiviNvidia = null;
+
+async function chargerPilotes() {
+  const installes = appel('pilotes_installes').catch(() => []);
+  chargerGpu();
+  const liste = await installes;
+  const classes = { DISPLAY: 'Graphique', NET: 'Réseau', MEDIA: 'Son', BLUETOOTH: 'Bluetooth' };
+  $('#pilotes-installes tbody').innerHTML = liste.length
+    ? liste
+        .map((p) => `<tr><td>${esc(p.nom)}<small>${esc(p.fabricant)}</small></td><td>${classes[p.classe] || esc(p.classe)}</td><td>${esc(p.version)}</td><td>${p.date ? new Date(p.date).toLocaleDateString('fr-CH') : ''}</td></tr>`)
+        .join('')
+    : '<tr><td colspan="4" class="discret">Aucun pilote trouvé.</td></tr>';
+}
+
+async function chargerGpu() {
+  const carte = $('#carte-gpu');
+  let nv = null;
+  try {
+    nv = await invoke('pilote_nvidia');
+  } catch (e) {
+    carte.innerHTML = `<h2>Carte graphique</h2><p class="alerte">Recherche impossible (${esc(e)}). Vérifie ta connexion.</p>`;
+    return;
+  }
+  if (!nv) {
+    // AMD ou Intel : pas d'API publique pour connaître le dernier pilote
+    const gpus = (derniereAnalyse?.gpus || []).filter((g) => !/microsoft|virtual|hyper-v/i.test(g.nom));
+    const amd = gpus.some((g) => /amd|radeon/i.test(g.nom));
+    carte.innerHTML = `<h2>Carte graphique</h2>
+      ${gpus.map((g) => ligne(g.nom, `${g.pilote || ''}${g.datePilote ? ` (${new Date(g.datePilote).toLocaleDateString('fr-CH')})` : ''}`)).join('')}
+      <p class="discret">AMD et Intel ne publient pas de moyen de connaître leur dernier pilote. Leur page officielle détecte ta carte ; tu peux y prendre le pilote seul, sans garder leur application.</p>
+      <button data-lien="${amd ? 'amd' : 'intel'}">Ouvrir la page des pilotes ${amd ? 'AMD' : 'Intel'}</button>`;
+    return;
+  }
+  const aJour = !nv.derniere || nv.installe === nv.derniere;
+  carte.innerHTML = `<h2>Carte graphique</h2>
+    ${ligne(nv.gpu, `Pilote ${nv.installe}`)}
+    ${nv.derniere ? ligne('Dernier pilote NVIDIA', `${nv.derniere} (${nv.date})`) : '<p class="discret">Modèle introuvable dans le catalogue NVIDIA.</p>'}
+    ${aJour && nv.derniere ? '<p class="ok">Ton pilote est à jour.</p>' : ''}
+    ${!aJour ? `<p class="discret">Téléchargement direct depuis NVIDIA (${esc(nv.taille)}), sans NVIDIA App. À l'installation, choisis « Personnalisée » pour décocher NVIDIA App si tu n'en veux pas, et coche « Installation propre » en cas de souci.</p>
+      <button class="principal" id="btn-nvidia">Télécharger le pilote ${esc(nv.derniere)}</button>
+      <div id="nvidia-progression" hidden><div class="barre"><div></div></div><span class="discret"></span></div>` : ''}
+    ${!nv.derniere ? `<button data-lien="nvidia">Ouvrir la page des pilotes NVIDIA</button>` : ''}`;
+  $('#btn-nvidia')?.addEventListener('click', async (e) => {
+    await appel('pilote_nvidia_telecharger', { url: nv.url, version: nv.derniere }, e.target);
+    e.target.hidden = true;
+    suivreNvidia();
+  });
+  // Un téléchargement lancé avant de quitter la page continue : on le retrouve
+  const t = await invoke('pilote_nvidia_progression');
+  if (t && t.version === nv.derniere && $('#btn-nvidia')) {
+    $('#btn-nvidia').hidden = true;
+    suivreNvidia();
+  }
+}
+
+function suivreNvidia() {
+  clearInterval(suiviNvidia);
+  const bloc = $('#nvidia-progression');
+  bloc.hidden = false;
+  const maj = async () => {
+    const t = await invoke('pilote_nvidia_progression');
+    if (!t || !document.body.contains(bloc)) return clearInterval(suiviNvidia);
+    const pct = t.total ? Math.min(100, (t.recu / t.total) * 100) : 0;
+    bloc.querySelector('.barre div').style.width = `${t.fini && !t.erreur ? 100 : pct}%`;
+    const texte = bloc.querySelector('span');
+    if (t.erreur) {
+      clearInterval(suiviNvidia);
+      texte.textContent = t.erreur;
+      texte.className = 'alerte';
+    } else if (t.fini) {
+      clearInterval(suiviNvidia);
+      texte.innerHTML = '';
+      const b = document.createElement('button');
+      b.className = 'principal';
+      b.textContent = "Lancer l'installation";
+      b.onclick = () => appel('pilote_nvidia_installer', {}, b).then(() => toast("Installateur NVIDIA ouvert. L'écran peut clignoter pendant l'installation."));
+      texte.append(b);
+    } else {
+      texte.textContent = `${Mo(t.recu)}${t.total ? ` sur ${Mo(t.total)}` : ''}`;
+    }
+  };
+  maj();
+  suiviNvidia = setInterval(maj, 1000);
+}
+
+$('#page-pilotes').addEventListener('click', (e) => {
+  const lien = e.target.closest('[data-lien]')?.dataset.lien;
+  if (lien) appel('ouvrir_lien', { lien: LIENS[lien] });
+});
+
+$('#btn-wu').addEventListener('click', async (e) => {
+  const b = e.target;
+  b.disabled = true;
+  b.textContent = 'Recherche en cours…';
+  try {
+    const maj = await appel('pilotes_wu_rechercher');
+    $('#wu-resultats').innerHTML = maj.length
+      ? `<ul class="liste-wu">${maj
+          .map((m) => `<li><label><input type="checkbox" value="${esc(m.id)}" checked><span>${esc(m.titre)}<small>${esc(m.fabricant || '')}${m.date ? ` · ${new Date(m.date).toLocaleDateString('fr-CH')}` : ''}${m.taille ? ` · ${Mo(m.taille)}` : ''}</small></span></label></li>`)
+          .join('')}</ul><div class="boutons"><button class="principal" id="btn-wu-installer">Installer la sélection</button></div>`
+      : '<p class="ok">Aucune mise à jour de pilote proposée : tout est à jour.</p>';
+  } finally {
+    b.disabled = false;
+    b.textContent = 'Relancer la recherche';
+  }
+});
+
+$('#wu-resultats').addEventListener('click', async (e) => {
+  if (e.target.id !== 'btn-wu-installer') return;
+  const ids = [...document.querySelectorAll('#wu-resultats input:checked')].map((c) => c.value);
+  if (!ids.length) return;
+  const b = e.target;
+  b.disabled = true;
+  b.textContent = 'Téléchargement et installation…';
+  try {
+    const r = await appel('pilotes_wu_installer', { ids });
+    const ok = r.details.filter((d) => d.ok).length;
+    $('#wu-resultats').innerHTML = `<ul class="liste-wu">${r.details.map((d) => `<li class="${d.ok ? 'ok' : 'alerte'}">${d.ok ? '✓' : '✗'} ${esc(d.titre)}</li>`).join('')}</ul>${
+      r.redemarrage ? '<p class="alerte">Redémarre ton PC pour terminer l\'installation.</p>' : ''
+    }`;
+    toast(`${ok} pilote(s) installé(s) sur ${r.details.length}.`, 6000);
+    chargerPilotes();
+  } catch {
+    b.disabled = false;
+    b.textContent = 'Installer la sélection';
   }
 });
 

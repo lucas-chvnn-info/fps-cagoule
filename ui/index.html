@@ -16,6 +16,7 @@
       <button data-page="accueil" class="actif">Accueil</button>
       <button data-page="analyse">Analyse du PC</button>
       <button data-page="optimisations">Optimisations</button>
+      <button data-page="pilotes">Pilotes</button>
       <button data-page="jeux">Boost par jeu</button>
       <button data-page="connexion">Connexion</button>
       <button data-page="peripheriques">Périphériques</button>
@@ -85,6 +86,23 @@
           <button id="btn-demarrage">Gérer les programmes au démarrage</button>
         </div>
       </div>
+    </section>
+
+    <!-- Pilotes -->
+    <section id="page-pilotes" class="page">
+      <header><h1>Pilotes</h1></header>
+      <p class="discret">Tous tes pilotes au même endroit, sans installer les applications des fabricants. FPS Cagoule ne vérifie rien en arrière-plan : la recherche se fait quand tu ouvres cette page.</p>
+      <div class="carte" id="carte-gpu"><h2>Carte graphique</h2><p class="discret">Recherche du dernier pilote…</p></div>
+      <div class="carte">
+        <h2>Autres pilotes (Windows Update)</h2>
+        <p class="discret">Réseau, son, Bluetooth, chipset… Les pilotes viennent du catalogue officiel de Microsoft, fournis par les fabricants. La recherche peut prendre une minute.</p>
+        <button id="btn-wu" class="principal">Rechercher les mises à jour</button>
+        <div id="wu-resultats"></div>
+      </div>
+      <table class="tableau" id="pilotes-installes">
+        <thead><tr><th>Appareil</th><th>Type</th><th>Version</th><th>Date</th></tr></thead>
+        <tbody><tr><td colspan="4" class="discret">Chargement…</td></tr></tbody>
+      </table>
     </section>
 
     <!-- Jeux -->

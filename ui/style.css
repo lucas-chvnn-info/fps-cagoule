@@ -230,6 +230,13 @@ input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px;
 input[type="range"] { accent-color: var(--accent); padding: 0; border: 0; background: none; }
 .boutons { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
 
+/* Pilotes */
+.barre { height: 8px; background: #232733; border-radius: 4px; overflow: hidden; margin: 12px 0 6px; }
+.barre div { height: 100%; width: 0; background: var(--accent); transition: width .4s; }
+.liste-wu { list-style: none; margin: 14px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.liste-wu label { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; }
+.liste-wu small { display: block; color: var(--discret); }
+
 /* Notification */
 #toast {
   position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
