@@ -1,11 +1,11 @@
 // Optimisations Windows réversibles : la valeur d'origine est sauvegardée avant chaque changement.
 
-use crate::config::Stockage;
+use crate::config::{EnAttente, Stockage};
 use crate::{ps, systeme};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::sync::OnceLock;
-use std::time::{Duration, SystemTime};
+use std::time::{SystemTime, UNIX_EPOCH};
 use winreg::enums::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_READ, KEY_SET_VALUE};
 use winreg::RegKey;
 
@@ -74,6 +74,8 @@ pub struct TweakEtat {
     pub annulable: bool,
     /// Faux si le matériel ne propose pas ce réglage (ex. carte réseau sans économie d'énergie)
     pub disponible: bool,
+    /// Changé depuis le dernier démarrage de Windows : « activation » ou « annulation » en attente de redémarrage
+    pub attente: Option<&'static str>,
 }
 
 #[derive(Serialize)]
@@ -203,10 +205,11 @@ fn ecrire_cartes(proprietes: &[ProprieteCarte]) -> Result<(), String> {
 
 /// Plans concernés : l'actuel et ceux que FPS Cagoule active pendant les parties.
 fn plans_alimentation(perso: &[Option<String>]) -> Vec<String> {
+    let existants = systeme::plans_existants();
     let mut plans: Vec<String> = systeme::plan_actif().into_iter().collect();
     let fixes = [Some(systeme::PLAN_PERF.to_string()), Some(systeme::PLAN_OPTIMAL.to_string())];
     for p in fixes.iter().chain(perso).flatten() {
-        if !plans.contains(p) {
+        if !plans.contains(p) && existants.contains(p) {
             plans.push(p.clone());
         }
     }
@@ -319,9 +322,19 @@ fn exclusions(ajouter: bool, dossiers: &[String]) -> Result<(), String> {
 /* ---------- État, application et annulation ---------- */
 
 pub fn liste(stock: &Stockage) -> Vec<TweakEtat> {
-    let (plan_perso, plan_max, sauvegardes) = {
-        let d = stock.donnees.lock().unwrap();
-        (d.plan_perso.clone(), d.plan_max.clone(), d.sauvegardes.clone())
+    let (plan_perso, plan_max, sauvegardes, attentes) = {
+        let mut d = stock.donnees.lock().unwrap();
+        // Les changements faits avant le dernier démarrage sont appliqués : on les oublie
+        let demarrage = systeme::demarrage_windows();
+        let avant = d.redemarrage.len();
+        d.redemarrage.retain(|_, e| e.quand > demarrage);
+        let change = d.redemarrage.len() != avant;
+        let r = (d.plan_perso.clone(), d.plan_max.clone(), d.sauvegardes.clone(), d.redemarrage.clone());
+        drop(d);
+        if change {
+            stock.sauver();
+        }
+        r
     };
     let persos = [plan_perso.clone(), plan_max.clone()];
     let plans = plans_alimentation(&persos);
@@ -332,7 +345,16 @@ pub fn liste(stock: &Stockage) -> Vec<TweakEtat> {
         .iter()
         .map(|t| {
             let (actif, disponible) = match t.special.as_deref() {
-                Some("plan") => (systeme::plan_actif().is_some_and(|g| systeme::est_plan_perf(&g, &persos)), true),
+                Some("plan") => (
+                    systeme::plan_actif().is_some_and(|g| systeme::est_plan_perf(&g, &persos))
+                        || systeme::mode_alimentation().as_deref() == Some(systeme::MODE_PERF),
+                    true,
+                ),
+                // Veille moderne : proposé seulement sur les PC concernés (ou s'il a déjà été appliqué)
+                Some("veille-moderne") => {
+                    let actif = valeurs_de(t).iter().all(|v| identique(&lire(v), &v.valeur));
+                    (actif, actif || systeme::veille_moderne())
+                }
                 Some("bcd") => (lire_bcd(&t.parametre).is_some_and(|v| v.eq_ignore_ascii_case(&t.cible)), true),
                 Some("defender") => match lire_defender() {
                     Ok(d) => (!d.dossiers.is_empty() && d.dossiers.len() == d.exclus.len(), !d.dossiers.is_empty()),
@@ -351,7 +373,8 @@ pub fn liste(stock: &Stockage) -> Vec<TweakEtat> {
                     (!valeurs.is_empty() && valeurs.iter().all(|v| identique(&lire(v), &v.valeur)), !valeurs.is_empty())
                 }
             };
-            TweakEtat { tweak: t.clone(), actif, annulable: sauvegardes.contains_key(&t.id), disponible }
+            let attente = attentes.get(&t.id).map(|e| if e.annulation { "annulation" } else { "activation" });
+            TweakEtat { tweak: t.clone(), actif, annulable: sauvegardes.contains_key(&t.id), disponible, attente }
         })
         .collect()
 }
@@ -362,12 +385,19 @@ fn appliquer_un(stock: &Stockage, t: &Tweak) -> Result<(), String> {
     let deja = d.sauvegardes.contains_key(&t.id);
     match t.special.as_deref() {
         Some("plan") => {
-            let avant = systeme::plan_actif();
-            if let Some(cree) = systeme::activer_plan(systeme::PLAN_PERF, d.plan_perso.as_deref())? {
+            let p = systeme::passer_en_performances(systeme::PLAN_PERF, d.plan_perso.as_deref(), "Performances élevées")?;
+            if let Some(cree) = p.plan_cree {
                 d.plan_perso = Some(cree);
             }
-            if let (false, Some(avant)) = (deja, avant) {
-                d.sauvegardes.insert(t.id.clone(), json!(avant));
+            // Plan : texte du GUID (comme en 0.1) ; mode d'alimentation : {"mode": GUID}
+            if let (false, Some(r)) = (deja, p.retour) {
+                d.sauvegardes.insert(
+                    t.id.clone(),
+                    match r {
+                        systeme::Retour::Plan(g) => json!(g),
+                        systeme::Retour::Mode(g) => json!({ "mode": g }),
+                    },
+                );
             }
             Ok(())
         }
@@ -439,8 +469,12 @@ fn annuler_un(stock: &Stockage, t: &Tweak) -> Result<(), String> {
     };
     match t.special.as_deref() {
         Some("plan") => {
-            if !systeme::activer_plan_guid(origine.as_str().unwrap_or(systeme::PLAN_PERF)) {
-                return Err("Impossible de remettre l'ancien plan d'alimentation".into());
+            let retour = match origine.get("mode").and_then(Value::as_str) {
+                Some(mode) => systeme::Retour::Mode(mode.to_string()),
+                None => systeme::Retour::Plan(origine.as_str().unwrap_or(systeme::PLAN_EQUILIBRE).to_string()),
+            };
+            if !systeme::remettre(&retour) {
+                return Err("Impossible de remettre l'ancien réglage d'alimentation".into());
             }
         }
         Some("bcd") => {
@@ -485,11 +519,28 @@ fn annuler_un(stock: &Stockage, t: &Tweak) -> Result<(), String> {
     Ok(())
 }
 
-fn pour_chaque(stock: &Stockage, ids: &[String], f: fn(&Stockage, &Tweak) -> Result<(), String>) -> Vec<Resultat> {
+fn pour_chaque(stock: &Stockage, ids: &[String], annulation: bool) -> Vec<Resultat> {
+    let f = if annulation { annuler_un } else { appliquer_un };
     let res = ids
         .iter()
         .map(|id| {
-            let r = definitions().iter().find(|t| &t.id == id).ok_or_else(|| "Optimisation inconnue".to_string()).and_then(|t| f(stock, t));
+            let def = definitions().iter().find(|t| &t.id == id);
+            let r = def.ok_or_else(|| "Optimisation inconnue".to_string()).and_then(|t| f(stock, t));
+            if let (Ok(()), Some(t)) = (&r, def) {
+                let mut d = stock.donnees.lock().unwrap();
+                if t.redemarrage {
+                    let quand = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs());
+                    // Annuler avant d'avoir redémarré : il n'y a plus rien en attente
+                    match d.redemarrage.get(&t.id) {
+                        Some(e) if e.annulation != annulation => {
+                            d.redemarrage.remove(&t.id);
+                        }
+                        _ => {
+                            d.redemarrage.insert(t.id.clone(), EnAttente { quand, annulation });
+                        }
+                    }
+                }
+            }
             Resultat { id: id.clone(), ok: r.is_ok(), erreur: r.err() }
         })
         .collect();
@@ -498,11 +549,11 @@ fn pour_chaque(stock: &Stockage, ids: &[String], f: fn(&Stockage, &Tweak) -> Res
 }
 
 pub fn appliquer(stock: &Stockage, ids: &[String]) -> Vec<Resultat> {
-    pour_chaque(stock, ids, appliquer_un)
+    pour_chaque(stock, ids, false)
 }
 
 pub fn annuler(stock: &Stockage, ids: &[String]) -> Vec<Resultat> {
-    pour_chaque(stock, ids, annuler_un)
+    pour_chaque(stock, ids, true)
 }
 
 /// Point de restauration Windows avant une série de changements.
@@ -512,40 +563,6 @@ pub fn point_restauration() -> Result<String, String> {
         "Checkpoint-Computer -Description 'FPS Cagoule' -RestorePointType MODIFY_SETTINGS -WarningVariable av 3>$null; if ($av) { 'recent' } else { 'cree' }",
     )
     .map_err(|e| format!("Point de restauration impossible (protection du système désactivée ?) : {e}"))
-}
-
-#[derive(Serialize, Default)]
-pub struct Nettoyage {
-    pub fichiers: u64,
-    pub octets: u64,
-}
-
-fn nettoyer_dossier(dossier: &std::path::Path, limite: SystemTime, bilan: &mut Nettoyage) {
-    let Ok(entrees) = std::fs::read_dir(dossier) else { return };
-    for e in entrees.flatten() {
-        let Ok(meta) = e.metadata() else { continue };
-        if meta.is_dir() {
-            nettoyer_dossier(&e.path(), limite, bilan);
-            let _ = std::fs::remove_dir(e.path()); // seulement s'il est vide
-        } else if meta.modified().is_ok_and(|m| m < limite) && std::fs::remove_file(e.path()).is_ok() {
-            bilan.fichiers += 1;
-            bilan.octets += meta.len();
-        }
-    }
-}
-
-/// Supprime les fichiers temporaires de plus de 24 h (ceux en cours d'utilisation sont ignorés).
-pub fn nettoyer() -> Nettoyage {
-    let limite = SystemTime::now() - Duration::from_secs(24 * 3600);
-    let mut bilan = Nettoyage::default();
-    let mut dossiers = vec![std::env::temp_dir()];
-    if let Ok(windir) = std::env::var("SystemRoot") {
-        dossiers.push(std::path::Path::new(&windir).join("Temp"));
-    }
-    for d in dossiers {
-        nettoyer_dossier(&d, limite, &mut bilan);
-    }
-    bilan
 }
 
 /// Préférence « hautes performances » pour un jeu (utile sur les PC avec deux cartes graphiques).

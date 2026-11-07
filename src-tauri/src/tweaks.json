@@ -783,5 +783,24 @@
     "gain": "moyen",
     "redemarrage": false,
     "special": "defender"
+  },
+  {
+    "id": "veille-moderne",
+    "categorie": "risque",
+    "niveau": "risque",
+    "titre": "Débloquer les plans d'alimentation (désactiver la veille moderne)",
+    "description": "Ton PC utilise la veille moderne : Windows n'y accepte que le plan Équilibré, d'où le refus des plans Performances. Ce réglage revient à la veille classique et débloque tous les plans. Si ton PC ne gère pas la veille classique, la mise en veille disparaît (il ne reste qu'arrêt et veille prolongée), et un portable ne se synchronise plus pendant sa veille.",
+    "gain": "moyen",
+    "redemarrage": true,
+    "special": "veille-moderne",
+    "valeurs": [
+      {
+        "ruche": "HKLM",
+        "chemin": "SYSTEM\\CurrentControlSet\\Control\\Power",
+        "nom": "PlatformAoAcOverride",
+        "type": "dword",
+        "valeur": 0
+      }
+    ]
   }
 ]

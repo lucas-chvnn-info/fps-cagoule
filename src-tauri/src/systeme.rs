@@ -17,6 +17,7 @@ use windows_sys::Win32::System::Threading::{
 
 pub const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
+pub const PLAN_EQUILIBRE: &str = "381b4222-f694-41f0-9685-ff5bb260df2e";
 pub const PLAN_PERF: &str = "8c5e7fd1-ce92-466d-be55-c3230bc7bdb8";
 pub const PLAN_OPTIMAL: &str = "e9a42b02-d5df-448d-aa00-03f14749eb61";
 
@@ -135,16 +136,33 @@ fn extraire_guid(texte: &str) -> Option<String> {
         .map(str::to_lowercase)
 }
 
+/// GUID de tous les plans d'alimentation présents sur le PC.
+pub fn plans_existants() -> Vec<String> {
+    let Ok(sortie) = executer("powercfg", &["/list"]) else { return vec![] };
+    String::from_utf8_lossy(&sortie.stdout).lines().filter_map(extraire_guid).collect()
+}
+
 pub fn plan_actif() -> Option<String> {
     let sortie = executer("powercfg", &["/getactivescheme"]).ok()?;
     extraire_guid(&String::from_utf8_lossy(&sortie.stdout))
 }
 
-pub fn activer_plan_guid(guid: &str) -> bool {
-    executer("powercfg", &["/setactive", guid]).map_or(false, |s| s.status.success())
+/// Première ligne non vide de la réponse d'un programme (pour expliquer un refus).
+fn message(sortie: &Output) -> String {
+    let texte = format!("{}\n{}", String::from_utf8_lossy(&sortie.stdout), String::from_utf8_lossy(&sortie.stderr));
+    texte.lines().map(str::trim).find(|l| !l.is_empty()).unwrap_or("sans détail").to_string()
 }
 
-/// Active un plan intégré (Performances élevées ou optimales). Certains PC (portables récents) ne l'ont plus :
+fn essayer_plan(guid: &str) -> Result<(), String> {
+    let sortie = executer("powercfg", &["/setactive", guid]).map_err(|e| e.to_string())?;
+    if sortie.status.success() { Ok(()) } else { Err(message(&sortie)) }
+}
+
+pub fn activer_plan_guid(guid: &str) -> bool {
+    essayer_plan(guid).is_ok()
+}
+
+/// Active un plan intégré (Performances élevées ou optimales). Certains PC ne l'ont plus :
 /// on en crée alors une copie, dont le GUID est renvoyé pour être mémorisé.
 pub fn activer_plan(modele: &str, copie: Option<&str>) -> Result<Option<String>, String> {
     if let Some(p) = copie {
@@ -152,16 +170,121 @@ pub fn activer_plan(modele: &str, copie: Option<&str>) -> Result<Option<String>,
             return Ok(None);
         }
     }
-    if activer_plan_guid(modele) {
-        return Ok(None);
-    }
+    let refus = match essayer_plan(modele) {
+        Ok(()) => return Ok(None),
+        Err(e) => e,
+    };
     let sortie = executer("powercfg", &["-duplicatescheme", modele]).map_err(|e| e.to_string())?;
-    let guid = extraire_guid(&String::from_utf8_lossy(&sortie.stdout)).ok_or("Windows refuse de créer ce plan d'alimentation")?;
-    if activer_plan_guid(&guid) {
-        Ok(Some(guid))
-    } else {
-        Err("Impossible d'activer le plan d'alimentation".into())
+    let Some(guid) = extraire_guid(&String::from_utf8_lossy(&sortie.stdout)).filter(|_| sortie.status.success()) else {
+        return Err(format!("Windows refuse ce plan d'alimentation ({refus} ; {})", message(&sortie)));
+    };
+    essayer_plan(&guid).map(|_| Some(guid)).map_err(|e| format!("Windows refuse ce plan d'alimentation ({e})"))
+}
+
+/* ---------- Mode d'alimentation de Windows 11 (Paramètres → Alimentation) ---------- */
+// Sur les PC en veille moderne (la plupart des portables récents), Windows n'accepte que le plan
+// Équilibré : le seul réglage possible est ce mode, fait de surcouches au plan Équilibré.
+
+pub const MODE_PERF: &str = "ded574b5-45a0-4f42-8737-46345c09c238";
+
+fn fonction(dll: &str, nom: &[u8]) -> Option<unsafe extern "system" fn() -> isize> {
+    use windows_sys::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryW};
+    let dll: Vec<u16> = dll.encode_utf16().chain(std::iter::once(0)).collect();
+    unsafe {
+        let module = LoadLibraryW(dll.as_ptr());
+        if module.is_null() {
+            return None;
+        }
+        GetProcAddress(module, nom.as_ptr())
     }
+}
+
+fn vers_guid(texte: &str) -> Option<windows_sys::core::GUID> {
+    let hex: String = texte.chars().filter(|c| *c != '-').collect();
+    (hex.len() == 32).then(|| u128::from_str_radix(&hex, 16).ok()).flatten().map(windows_sys::core::GUID::from_u128)
+}
+
+fn depuis_guid(g: &windows_sys::core::GUID) -> String {
+    let fin: String = g.data4[2..].iter().map(|o| format!("{o:02x}")).collect();
+    format!("{:08x}-{:04x}-{:04x}-{:02x}{:02x}-{fin}", g.data1, g.data2, g.data3, g.data4[0], g.data4[1])
+}
+
+/// Mode d'alimentation actuel, None si Windows ne le gère pas.
+pub fn mode_alimentation() -> Option<String> {
+    type Lire = unsafe extern "system" fn(*mut windows_sys::core::GUID) -> u32;
+    let f: Lire = unsafe { std::mem::transmute(fonction("powrprof.dll", b"PowerGetEffectiveOverlayScheme\0")?) };
+    let mut g: windows_sys::core::GUID = unsafe { std::mem::zeroed() };
+    (unsafe { f(&mut g) } == 0).then(|| depuis_guid(&g))
+}
+
+pub fn changer_mode_alimentation(guid: &str) -> bool {
+    // Le GUID est passé par valeur ; en x64, une structure de 16 octets passe par adresse
+    type Changer = unsafe extern "system" fn(*const windows_sys::core::GUID) -> u32;
+    let (Some(f), Some(g)) = (fonction("powrprof.dll", b"PowerSetActiveOverlayScheme\0"), vers_guid(guid)) else { return false };
+    let f: Changer = unsafe { std::mem::transmute(f) };
+    unsafe { f(&g) == 0 }
+}
+
+/// PC en veille moderne (« Modern Standby »).
+pub fn veille_moderne() -> bool {
+    use windows_sys::Win32::System::Power::{GetPwrCapabilities, SYSTEM_POWER_CAPABILITIES};
+    let mut c: SYSTEM_POWER_CAPABILITIES = unsafe { std::mem::zeroed() };
+    unsafe { GetPwrCapabilities(&mut c) && c.AoAc }
+}
+
+/// Ce qu'il faut remettre après un passage en performances.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Retour {
+    Plan(String),
+    Mode(String),
+}
+
+pub struct Passage {
+    /// None : déjà en performances, rien à remettre
+    pub retour: Option<Retour>,
+    pub plan_cree: Option<String>,
+    pub libelle: &'static str,
+}
+
+/// Passe en performances : le plan `modele` (copie créée au besoin), ou à défaut le mode
+/// « Meilleures performances » de Windows 11.
+pub fn passer_en_performances(modele: &str, copie: Option<&str>, nom_plan: &'static str) -> Result<Passage, String> {
+    let avant = plan_actif().unwrap_or_else(|| PLAN_EQUILIBRE.to_string());
+    match activer_plan(modele, copie) {
+        Ok(cree) => Ok(Passage { retour: Some(Retour::Plan(avant)), plan_cree: cree, libelle: nom_plan }),
+        Err(refus) => {
+            let mode = mode_alimentation().ok_or_else(|| refus.clone())?;
+            if mode == MODE_PERF {
+                return Ok(Passage { retour: None, plan_cree: None, libelle: "Meilleures performances" });
+            }
+            if changer_mode_alimentation(MODE_PERF) {
+                Ok(Passage { retour: Some(Retour::Mode(mode)), plan_cree: None, libelle: "Meilleures performances" })
+            } else {
+                Err(format!("{refus}. Le mode « Meilleures performances » est aussi refusé."))
+            }
+        }
+    }
+}
+
+pub fn remettre(r: &Retour) -> bool {
+    match r {
+        Retour::Plan(g) => activer_plan_guid(g),
+        Retour::Mode(g) => changer_mode_alimentation(g),
+    }
+}
+
+/// Heure du dernier démarrage de Windows (secondes Unix).
+pub fn demarrage_windows() -> u64 {
+    use windows_sys::Win32::System::SystemInformation::GetTickCount64;
+    let maintenant = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
+    maintenant.saturating_sub(unsafe { GetTickCount64() } / 1000)
+}
+
+pub fn redemarrer() -> Result<(), String> {
+    executer("shutdown", &["/r", "/t", "10", "/c", "FPS Cagoule : redémarrage pour terminer les optimisations"])
+        .map_err(|e| e.to_string())
+        .and_then(|s| if s.status.success() { Ok(()) } else { Err(message(&s)) })
 }
 
 /// Plans considérés comme « performances » : les intégrés et leurs copies créées par l'app.
@@ -172,15 +295,7 @@ pub fn est_plan_perf(guid: &str, persos: &[Option<String>]) -> bool {
 /* ---------- Boost max : minuteur et mémoire en veille (fonctions de ntdll) ---------- */
 
 fn ntdll(nom: &[u8]) -> Option<unsafe extern "system" fn() -> isize> {
-    use windows_sys::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryW};
-    let dll: Vec<u16> = "ntdll.dll\0".encode_utf16().collect();
-    unsafe {
-        let module = LoadLibraryW(dll.as_ptr());
-        if module.is_null() {
-            return None;
-        }
-        GetProcAddress(module, nom.as_ptr())
-    }
+    fonction("ntdll.dll", nom)
 }
 
 /// Minuteur système à 0,5 ms (au lieu de 15,6 ms) : les jeux réveillent leurs fils plus précisément,

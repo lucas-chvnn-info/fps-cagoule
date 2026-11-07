@@ -39,15 +39,25 @@ document.querySelectorAll('nav button').forEach((b) =>
     document.querySelectorAll('nav button, .page').forEach((e) => e.classList.remove('actif'));
     b.classList.add('actif');
     $(`#page-${b.dataset.page}`).classList.add('actif');
-    if (['optimisations', 'connexion', 'peripheriques'].includes(b.dataset.page)) chargerTweaks();
-    if (b.dataset.page === 'connexion') chargerCartes();
-    if (b.dataset.page === 'optimisations') chargerDemarrage();
+    if (b.dataset.page === 'optimisations') {
+      chargerTweaks();
+      chargerDemarrage();
+    }
+    if (b.dataset.page === 'analyse') chargerCartes();
+    if (b.dataset.page === 'nettoyage') {
+      if (!nettoyage) analyserNettoyage();
+      chargerProgrammes();
+    }
     if (b.dataset.page === 'ecrans') chargerEcrans();
     if (b.dataset.page === 'pilotes') chargerPilotes();
     if (b.dataset.page === 'fps') chargerSessions();
     if (b.dataset.page === 'jeux') chargerChoixFermer();
   })
 );
+
+function allerA(page) {
+  document.querySelector(`nav [data-page="${page}"]`).click();
+}
 
 /* ---------- Analyse et score ---------- */
 
@@ -86,12 +96,12 @@ function afficherScore() {
 $('#problemes').addEventListener('click', async (e) => {
   const b = e.target.closest('button');
   if (!b) return;
-  if (b.dataset.action === 'nettoyer') return nettoyer(b);
+  if (b.dataset.action === 'nettoyer') return allerA('nettoyage');
   if (b.dataset.action === 'demarrage') {
-    document.querySelector('nav [data-page="optimisations"]').click();
-    return setTimeout(() => $('#carte-demarrage').scrollIntoView({ behavior: 'smooth' }), 100);
+    allerA('optimisations');
+    return choisirCategorie('demarrage');
   }
-  if (b.dataset.action === 'pilotes') return document.querySelector('nav [data-page="pilotes"]').click();
+  if (b.dataset.action === 'pilotes') return allerA('pilotes');
   if (b.dataset.tweak) {
     await appliquerTweaks([b.dataset.tweak], b);
     await analyser();
@@ -141,18 +151,74 @@ function afficherMateriel() {
 const gainBadge = { fort: '<span class="badge accent">Gain fort</span>', moyen: '<span class="badge bleu">Gain moyen</span>', faible: '<span class="badge">Gain faible</span>' };
 
 function ligneTweak(t) {
+  const annuler = t.annulable ? `<button class="petit" data-annuler="${esc(t.id)}">Annuler</button>` : '';
+  const activer = `<button class="petit principal" data-activer="${esc(t.id)}">Activer</button>`;
   let droite;
   if (!t.disponible) droite = '<span class="badge">Non disponible sur ton PC</span>';
-  else if (t.actif) droite = `<span class="badge accent">Actif</span>${t.annulable ? `<button class="petit" data-annuler="${esc(t.id)}">Annuler</button>` : ''}`;
-  else droite = `${t.annulable ? `<button class="petit" data-annuler="${esc(t.id)}">Annuler</button>` : ''}<button class="petit principal" data-activer="${esc(t.id)}">Activer</button>`;
+  else if (t.attente === 'activation') droite = `<span class="badge orange">Redémarre pour l'activer</span>${annuler}`;
+  else if (t.attente === 'annulation') droite = `<span class="badge orange">Redémarre pour terminer l'annulation</span>${t.actif ? '' : activer}`;
+  else if (t.actif) droite = `<span class="badge accent">Actif</span>${annuler}`;
+  else droite = `${annuler}${activer}`;
+  // « Redémarrage nécessaire » n'est qu'une information tant que le réglage n'est pas appliqué
+  const redemarrage = t.redemarrage && !t.actif && !t.attente ? '<span class="badge">Redémarrage nécessaire</span>' : '';
   return `<li class="tweak">
       <div>
-        <div class="titre">${esc(t.titre)} ${gainBadge[t.gain] || ''} ${t.niveau === 'max' ? '<span class="badge violet">Boost max</span>' : ''}${t.niveau === 'risque' ? '<span class="badge rouge">Risqué</span>' : ''} ${t.redemarrage ? '<span class="badge orange">Après redémarrage</span>' : ''}</div>
+        <div class="titre">${esc(t.titre)} ${gainBadge[t.gain] || ''} ${t.niveau === 'max' ? '<span class="badge violet">Boost max</span>' : ''}${t.niveau === 'risque' ? '<span class="badge rouge">Risqué</span>' : ''} ${redemarrage}</div>
         <p>${esc(t.description)}</p>
       </div>
       <div class="droite">${droite}</div>
     </li>`;
 }
+
+const CATEGORIES_OPTI = [
+  ['windows', 'Windows'],
+  ['alimentation', 'Alimentation'],
+  ['arriere-plan', 'Arrière-plan'],
+  ['reseau', 'Réseau'],
+  ['peripheriques', 'Souris et clavier'],
+  ['demarrage', 'Démarrage'],
+  ['risque', 'Zone risquée'],
+];
+let categorieChoisie = '';
+try {
+  categorieChoisie = localStorage.getItem('categorie') || '';
+} catch {}
+
+/** [actifs, total] d'une catégorie, null si pas encore chargée */
+function compteCategorie(id) {
+  if (id === 'demarrage') return demarrage ? [demarrage.filter((p) => p.actif).length, demarrage.length] : null;
+  if (!tweaks.length) return null;
+  const l = tweaks.filter((t) => t.categorie === id && t.disponible);
+  return [l.filter((t) => t.actif).length, l.length];
+}
+
+function afficherCategories() {
+  $('#filtres-categories').innerHTML = [['', 'Toutes'], ...CATEGORIES_OPTI]
+    .map(([id, nom]) => {
+      const c = id ? compteCategorie(id) : null;
+      return `<button role="tab" data-cat="${id}" class="${categorieChoisie === id ? 'actif' : ''}" aria-selected="${categorieChoisie === id}">${nom}${c ? `<small>${c[0]}/${c[1]}</small>` : ''}</button>`;
+    })
+    .join('');
+  document.querySelectorAll('.categorie').forEach((sec) => {
+    sec.hidden = !!categorieChoisie && sec.dataset.categorie !== categorieChoisie;
+    const c = compteCategorie(sec.dataset.categorie);
+    const mot = sec.dataset.categorie === 'demarrage' ? 'lancé' : 'active';
+    sec.querySelector('.compte').textContent = c ? `${c[0]} ${mot}${c[0] > 1 ? 's' : ''} sur ${c[1]}` : '';
+  });
+}
+
+function choisirCategorie(id) {
+  categorieChoisie = id;
+  try {
+    localStorage.setItem('categorie', id);
+  } catch {}
+  afficherCategories();
+}
+
+$('#filtres-categories').addEventListener('click', (e) => {
+  const b = e.target.closest('button');
+  if (b) choisirCategorie(b.dataset.cat);
+});
 
 async function chargerTweaks() {
   tweaks = await appel('tweaks_liste');
@@ -163,8 +229,19 @@ async function chargerTweaks() {
   const actifs = dispo.filter((t) => t.actif).length;
   $('#resume-tweaks').textContent = `${actifs} optimisation${actifs > 1 ? 's' : ''} active${actifs > 1 ? 's' : ''} sur ${dispo.length} disponibles sur ton PC.`;
   $('#btn-tout-annuler').disabled = !tweaks.some((t) => t.annulable);
+  const enAttente = tweaks.filter((t) => t.attente).length;
+  $('#banniere-redemarrage').hidden = !enAttente;
+  $('#banniere-texte').textContent = `${enAttente} optimisation${enAttente > 1 ? 's attendent' : ' attend'} un redémarrage de ton PC pour prendre effet.`;
+  afficherCategories();
   afficherScore();
 }
+
+$('#btn-redemarrer').addEventListener('click', async (e) => {
+  const ok = await confirmer('Redémarrer maintenant', '<p>Ton PC va redémarrer dans 10 secondes. Enregistre ton travail en cours avant de continuer.</p>', 'Redémarrer');
+  if (!ok) return;
+  await appel('redemarrer_pc', {}, e.target);
+  toast('Redémarrage dans 10 secondes…', 10000);
+});
 
 document.querySelectorAll('.tweaks[data-categorie]').forEach((ul) =>
   ul.addEventListener('click', async (e) => {
@@ -194,7 +271,7 @@ async function appliquerTweaks(ids, bouton) {
   const redemarrage = tweaks.some((t) => ids.includes(t.id) && t.redemarrage);
   const reussis = resultats.length - echecs.length;
   let msg = echecs.length ? `${reussis} appliquée(s), ${echecs.length} échec(s) : ${echecs.map((r) => r.erreur).join(' ; ')}` : ids.length > 1 ? `${reussis} optimisations appliquées.` : 'Optimisation appliquée.';
-  if (redemarrage && !echecs.length) msg += ids.length > 1 ? ' Redémarre ton PC pour en profiter pleinement.' : ' Elle prend effet au prochain redémarrage.';
+  if (redemarrage && !echecs.length) msg += ' Redémarre ton PC pour terminer (bouton en haut de la page).';
   if (point) msg = `${point}. ${msg}`;
   toast(msg, 7000);
   await chargerTweaks();
@@ -247,21 +324,104 @@ $('#btn-tout-annuler').addEventListener('click', async (e) => {
   chargerTweaks();
 });
 
-async function nettoyer(bouton) {
-  const r = await appel('nettoyer', {}, bouton);
-  const texte = `${r.fichiers} fichiers supprimés, ${(r.octets / 1048576).toFixed(0)} Mo libérés.`;
-  $('#nettoyage-resultat').textContent = texte;
-  toast(texte);
+/* ---------- Nettoyage ---------- */
+
+let nettoyage = null;
+const formatOctets = (o) => (o >= 1073741824 ? `${(o / 1073741824).toFixed(1).replace('.', ',')} Go` : o >= 1048576 ? `${Math.round(o / 1048576)} Mo` : `${Math.max(0, Math.round(o / 1024))} Ko`);
+
+async function analyserNettoyage() {
+  const b = $('#btn-analyser-nettoyage');
+  b.disabled = true;
+  b.textContent = 'Analyse…';
+  $('#btn-nettoyer').disabled = true;
+  const coches = new Set([...document.querySelectorAll('#nettoyage-categories input:checked')].map((c) => c.value));
+  try {
+    nettoyage = await appel('nettoyage_analyser');
+    $('#nettoyage-categories').innerHTML = nettoyage
+      .map((c) => {
+        const coche = coches.size ? coches.has(c.id) : c.defaut;
+        return `<li><label>
+          <input type="checkbox" value="${c.id}" ${coche ? 'checked' : ''}>
+          <span><strong>${esc(c.titre)}</strong><small>${esc(c.description)}</small></span>
+          <span class="taille ${c.octets ? '' : 'discret'}">${c.octets ? formatOctets(c.octets) : 'Rien à nettoyer'}</span>
+        </label></li>`;
+      })
+      .join('');
+    afficherTotalNettoyage();
+  } finally {
+    b.disabled = false;
+    b.textContent = 'Réanalyser';
+  }
 }
-$('#btn-nettoyer').addEventListener('click', (e) => nettoyer(e.target));
+
+function afficherTotalNettoyage() {
+  const ids = new Set([...document.querySelectorAll('#nettoyage-categories input:checked')].map((c) => c.value));
+  const choisies = (nettoyage || []).filter((c) => ids.has(c.id));
+  const octets = choisies.reduce((t, c) => t + c.octets, 0);
+  const fichiers = choisies.reduce((t, c) => t + c.fichiers, 0);
+  $('#nettoyage-total').textContent = formatOctets(octets);
+  $('#nettoyage-detail').textContent = `à libérer · ${fichiers.toLocaleString('fr-CH')} fichier${fichiers > 1 ? 's' : ''} dans ${choisies.length} catégorie${choisies.length > 1 ? 's' : ''} sélectionnée${choisies.length > 1 ? 's' : ''}`;
+  $('#btn-nettoyer').disabled = !octets;
+}
+
+$('#nettoyage-categories').addEventListener('change', afficherTotalNettoyage);
+$('#btn-analyser-nettoyage').addEventListener('click', analyserNettoyage);
+$('#btn-nettoyer').addEventListener('click', async (e) => {
+  const ids = [...document.querySelectorAll('#nettoyage-categories input:checked')].map((c) => c.value);
+  e.target.textContent = 'Nettoyage…';
+  try {
+    const bilan = await appel('nettoyage_nettoyer', { ids }, e.target);
+    const octets = bilan.reduce((t, b) => t + b.octets, 0);
+    const fichiers = bilan.reduce((t, b) => t + b.fichiers, 0);
+    toast(`${formatOctets(octets)} libérés (${fichiers.toLocaleString('fr-CH')} fichiers). Les fichiers en cours d'utilisation ont été laissés.`, 7000);
+  } finally {
+    e.target.textContent = 'Nettoyer la sélection';
+  }
+  analyserNettoyage();
+});
+
+/* ---------- Désinstallation ---------- */
+
+let programmes = [];
+
+async function chargerProgrammes() {
+  programmes = await appel('programmes_liste').catch(() => []);
+  afficherProgrammes();
+}
+
+function afficherProgrammes() {
+  const filtre = $('#filtre-programmes').value.trim().toLowerCase();
+  const liste = programmes.filter((p) => !filtre || `${p.nom} ${p.editeur}`.toLowerCase().includes(filtre));
+  $('#nb-programmes').textContent = `(${programmes.length})`;
+  const date = (d) => (/^\d{8}$/.test(d) ? `${d.slice(6, 8)}.${d.slice(4, 6)}.${d.slice(0, 4)}` : '');
+  $('#programmes-liste').innerHTML = liste.length
+    ? liste
+        .map((p) => {
+          const details = [p.editeur, p.version, p.taille_ko ? formatOctets(p.taille_ko * 1024) : '', date(p.date)].filter(Boolean).map(esc).join(' · ');
+          return `<li><div class="info"><strong>${esc(p.nom)}</strong><small>${details}</small></div><button class="petit" data-desinstaller="${esc(p.id)}">Désinstaller</button></li>`;
+        })
+        .join('')
+    : '<li class="discret">Aucun programme ne correspond.</li>';
+}
+
+$('#filtre-programmes').addEventListener('input', afficherProgrammes);
+$('#programmes-liste').addEventListener('click', async (e) => {
+  const id = e.target.closest('button')?.dataset.desinstaller;
+  if (!id) return;
+  const p = programmes.find((x) => x.id === id);
+  const ok = await confirmer(`Désinstaller ${p.nom}`, '<p>Le désinstalleur du programme va s\'ouvrir : suis ses étapes. La liste se mettra à jour ensuite.</p>', 'Désinstaller');
+  if (!ok) return;
+  await appel('programme_desinstaller', { id }, e.target);
+  // Le désinstalleur tourne dans sa propre fenêtre : on rafraîchit la liste un peu plus tard
+  setTimeout(chargerProgrammes, 20000);
+});
+
 /* ---------- Programmes au démarrage ---------- */
 
 let demarrage = null;
 
 async function chargerDemarrage() {
   demarrage = await appel('demarrage_liste');
-  const actifs = demarrage.filter((p) => p.actif).length;
-  $('#nb-demarrage').textContent = `(${actifs} actif${actifs > 1 ? 's' : ''} sur ${demarrage.length})`;
   $('#demarrage-liste').innerHTML = demarrage.length
     ? demarrage
         .map(
@@ -272,6 +432,7 @@ async function chargerDemarrage() {
         )
         .join('')
     : '<li class="discret">Aucun programme ne se lance avec Windows.</li>';
+  afficherCategories();
   afficherScore();
 }
 
@@ -882,6 +1043,7 @@ async function init() {
   });
   invoke('tweaks_liste').then((t) => {
     tweaks = t;
+    afficherCategories();
     afficherScore();
   });
   majConso();

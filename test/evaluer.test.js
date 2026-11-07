@@ -62,3 +62,9 @@ test('copie du plan Performances élevées et carte graphique virtuelle ignorée
   };
   assert.equal(evaluer(pc, { maintenant }).score, 100);
 });
+
+test('le mode « Meilleures performances » compte comme un plan performances', () => {
+  const pc = { ...pcSain, plan: { guid: '381b4222-f694-41f0-9685-ff5bb260df2e', nom: 'Utilisation normale', mode: 'ded574b5-45a0-4f42-8737-46345c09c238' } };
+  assert.equal(evaluer(pc, { maintenant }).score, 100);
+  assert.equal(evaluer({ ...pc, plan: { ...pc.plan, mode: '' } }, { maintenant }).problemes[0].id, 'plan');
+});

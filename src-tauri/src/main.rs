@@ -7,8 +7,10 @@ mod ecrans;
 mod fenetres;
 mod fps;
 mod jeux;
+mod nettoyage;
 mod pilotes;
 mod maj;
+mod programmes;
 mod ps;
 mod rampe;
 mod reseau;
@@ -80,8 +82,30 @@ fn tweaks_annuler(app: AppHandle, ids: Vec<String>) -> Vec<tweaks::Resultat> {
 }
 
 #[tauri::command(async)]
-fn nettoyer() -> tweaks::Nettoyage {
-    tweaks::nettoyer()
+fn nettoyage_analyser() -> Vec<nettoyage::Categorie> {
+    nettoyage::analyser()
+}
+
+#[tauri::command(async)]
+fn nettoyage_nettoyer(ids: Vec<String>) -> Vec<nettoyage::Bilan> {
+    nettoyage::nettoyer(&ids)
+}
+
+#[tauri::command(async)]
+fn programmes_liste() -> Vec<programmes::Programme> {
+    programmes::liste()
+}
+
+#[tauri::command]
+fn programme_desinstaller(id: String) -> Res<()> {
+    programmes::desinstaller(&id)
+}
+
+#[tauri::command]
+fn redemarrer_pc(app: AppHandle) -> Res<()> {
+    // Le plan d'alimentation d'avant la partie est remis avant l'arrêt
+    jeux::terminer(&app, &etat(&app));
+    systeme::redemarrer()
 }
 
 #[tauri::command]
@@ -329,7 +353,11 @@ fn main() {
             tweaks_liste,
             tweaks_appliquer,
             tweaks_annuler,
-            nettoyer,
+            nettoyage_analyser,
+            nettoyage_nettoyer,
+            programmes_liste,
+            programme_desinstaller,
+            redemarrer_pc,
             demarrage_liste,
             demarrage_changer,
             profils_get,
@@ -435,6 +463,18 @@ mod tests_windows {
     }
 
     #[test]
+    fn alimentation_et_nettoyage() {
+        // Le mode d'alimentation n'existe pas forcément sur Windows Server : on vérifie seulement que rien ne plante
+        let _ = (systeme::mode_alimentation(), systeme::veille_moderne());
+        assert!(systeme::demarrage_windows() > 1_600_000_000);
+        let categories = nettoyage::analyser();
+        assert_eq!(categories.len(), 13);
+        let bilan = nettoyage::nettoyer(&["temp".into(), "rapports".into()]);
+        assert_eq!(bilan.len(), 2);
+        assert!(!programmes::liste().is_empty());
+    }
+
+    #[test]
     fn pilotes() {
         let liste = pilotes::peripheriques().expect("liste des périphériques");
         assert!(liste.as_array().is_some_and(|l| l.len() > 10));
@@ -448,7 +488,7 @@ mod tests_windows {
         let dossier = std::env::temp_dir().join("fps-cagoule-test");
         let stock = Stockage::ouvrir(dossier);
         let liste = tweaks::liste(&stock);
-        assert_eq!(liste.len(), 41);
+        assert_eq!(liste.len(), 42);
         assert!(liste.iter().any(|t| t.tweak.categorie == "reseau"));
     }
 }

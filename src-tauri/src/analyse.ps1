@@ -28,6 +28,8 @@ $disqueSysteme = Essai { (Get-Partition -DriveLetter $systeme[0] | Get-Disk | Ge
 $planActif = Essai { ((powercfg /getactivescheme) -join ' ') }
 $planGuid = if ($planActif -match '([0-9a-fA-F-]{36})') { $Matches[1].ToLower() } else { $null }
 $planNom = if ($planActif -match '\((.+)\)') { $Matches[1] } else { $null }
+# Mode d'alimentation de Windows 11 (seul réglage possible sur les PC en veille moderne)
+$mode = Lire 'HKLM:\SYSTEM\CurrentControlSet\Control\Power\User\PowerSchemes' 'ActiveOverlayAcPowerScheme'
 
 $demarrage = @(Essai { Get-CimInstance Win32_StartupCommand | ForEach-Object {
   [ordered]@{ nom = $_.Name; commande = $_.Command; emplacement = $_.Location }
@@ -54,7 +56,7 @@ if ($smi) {
   }
   gpus = $gpus; ram = $ram; disques = $disques; volumes = $volumes
   lecteurSysteme = $systeme; typeDisqueSysteme = "$disqueSysteme"
-  plan = [ordered]@{ guid = $planGuid; nom = $planNom }
+  plan = [ordered]@{ guid = $planGuid; nom = $planNom; mode = "$mode".ToLower() }
   demarrage = $demarrage
   reglages = [ordered]@{
     modeJeu = Lire 'HKCU:\Software\Microsoft\GameBar' 'AutoGameModeEnabled'

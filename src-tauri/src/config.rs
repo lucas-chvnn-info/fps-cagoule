@@ -82,6 +82,10 @@ pub struct Donnees {
     pub plan_max: Option<String>,
     /// Plan actif avant le dernier boost : restauré au prochain lancement si l'app a été coupée en pleine partie
     pub plan_avant_jeu: Option<String>,
+    /// Plan ou mode d'alimentation d'avant la partie (remplace plan_avant_jeu depuis la 0.8)
+    pub retour_avant_jeu: Option<crate::systeme::Retour>,
+    /// Optimisations appliquées ou annulées qui attendent un redémarrage (id → date Unix)
+    pub redemarrage: HashMap<String, EnAttente>,
     /// Couleurs en jeu, par écran (\\.\DISPLAY1…)
     pub couleurs: HashMap<String, Couleurs>,
     /// Vibrance NVIDIA d'avant la partie, remise au prochain lancement si l'app a été coupée en pleine partie
@@ -97,10 +101,18 @@ impl Default for Donnees {
             plan_perso: None,
             plan_max: None,
             plan_avant_jeu: None,
+            retour_avant_jeu: None,
+            redemarrage: HashMap::new(),
             couleurs: HashMap::new(),
             vibrance_avant: HashMap::new(),
         }
     }
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct EnAttente {
+    pub quand: u64,
+    pub annulation: bool,
 }
 
 #[derive(Clone, Serialize, Deserialize)]

@@ -269,6 +269,41 @@ h2.section { margin: 10px 0 -6px; font-size: 13px; text-transform: uppercase; le
 .fenetre ul { margin: 8px 0; padding-left: 18px; }
 .fenetre .boutons { justify-content: flex-end; }
 
+/* Optimisations : catégories */
+.banniere { display: flex; align-items: center; justify-content: space-between; gap: 16px; border-color: rgba(255, 181, 71, .45); background: rgba(255, 181, 71, .07); }
+.banniere p { margin: 0; }
+.filtres-categories {
+  position: sticky; top: -28px; z-index: 2; display: flex; gap: 8px; flex-wrap: wrap;
+  padding: 12px 0; background: var(--fond);
+}
+.filtres-categories button { border-radius: 99px; padding: 6px 14px; font-size: 13px; }
+.filtres-categories button small { color: var(--discret); margin-left: 6px; font-variant-numeric: tabular-nums; }
+.filtres-categories button.actif { background: var(--accent-fond); border-color: var(--accent); color: var(--accent-clair); }
+.categorie { display: flex; flex-direction: column; gap: 10px; }
+.categorie[hidden] { display: none; }
+.entete-categorie { display: flex; align-items: baseline; gap: 12px; margin-top: 8px; }
+.entete-categorie h2 { margin: 0; font-size: 17px; }
+.entete-categorie .compte { color: var(--discret); font-size: 13px; }
+h2.danger { color: var(--rouge); }
+
+/* Nettoyage */
+.nettoyage-resume { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.gros-chiffre { font-size: 34px; font-weight: 700; color: var(--accent-clair); font-variant-numeric: tabular-nums; }
+.nettoyage-resume p { margin: 0; }
+.liste-nettoyage { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.liste-nettoyage label {
+  display: grid; grid-template-columns: 22px 1fr auto; gap: 12px; align-items: start; cursor: pointer;
+  background: var(--carte); border: 1px solid var(--bordure); border-radius: var(--rayon); padding: 12px 16px;
+}
+.liste-nettoyage strong { display: block; }
+.liste-nettoyage small { display: block; color: var(--discret); font-size: 13px; }
+.liste-nettoyage .taille { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.liste-programmes { list-style: none; margin: 12px 0 0; padding: 0; max-height: 480px; overflow-y: auto; }
+.liste-programmes li { display: flex; align-items: center; gap: 14px; padding: 9px 0; border-top: 1px solid var(--bordure); }
+.liste-programmes li:first-child { border-top: 0; }
+.liste-programmes .info { flex: 1; min-width: 0; }
+.liste-programmes small { display: block; color: var(--discret); }
+
 /* Notification */
 #toast {
   position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);

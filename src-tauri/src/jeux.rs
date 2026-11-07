@@ -100,34 +100,38 @@ fn demarrer(app: &AppHandle, etat: &Etat, profil: &crate::config::Profil, pid: u
     let mut actions = Vec::new();
 
     if boost {
-        // Plan d'alimentation : l'ancien est mémorisé sur disque, au cas où l'app serait coupée en pleine partie.
-        // Boost max : Performances optimales ; sinon Performances élevées (déjà actif = rien à faire).
+        // Plan d'alimentation (ou, sur les PC en veille moderne, mode d'alimentation de Windows 11) :
+        // l'état d'avant est mémorisé sur disque, au cas où l'app serait coupée en pleine partie.
         let (plan_perso, plan_max) = {
             let d = etat.stock.donnees.lock().unwrap();
             (d.plan_perso.clone(), d.plan_max.clone())
         };
-        let actuel = systeme::plan_actif();
-        let (modele, copie, nom_plan) = if reglages.boost_max {
-            (systeme::PLAN_OPTIMAL, plan_max.clone(), "Performances optimales")
+        let actuel = systeme::plan_actif().unwrap_or_default();
+        let deja = if reglages.boost_max {
+            actuel == systeme::PLAN_OPTIMAL || Some(&actuel) == plan_max.as_ref()
         } else {
-            (systeme::PLAN_PERF, plan_perso.clone(), "Performances élevées")
+            systeme::est_plan_perf(&actuel, &[plan_perso.clone(), plan_max.clone()])
         };
-        let deja = actuel.as_deref().is_some_and(|g| {
-            if reglages.boost_max { g == systeme::PLAN_OPTIMAL || Some(g) == plan_max.as_deref() } else { systeme::est_plan_perf(g, &[plan_perso.clone(), plan_max.clone()]) }
-        });
-        if let (Some(avant), false) = (actuel, deja) {
-            match systeme::activer_plan(modele, copie.as_deref()) {
-                Ok(cree) => {
+        if !deja {
+            let essai = if reglages.boost_max {
+                systeme::passer_en_performances(systeme::PLAN_OPTIMAL, plan_max.as_deref(), "Performances optimales")
+            } else {
+                systeme::passer_en_performances(systeme::PLAN_PERF, plan_perso.as_deref(), "Performances élevées")
+            };
+            match essai {
+                Ok(p) => {
                     let mut d = etat.stock.donnees.lock().unwrap();
-                    d.plan_avant_jeu = Some(avant);
-                    if cree.is_some() {
-                        if reglages.boost_max { d.plan_max = cree } else { d.plan_perso = cree }
+                    if let Some(cree) = p.plan_cree {
+                        if reglages.boost_max { d.plan_max = Some(cree) } else { d.plan_perso = Some(cree) }
+                    }
+                    if p.retour.is_some() {
+                        d.retour_avant_jeu = p.retour;
+                        actions.push(format!("Alimentation : {}", p.libelle));
                     }
                     drop(d);
                     etat.stock.sauver();
-                    actions.push(format!("Plan {nom_plan} activé"));
                 }
-                Err(e) => actions.push(format!("Plan d'alimentation : {e}")),
+                Err(e) => actions.push(format!("Alimentation : {e}")),
             }
         }
         if reglages.boost_max {
@@ -238,9 +242,17 @@ pub fn terminer(app: &AppHandle, etat: &Etat) {
 }
 
 pub fn restaurer_plan(etat: &Etat) {
-    let avant = etat.stock.donnees.lock().unwrap().plan_avant_jeu.take();
-    if let Some(guid) = avant {
-        systeme::activer_plan_guid(&guid);
+    let (ancien, retour) = {
+        let mut d = etat.stock.donnees.lock().unwrap();
+        (d.plan_avant_jeu.take(), d.retour_avant_jeu.take())
+    };
+    if let Some(guid) = &ancien {
+        systeme::activer_plan_guid(guid);
+    }
+    if let Some(r) = &retour {
+        systeme::remettre(r);
+    }
+    if ancien.is_some() || retour.is_some() {
         etat.stock.sauver();
     }
 }

@@ -14,12 +14,11 @@
     </div>
     <nav>
       <button data-page="accueil" class="actif">Accueil</button>
-      <button data-page="analyse">Analyse du PC</button>
+      <button data-page="analyse">Analyse et tests</button>
       <button data-page="optimisations">Optimisations</button>
+      <button data-page="nettoyage">Nettoyage</button>
       <button data-page="pilotes">Pilotes</button>
       <button data-page="jeux">Boost par jeu</button>
-      <button data-page="connexion">Connexion</button>
-      <button data-page="peripheriques">Périphériques</button>
       <button data-page="ecrans">Écrans</button>
       <button data-page="fps">Statistiques FPS</button>
       <button data-page="reglages">Réglages</button>
@@ -60,22 +59,47 @@
       </div>
     </section>
 
-    <!-- Analyse -->
+    <!-- Analyse et tests -->
     <section id="page-analyse" class="page">
-      <header><h1>Analyse du PC</h1><span id="date-analyse" class="discret"></span></header>
+      <header><h1>Analyse et tests</h1><span id="date-analyse" class="discret"></span></header>
       <div id="materiel" class="grille-materiel"><p class="discret">Lance une analyse depuis l'accueil.</p></div>
+      <h2 class="section">Tests</h2>
+      <div class="grille-2">
+        <div class="carte">
+          <h2>Ta connexion</h2>
+          <div id="cartes-reseau"><p class="discret">Chargement…</p></div>
+        </div>
+        <div class="carte">
+          <h2>Test de ping</h2>
+          <p class="discret">25 pings vers ta box et vers Internet. La gigue (variation du ping) compte plus que le ping lui-même : c'est elle qui donne des tirs qui ne partent pas.</p>
+          <button id="btn-ping" class="principal">Lancer le test</button>
+          <div id="ping-resultats" class="ping-resultats"></div>
+        </div>
+      </div>
+      <div class="carte">
+        <h2>Test de ta souris</h2>
+        <p class="discret">Bouge ta souris rapidement en rond dans la zone. Une souris gaming envoie sa position 1000 fois par seconde (1 ms) ou plus ; à 125 Hz (8 ms), monte la fréquence d'interrogation (polling rate) dans le logiciel de ta souris. Double-clic pour recommencer.</p>
+        <div id="zone-souris" class="zone-souris">
+          <div><span id="souris-hz">–</span><small>Hz</small></div>
+          <div><span id="souris-ms">–</span><small>ms entre deux positions</small></div>
+        </div>
+      </div>
     </section>
 
     <!-- Optimisations -->
     <section id="page-optimisations" class="page">
       <header>
-        <h1>Optimisations Windows</h1>
+        <h1>Optimisations</h1>
         <label class="case"><input type="checkbox" id="restauration" checked> Point de restauration avant chaque changement</label>
       </header>
+      <div id="banniere-redemarrage" class="carte banniere" hidden>
+        <p id="banniere-texte"></p>
+        <button class="principal" id="btn-redemarrer">Redémarrer maintenant</button>
+      </div>
       <div class="carte boost-global">
         <div>
           <h2>Optimiser en un clic</h2>
-          <p class="discret">Toutes les pages comprises (Windows, alimentation, arrière-plan, connexion, périphériques). Chaque réglage reste réversible : FPS Cagoule garde la valeur d'origine, et « Tout annuler » remet ton PC comme avant.</p>
+          <p class="discret">Toutes les catégories ci-dessous, sauf la Zone risquée. Chaque réglage reste réversible : FPS Cagoule garde la valeur d'origine, et « Tout annuler » remet ton PC comme avant.</p>
           <p id="resume-tweaks" class="discret"></p>
         </div>
         <div class="boutons-boost">
@@ -84,26 +108,57 @@
           <button id="btn-tout-annuler">Tout annuler</button>
         </div>
       </div>
-      <h2 class="section">Windows</h2>
-      <ul class="tweaks" data-categorie="windows"></ul>
-      <h2 class="section">Alimentation et processeur</h2>
-      <ul class="tweaks" data-categorie="alimentation"></ul>
-      <h2 class="section">Arrière-plan</h2>
-      <ul class="tweaks" data-categorie="arriere-plan"></ul>
-      <h2 class="section danger">Zone risquée</h2>
-      <p class="discret">Ces réglages gagnent un peu de performances en retirant des protections de Windows. Ils ne sont jamais appliqués par « Boost maximum » : active-les un par un, en connaissance de cause. Ils restent annulables.</p>
-      <ul class="tweaks" data-categorie="risque"></ul>
-      <div class="pile">
+      <div id="filtres-categories" class="filtres-categories" role="tablist" aria-label="Catégories d'optimisations"></div>
+      <section class="categorie" data-categorie="windows">
+        <div class="entete-categorie"><h2>Windows</h2><span class="compte"></span></div>
+        <ul class="tweaks" data-categorie="windows"></ul>
+      </section>
+      <section class="categorie" data-categorie="alimentation">
+        <div class="entete-categorie"><h2>Alimentation et processeur</h2><span class="compte"></span></div>
+        <ul class="tweaks" data-categorie="alimentation"></ul>
+      </section>
+      <section class="categorie" data-categorie="arriere-plan">
+        <div class="entete-categorie"><h2>Arrière-plan</h2><span class="compte"></span></div>
+        <ul class="tweaks" data-categorie="arriere-plan"></ul>
+      </section>
+      <section class="categorie" data-categorie="reseau">
+        <div class="entete-categorie"><h2>Réseau et connexion</h2><span class="compte"></span></div>
+        <ul class="tweaks" data-categorie="reseau"></ul>
+      </section>
+      <section class="categorie" data-categorie="peripheriques">
+        <div class="entete-categorie"><h2>Souris, clavier et USB</h2><span class="compte"></span></div>
+        <ul class="tweaks" data-categorie="peripheriques"></ul>
+      </section>
+      <section class="categorie" data-categorie="demarrage" id="carte-demarrage">
+        <div class="entete-categorie"><h2>Programmes au démarrage</h2><span class="compte"></span></div>
         <div class="carte">
-          <h2>Fichiers temporaires</h2>
-          <p class="discret">Supprime les fichiers temporaires de plus de 24 h de Windows et des applications.</p>
-          <button id="btn-nettoyer">Nettoyer</button> <span id="nettoyage-resultat" class="discret"></span>
+          <p class="discret">Ils se lancent avec Windows et tournent en arrière-plan pendant tes parties. Désactiver un programme ne le désinstalle pas : il se lance quand tu l'ouvres toi-même, et tu peux le réactiver ici.</p>
+          <ul id="demarrage-liste" class="liste-demarrage"><li class="discret">Chargement…</li></ul>
         </div>
-      <div class="carte" id="carte-demarrage">
-        <h2>Programmes au démarrage <span id="nb-demarrage" class="discret"></span></h2>
-        <p class="discret">Ils se lancent avec Windows et tournent en arrière-plan pendant tes parties. Désactiver un programme ne le désinstalle pas : il se lance quand tu l'ouvres toi-même, et tu peux le réactiver ici.</p>
-        <ul id="demarrage-liste" class="liste-demarrage"><li class="discret">Chargement…</li></ul>
+      </section>
+      <section class="categorie" data-categorie="risque">
+        <div class="entete-categorie"><h2 class="danger">Zone risquée</h2><span class="compte"></span></div>
+        <p class="discret">Ces réglages gagnent un peu de performances en retirant des protections de Windows. Ils ne sont jamais appliqués par « Boost maximum » : active-les un par un, en connaissance de cause. Ils restent annulables.</p>
+        <ul class="tweaks" data-categorie="risque"></ul>
+      </section>
+    </section>
+
+    <!-- Nettoyage -->
+    <section id="page-nettoyage" class="page">
+      <header><h1>Nettoyage</h1><button id="btn-analyser-nettoyage">Analyser</button></header>
+      <div class="carte nettoyage-resume">
+        <div>
+          <div class="gros-chiffre" id="nettoyage-total">–</div>
+          <p class="discret" id="nettoyage-detail">Analyse de ton PC…</p>
+        </div>
+        <button class="principal" id="btn-nettoyer" disabled>Nettoyer la sélection</button>
       </div>
+      <ul id="nettoyage-categories" class="liste-nettoyage"></ul>
+      <p class="discret">Les fichiers en cours d'utilisation sont ignorés : ferme tes navigateurs, Discord et Steam pour tout nettoyer. Pas de « nettoyage du registre » : Microsoft le déconseille, le gain est nul et il peut casser des programmes.</p>
+      <div class="carte">
+        <h2>Désinstaller des programmes <span id="nb-programmes" class="discret"></span></h2>
+        <div class="ligne-form"><input id="filtre-programmes" type="search" placeholder="Rechercher un programme, un éditeur…"></div>
+        <ul id="programmes-liste" class="liste-programmes"><li class="discret">Chargement…</li></ul>
       </div>
     </section>
 
@@ -162,38 +217,6 @@
           <button id="btn-fermer-ajout">Ajouter</button>
         </div>
       </div>
-    </section>
-
-    <!-- Connexion -->
-    <section id="page-connexion" class="page">
-      <header><h1>Connexion internet</h1></header>
-      <div class="grille-2">
-        <div class="carte">
-          <h2>Ta connexion</h2>
-          <div id="cartes-reseau"><p class="discret">Chargement…</p></div>
-        </div>
-        <div class="carte">
-          <h2>Test de ping</h2>
-          <p class="discret">25 pings vers ta box et vers Internet. La gigue (variation du ping) compte plus que le ping lui-même : c'est elle qui donne des tirs qui ne partent pas.</p>
-          <button id="btn-ping" class="principal">Lancer le test</button>
-          <div id="ping-resultats" class="ping-resultats"></div>
-        </div>
-      </div>
-      <ul class="tweaks" data-categorie="reseau"></ul>
-    </section>
-
-    <!-- Périphériques -->
-    <section id="page-peripheriques" class="page">
-      <header><h1>Périphériques</h1></header>
-      <div class="carte">
-        <h2>Test de ta souris</h2>
-        <p class="discret">Bouge ta souris rapidement en rond dans la zone. Une souris gaming envoie sa position 1000 fois par seconde (1 ms) ou plus ; à 125 Hz (8 ms), monte la fréquence d'interrogation (polling rate) dans le logiciel de ta souris.</p>
-        <div id="zone-souris" class="zone-souris">
-          <div><span id="souris-hz">–</span><small>Hz</small></div>
-          <div><span id="souris-ms">–</span><small>ms entre deux positions</small></div>
-        </div>
-      </div>
-      <ul class="tweaks" data-categorie="peripheriques"></ul>
     </section>
 
     <!-- Écrans -->

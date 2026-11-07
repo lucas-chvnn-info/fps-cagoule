@@ -64,9 +64,11 @@ export function evaluer(info, { planPerso = null, maintenant = new Date() } = {}
   const guid = (info.plan?.guid || '').toLowerCase();
   // Le plan peut être une copie de Performances élevées (autre GUID) : on regarde aussi son nom
   const nomPerf = /performances? (élevées|optimales)|high performance|ultimate performance/i.test(info.plan?.nom || '');
+  // PC en veille moderne : seul le mode « Meilleures performances » de Windows 11 est réglable
+  const modePerf = (info.plan?.mode || '').toLowerCase() === 'ded574b5-45a0-4f42-8737-46345c09c238';
   // planPerso : GUID (ou liste de GUID) des copies de plans créées par l'app
   const persos = [].concat(planPerso).filter(Boolean);
-  if (guid && !PLANS_PERF.includes(guid) && !persos.includes(guid) && !nomPerf) {
+  if (guid && !PLANS_PERF.includes(guid) && !persos.includes(guid) && !nomPerf && !modePerf) {
     ajoute('plan', 'moyenne', `Plan d'alimentation « ${info.plan.nom || 'inconnu'} »`,
       'Le plan Performances élevées garde le processeur à pleine fréquence et évite les micro-latences.', 'plan-alimentation');
   }
