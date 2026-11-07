@@ -53,3 +53,12 @@ test('RAM DDR4 sans XMP et disque presque plein', () => {
 test('une analyse incomplète ne plante pas', () => {
   assert.equal(evaluer({}, { maintenant }).score, 98); // seule la planification GPU inconnue est signalée
 });
+
+test('copie du plan Performances élevées et carte graphique virtuelle ignorées', () => {
+  const pc = {
+    ...pcSain,
+    plan: { guid: '11111111-2222-3333-4444-555555555555', nom: 'High performance' },
+    gpus: [{ nom: 'Microsoft Hyper-V Video', datePilote: '2006-06-21', hz: 60, hzMax: 0 }],
+  };
+  assert.equal(evaluer(pc, { maintenant }).score, 100);
+});

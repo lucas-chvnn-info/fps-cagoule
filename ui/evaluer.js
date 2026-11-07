@@ -51,7 +51,7 @@ export function evaluer(info, { planPerso = null, maintenant = new Date() } = {}
 
   // Pilote graphique
   for (const g of info.gpus || []) {
-    if (!g.datePilote || /microsoft basic|remote|virtual/i.test(g.nom || '')) continue;
+    if (!g.datePilote || /microsoft basic|remote|virtual|hyper-v|parsec|meta virtual/i.test(g.nom || '')) continue;
     const mois = (maintenant - new Date(g.datePilote)) / (30 * 24 * 3600 * 1000);
     if (mois > 6) {
       ajoute('pilote-gpu', 'moyenne', `Pilote graphique daté de ${Math.floor(mois)} mois`,
@@ -62,7 +62,9 @@ export function evaluer(info, { planPerso = null, maintenant = new Date() } = {}
 
   // Plan d'alimentation
   const guid = (info.plan?.guid || '').toLowerCase();
-  if (guid && !PLANS_PERF.includes(guid) && guid !== planPerso) {
+  // Le plan peut être une copie de Performances élevées (autre GUID) : on regarde aussi son nom
+  const nomPerf = /performances? (élevées|optimales)|high performance|ultimate performance/i.test(info.plan?.nom || '');
+  if (guid && !PLANS_PERF.includes(guid) && guid !== planPerso && !nomPerf) {
     ajoute('plan', 'moyenne', `Plan d'alimentation « ${info.plan.nom || 'inconnu'} »`,
       'Le plan Performances élevées garde le processeur à pleine fréquence et évite les micro-latences.', 'plan-alimentation');
   }
