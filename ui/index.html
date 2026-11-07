@@ -95,12 +95,21 @@
       <div class="carte" id="carte-gpu"><h2>Carte graphique</h2><p class="discret">Recherche du dernier pilote…</p></div>
       <div class="carte">
         <h2>Autres pilotes (Windows Update)</h2>
-        <p class="discret">Réseau, son, Bluetooth, chipset… Les pilotes viennent du catalogue officiel de Microsoft, fournis par les fabricants. La recherche peut prendre une minute.</p>
+        <p class="discret">Pour tous tes périphériques : réseau, son, Bluetooth, chipset, manettes… Les pilotes viennent du catalogue officiel de Microsoft, fournis par les fabricants. La recherche démarre à l'ouverture de la page et peut prendre une minute.</p>
         <button id="btn-wu" class="principal">Rechercher les mises à jour</button>
         <div id="wu-resultats"></div>
       </div>
-      <table class="tableau" id="pilotes-installes">
-        <thead><tr><th>Appareil</th><th>Type</th><th>Version</th><th>Date</th></tr></thead>
+      <div class="carte">
+        <h2>Tous les périphériques <span id="nb-peripheriques" class="discret"></span></h2>
+        <div class="ligne-form filtres">
+          <input id="filtre-peripheriques" type="search" placeholder="Rechercher un appareil, un fabricant…">
+          <select id="classe-peripheriques"><option value="">Toutes les catégories</option></select>
+          <label class="case"><input type="checkbox" id="problemes-peripheriques"> Problèmes et mises à jour seulement</label>
+          <label class="case"><input type="checkbox" id="systeme-peripheriques"> Composants internes de Windows</label>
+        </div>
+      </div>
+      <table class="tableau" id="peripheriques">
+        <thead><tr><th>Appareil</th><th>Pilote</th><th>État</th><th></th></tr></thead>
         <tbody><tr><td colspan="4" class="discret">Chargement…</td></tr></tbody>
       </table>
     </section>

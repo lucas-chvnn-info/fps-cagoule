@@ -118,7 +118,7 @@ input, select {
 }
 input:focus, select:focus, button:focus-visible { outline: 2px solid var(--accent-clair); outline-offset: 1px; }
 .ligne-form { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
-.ligne-form input { flex: 1; min-width: 180px; }
+.ligne-form input:not([type="checkbox"]) { flex: 1; min-width: 180px; }
 .case { display: flex; gap: 8px; align-items: center; color: var(--discret); cursor: pointer; }
 input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px; }
 
@@ -236,6 +236,12 @@ input[type="range"] { accent-color: var(--accent); padding: 0; border: 0; backgr
 .liste-wu { list-style: none; margin: 14px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .liste-wu label { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; }
 .liste-wu small { display: block; color: var(--discret); }
+
+.filtres { margin-top: 4px; }
+.filtres input[type="search"] { min-width: 240px; }
+.tableau tr.groupe td { background: #141720; color: var(--discret); font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; padding: 8px 14px; }
+.tableau td.actions { text-align: right; white-space: nowrap; }
+.tableau td.actions button { margin-left: 6px; }
 
 /* Notification */
 #toast {

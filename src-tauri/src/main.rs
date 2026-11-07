@@ -233,8 +233,13 @@ fn reseau_cartes() -> Res<serde_json::Value> {
 }
 
 #[tauri::command(async)]
-fn pilotes_installes() -> Res<serde_json::Value> {
-    pilotes::installes()
+fn peripheriques() -> Res<serde_json::Value> {
+    pilotes::peripheriques()
+}
+
+#[tauri::command]
+fn pilote_chercher_web(nom: String, materiel: String) -> Res<()> {
+    pilotes::chercher_sur_le_web(&nom, &materiel)
 }
 
 #[tauri::command(async)]
@@ -335,7 +340,8 @@ fn main() {
             couleurs_retablir,
             reseau_ping,
             reseau_cartes,
-            pilotes_installes,
+            peripheriques,
+            pilote_chercher_web,
             pilote_nvidia,
             pilotes_wu_rechercher,
             pilotes_wu_installer,
@@ -393,7 +399,8 @@ mod tests_windows {
 
     #[test]
     fn pilotes() {
-        assert!(pilotes::installes().expect("liste des pilotes").is_array());
+        let liste = pilotes::peripheriques().expect("liste des périphériques");
+        assert!(liste.as_array().is_some_and(|l| l.len() > 10));
         // Pas de carte NVIDIA sur le PC de GitHub : la réponse doit être null, sans erreur
         assert!(pilotes::nvidia().expect("recherche NVIDIA").is_null());
         assert!(pilotes::wu_rechercher().expect("recherche Windows Update").is_array());

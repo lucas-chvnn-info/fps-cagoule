@@ -1,5 +1,5 @@
 // Pilotes : tout au même endroit, sans les applications des fabricants.
-// - liste des pilotes installés (cartes graphique, réseau, son, Bluetooth)
+// - tous les périphériques du PC, leur pilote et leur état
 // - dernier pilote NVIDIA via l'API publique du site de NVIDIA, téléchargé et lancé par l'app
 // - autres pilotes via le catalogue Windows Update (API COM de Windows)
 
@@ -11,16 +11,36 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Mutex;
 
-pub fn installes() -> Result<serde_json::Value, String> {
+/// Tous les périphériques présents, avec leur pilote et leurs identifiants matériels
+/// (pour les associer aux pilotes proposés par Windows Update).
+pub fn peripheriques() -> Result<serde_json::Value, String> {
     ps::json(
-        r#"ConvertTo-Json -Compress -Depth 3 -InputObject @(Get-CimInstance Win32_PnPSignedDriver |
-  Where-Object { $_.DeviceClass -in 'DISPLAY','NET','MEDIA','BLUETOOTH' -and $_.DeviceName -and $_.Manufacturer -notmatch '^(Microsoft|Microsoft Corporation)$' -and $_.DeviceName -notmatch 'Virtual|Hyper-V|WAN Miniport|Kernel Debug|Remote' } |
-  Sort-Object DeviceClass, DeviceName -Unique |
-  ForEach-Object { [ordered]@{
-    nom = $_.DeviceName; classe = $_.DeviceClass; fabricant = $_.Manufacturer; version = $_.DriverVersion
-    date = if ($_.DriverDate) { ([datetime]$_.DriverDate).ToString('yyyy-MM-dd') } else { $null }
-  } })"#,
+        r#"$pilotes = @{}
+Get-CimInstance Win32_PnPSignedDriver | ForEach-Object { if ($_.DeviceID) { $pilotes[$_.DeviceID] = $_ } }
+ConvertTo-Json -Compress -Depth 4 -InputObject @(Get-CimInstance Win32_PnPEntity | Where-Object Name | ForEach-Object {
+  $p = $pilotes[$_.DeviceID]
+  [ordered]@{
+    id = $_.DeviceID; nom = $_.Name; classe = "$($_.PNPClass)"; fabricant = $_.Manufacturer
+    erreur = [int]$_.ConfigManagerErrorCode
+    materiel = @($_.HardwareID)
+    version = $p.DriverVersion; fournisseur = $p.DriverProviderName
+    date = if ($p.DriverDate) { ([datetime]$p.DriverDate).ToString('yyyy-MM-dd') } else { $null }
+  }
+})"#,
     )
+}
+
+/// Recherche web du pilote d'un appareil (nom + identifiant matériel exact).
+pub fn chercher_sur_le_web(nom: &str, materiel: &str) -> Result<(), String> {
+    let requete: String = format!("{nom} {materiel} driver")
+        .bytes()
+        .map(|o| match o {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' => (o as char).to_string(),
+            b' ' => "+".into(),
+            _ => format!("%{o:02X}"),
+        })
+        .collect();
+    crate::systeme::executer("explorer", &[&format!("https://www.google.com/search?q={requete}")]).map(|_| ()).map_err(|e| e.to_string())
 }
 
 /// Carte graphique NVIDIA : version installée et dernier pilote Game Ready publié.
@@ -54,7 +74,7 @@ $r = $s.CreateUpdateSearcher().Search("IsInstalled=0 and Type='Driver' and IsHid
 ConvertTo-Json -Compress -Depth 3 -InputObject @($r.Updates | ForEach-Object { [ordered]@{
   id = $_.Identity.UpdateID; titre = $_.Title; fabricant = $_.DriverManufacturer; classe = $_.DriverClass
   date = if ($_.DriverVerDate) { ([datetime]$_.DriverVerDate).ToString('yyyy-MM-dd') } else { $null }
-  taille = $_.MaxDownloadSize
+  taille = $_.MaxDownloadSize; materiel = $_.DriverHardwareID; modele = $_.DriverModel
 } })"#,
     )
 }

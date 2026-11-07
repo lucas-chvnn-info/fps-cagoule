@@ -480,17 +480,101 @@ const LIENS = {
 const Mo = (o) => `${(o / 1048576).toFixed(0)} Mo`;
 let suiviNvidia = null;
 
+// Catégories Windows (PNPClass) → libellés ; les composants internes sont masqués par défaut
+const CATEGORIES = {
+  Display: 'Cartes graphiques', Monitor: 'Écrans', Net: 'Réseau', Bluetooth: 'Bluetooth',
+  MEDIA: 'Son', AudioEndpoint: 'Entrées et sorties audio', Mouse: 'Souris', Keyboard: 'Claviers',
+  HIDClass: 'Manettes et périphériques USB', USB: 'Contrôleurs USB', Camera: 'Caméras', Image: 'Caméras',
+  DiskDrive: 'Disques', SCSIAdapter: 'Contrôleurs de stockage', HDC: 'Contrôleurs de stockage',
+  Printer: 'Imprimantes', PrintQueue: 'Imprimantes', Biometric: 'Biométrie', Battery: 'Batteries',
+  Ports: 'Ports', SecurityDevices: 'Sécurité', Firmware: 'Micrologiciels', System: 'Système (chipset)',
+  Processor: 'Processeur', Sensor: 'Capteurs', WPD: 'Appareils portables', USBDevice: 'Périphériques USB',
+};
+const INTERNES = new Set(['SoftwareDevice', 'SoftwareComponent', 'Volume', 'VolumeSnapshot', 'LegacyDriver', 'Computer', 'Extension', 'SWD', 'Processor', '']);
+let peripheriques = [];
+let majWU = null;
+const categorie = (p) => CATEGORIES[p.classe] || p.classe || 'Autres';
+const majPour = (p) => majWU?.find((m) => m.materiel && p.materiel.some((h) => h.toLowerCase() === m.materiel.toLowerCase()));
+
 async function chargerPilotes() {
-  const installes = appel('pilotes_installes').catch(() => []);
   chargerGpu();
-  const liste = await installes;
-  const classes = { DISPLAY: 'Graphique', NET: 'Réseau', MEDIA: 'Son', BLUETOOTH: 'Bluetooth' };
-  $('#pilotes-installes tbody').innerHTML = liste.length
-    ? liste
-        .map((p) => `<tr><td>${esc(p.nom)}<small>${esc(p.fabricant)}</small></td><td>${classes[p.classe] || esc(p.classe)}</td><td>${esc(p.version)}</td><td>${p.date ? new Date(p.date).toLocaleDateString('fr-CH') : ''}</td></tr>`)
-        .join('')
-    : '<tr><td colspan="4" class="discret">Aucun pilote trouvé.</td></tr>';
+  const liste = appel('peripheriques').catch(() => []);
+  if (!majWU) rechercherWU();
+  peripheriques = await liste;
+  const cats = [...new Set(peripheriques.filter((p) => !INTERNES.has(p.classe)).map(categorie))].sort((a, b) => a.localeCompare(b, 'fr'));
+  $('#classe-peripheriques').innerHTML = '<option value="">Toutes les catégories</option>' + cats.map((c) => `<option>${esc(c)}</option>`).join('');
+  afficherPeripheriques();
 }
+
+function etatPeripherique(p) {
+  if (p.erreur === 28) return '<span class="badge rouge">Pilote manquant</span>';
+  if (p.erreur === 22) return '<span class="badge">Désactivé</span>';
+  if (p.erreur) return `<span class="badge rouge">Problème (code ${p.erreur})</span>`;
+  if (majPour(p)) return '<span class="badge orange">Mise à jour disponible</span>';
+  return '<span class="badge accent">OK</span>';
+}
+
+function afficherPeripheriques() {
+  const filtre = $('#filtre-peripheriques').value.trim().toLowerCase();
+  const cat = $('#classe-peripheriques').value;
+  const problemes = $('#problemes-peripheriques').checked;
+  const internes = $('#systeme-peripheriques').checked;
+  const liste = peripheriques
+    .filter((p) => internes || !INTERNES.has(p.classe))
+    .filter((p) => !cat || categorie(p) === cat)
+    .filter((p) => !problemes || p.erreur || majPour(p))
+    .filter((p) => !filtre || `${p.nom} ${p.fabricant} ${p.fournisseur}`.toLowerCase().includes(filtre))
+    .sort((a, b) => categorie(a).localeCompare(categorie(b), 'fr') || a.nom.localeCompare(b.nom, 'fr'));
+  $('#nb-peripheriques').textContent = `(${liste.length})`;
+  let groupe = '';
+  $('#peripheriques tbody').innerHTML = liste.length
+    ? liste
+        .map((p) => {
+          const i = peripheriques.indexOf(p);
+          const maj = majPour(p);
+          let ligneGroupe = '';
+          if (categorie(p) !== groupe) {
+            groupe = categorie(p);
+            ligneGroupe = `<tr class="groupe"><td colspan="4">${esc(groupe)}</td></tr>`;
+          }
+          return `${ligneGroupe}<tr>
+            <td>${esc(p.nom)}<small>${esc(p.fabricant || '')}</small></td>
+            <td>${p.version ? `${esc(p.version)}<small>${p.date ? new Date(p.date).toLocaleDateString('fr-CH') : ''}${p.fournisseur ? ` · ${esc(p.fournisseur)}` : ''}</small>` : '<span class="discret">–</span>'}</td>
+            <td>${etatPeripherique(p)}</td>
+            <td class="actions">${maj ? `<button class="petit principal" data-maj="${esc(maj.id)}">Mettre à jour</button>` : ''}${p.materiel.length ? `<button class="petit" data-web="${i}">Chercher sur internet</button>` : ''}</td>
+          </tr>`;
+        })
+        .join('')
+    : '<tr><td colspan="4" class="discret">Aucun appareil ne correspond.</td></tr>';
+}
+
+['#filtre-peripheriques', '#classe-peripheriques', '#problemes-peripheriques', '#systeme-peripheriques'].forEach((id) =>
+  $(id).addEventListener('input', afficherPeripheriques)
+);
+
+$('#peripheriques').addEventListener('click', async (e) => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  if (b.dataset.web) {
+    const p = peripheriques[b.dataset.web];
+    // L'identifiant le plus précis (VEN_…&DEV_…) est le premier de la liste
+    return appel('pilote_chercher_web', { nom: p.nom, materiel: p.materiel[0] });
+  }
+  if (b.dataset.maj) {
+    b.disabled = true;
+    b.textContent = 'Installation…';
+    try {
+      const r = await appel('pilotes_wu_installer', { ids: [b.dataset.maj] });
+      const ok = r.details.every((d) => d.ok);
+      toast(ok ? `Pilote installé.${r.redemarrage ? ' Redémarre ton PC pour terminer.' : ''}` : 'Windows Update n\'a pas pu installer ce pilote.', 7000);
+      if (ok) majWU = majWU.filter((m) => m.id !== b.dataset.maj);
+      chargerPilotes();
+    } catch {
+      b.disabled = false;
+      b.textContent = 'Mettre à jour';
+    }
+  }
+});
 
 async function chargerGpu() {
   const carte = $('#carte-gpu');
@@ -568,22 +652,25 @@ $('#page-pilotes').addEventListener('click', (e) => {
   if (lien) appel('ouvrir_lien', { lien: LIENS[lien] });
 });
 
-$('#btn-wu').addEventListener('click', async (e) => {
-  const b = e.target;
+async function rechercherWU() {
+  const b = $('#btn-wu');
   b.disabled = true;
   b.textContent = 'Recherche en cours…';
+  $('#wu-resultats').innerHTML = '';
   try {
-    const maj = await appel('pilotes_wu_rechercher');
-    $('#wu-resultats').innerHTML = maj.length
-      ? `<ul class="liste-wu">${maj
+    majWU = await appel('pilotes_wu_rechercher');
+    $('#wu-resultats').innerHTML = majWU.length
+      ? `<ul class="liste-wu">${majWU
           .map((m) => `<li><label><input type="checkbox" value="${esc(m.id)}" checked><span>${esc(m.titre)}<small>${esc(m.fabricant || '')}${m.date ? ` · ${new Date(m.date).toLocaleDateString('fr-CH')}` : ''}${m.taille ? ` · ${Mo(m.taille)}` : ''}</small></span></label></li>`)
           .join('')}</ul><div class="boutons"><button class="principal" id="btn-wu-installer">Installer la sélection</button></div>`
       : '<p class="ok">Aucune mise à jour de pilote proposée : tout est à jour.</p>';
+    afficherPeripheriques();
   } finally {
     b.disabled = false;
     b.textContent = 'Relancer la recherche';
   }
-});
+}
+$('#btn-wu').addEventListener('click', rechercherWU);
 
 $('#wu-resultats').addEventListener('click', async (e) => {
   if (e.target.id !== 'btn-wu-installer') return;
@@ -599,6 +686,7 @@ $('#wu-resultats').addEventListener('click', async (e) => {
       r.redemarrage ? '<p class="alerte">Redémarre ton PC pour terminer l\'installation.</p>' : ''
     }`;
     toast(`${ok} pilote(s) installé(s) sur ${r.details.length}.`, 6000);
+    majWU = null;
     chargerPilotes();
   } catch {
     b.disabled = false;
