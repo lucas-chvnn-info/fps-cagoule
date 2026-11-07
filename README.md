@@ -3,7 +3,7 @@
 Analyse, optimisation et boost par jeu pour Windows 11. Gratuit, pour moi et mes potes.
 
 - **Analyse du PC** : matériel, réglages Windows, problèmes détectés et score sur 100.
-- **Optimisations** : réglages Windows réversibles (valeur d'origine sauvegardée, point de restauration).
+- **Optimisations** : réglages Windows réversibles (valeur d'origine sauvegardée, point de restauration), programmes au démarrage activables et désactivables (comme le Gestionnaire des tâches).
 - **Boost par jeu** : quand un jeu se lance, plan Performances élevées, priorité haute, GPU le plus puissant, fermeture des programmes choisis. Tout revient comme avant à la fin.
 - **Connexion** : test de ping (box et Internet, gigue, pertes) et réglages réseau réversibles.
 - **Périphériques** : test de fréquence de la souris, veille USB, clavier, raccourcis d'accessibilité.

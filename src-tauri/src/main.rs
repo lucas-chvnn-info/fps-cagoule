@@ -2,6 +2,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod config;
+mod demarrage;
 mod ecrans;
 mod fenetres;
 mod fps;
@@ -79,8 +80,13 @@ fn nettoyer() -> tweaks::Nettoyage {
 }
 
 #[tauri::command]
-fn ouvrir_demarrage() -> Res<()> {
-    systeme::executer("explorer", &["ms-settings:startupapps"]).map(|_| ()).map_err(|e| e.to_string())
+fn demarrage_liste() -> Vec<demarrage::Programme> {
+    demarrage::liste()
+}
+
+#[tauri::command]
+fn demarrage_changer(source: String, nom: String, actif: bool) -> Res<()> {
+    demarrage::changer(&source, &nom, actif)
 }
 
 #[tauri::command]
@@ -319,7 +325,8 @@ fn main() {
             tweaks_appliquer,
             tweaks_annuler,
             nettoyer,
-            ouvrir_demarrage,
+            demarrage_liste,
+            demarrage_changer,
             profils_get,
             profils_set,
             profils_defaut,
@@ -395,6 +402,22 @@ mod tests_windows {
         let ping = reseau::tester();
         assert!(!ping.is_empty());
         assert!(reseau::cartes().is_ok());
+    }
+
+    #[test]
+    fn programmes_au_demarrage() {
+        // Aller-retour sur une entrée de test, sans toucher aux vrais programmes
+        let (run, _) = winreg::RegKey::predef(winreg::enums::HKEY_CURRENT_USER)
+            .create_subkey(r"Software\Microsoft\Windows\CurrentVersion\Run")
+            .unwrap();
+        run.set_value("FPSCagouleTest", &"notepad.exe").unwrap();
+        let trouve = |l: &[demarrage::Programme]| l.iter().find(|p| p.nom == "FPSCagouleTest").map(|p| p.actif);
+        assert_eq!(trouve(&demarrage::liste()), Some(true));
+        demarrage::changer("hkcu-run", "FPSCagouleTest", false).unwrap();
+        assert_eq!(trouve(&demarrage::liste()), Some(false));
+        demarrage::changer("hkcu-run", "FPSCagouleTest", true).unwrap();
+        assert_eq!(trouve(&demarrage::liste()), Some(true));
+        run.delete_value("FPSCagouleTest").unwrap();
     }
 
     #[test]

@@ -41,6 +41,7 @@ document.querySelectorAll('nav button').forEach((b) =>
     $(`#page-${b.dataset.page}`).classList.add('actif');
     if (['optimisations', 'connexion', 'peripheriques'].includes(b.dataset.page)) chargerTweaks();
     if (b.dataset.page === 'connexion') chargerCartes();
+    if (b.dataset.page === 'optimisations') chargerDemarrage();
     if (b.dataset.page === 'ecrans') chargerEcrans();
     if (b.dataset.page === 'pilotes') chargerPilotes();
     if (b.dataset.page === 'fps') chargerSessions();
@@ -57,7 +58,8 @@ function memoriserAnalyse(info) {
 
 function afficherScore() {
   if (!derniereAnalyse) return;
-  const { score, problemes } = evaluer(derniereAnalyse, { planPerso: etat.plan_perso });
+  const info = demarrage ? { ...derniereAnalyse, demarrage: demarrage.filter((p) => p.actif) } : derniereAnalyse;
+  const { score, problemes } = evaluer(info, { planPerso: etat.plan_perso });
   $('#score').textContent = score;
   const anneau = $('#anneau');
   anneau.style.strokeDashoffset = 326.7 * (1 - score / 100);
@@ -85,7 +87,10 @@ $('#problemes').addEventListener('click', async (e) => {
   const b = e.target.closest('button');
   if (!b) return;
   if (b.dataset.action === 'nettoyer') return nettoyer(b);
-  if (b.dataset.action === 'demarrage') return appel('ouvrir_demarrage');
+  if (b.dataset.action === 'demarrage') {
+    document.querySelector('nav [data-page="optimisations"]').click();
+    return setTimeout(() => $('#carte-demarrage').scrollIntoView({ behavior: 'smooth' }), 100);
+  }
   if (b.dataset.action === 'pilotes') return document.querySelector('nav [data-page="pilotes"]').click();
   if (b.dataset.tweak) {
     await appliquerTweaks([b.dataset.tweak], b);
@@ -186,7 +191,35 @@ async function nettoyer(bouton) {
   toast(texte);
 }
 $('#btn-nettoyer').addEventListener('click', (e) => nettoyer(e.target));
-$('#btn-demarrage').addEventListener('click', () => appel('ouvrir_demarrage'));
+/* ---------- Programmes au démarrage ---------- */
+
+let demarrage = null;
+
+async function chargerDemarrage() {
+  demarrage = await appel('demarrage_liste');
+  const actifs = demarrage.filter((p) => p.actif).length;
+  $('#nb-demarrage').textContent = `(${actifs} actif${actifs > 1 ? 's' : ''} sur ${demarrage.length})`;
+  $('#demarrage-liste').innerHTML = demarrage.length
+    ? demarrage
+        .map(
+          (p, i) => `<li class="${p.actif ? '' : 'inactif'}">
+            <div class="info"><strong>${esc(p.nom.replace(/\.lnk$/i, ''))}</strong><small title="${esc(p.commande)}">${p.tous ? 'Tous les utilisateurs · ' : ''}${esc(p.commande)}</small></div>
+            <label class="bascule" title="${p.actif ? 'Désactiver' : 'Activer'}"><input type="checkbox" data-i="${i}" ${p.actif ? 'checked' : ''}><span></span></label>
+          </li>`
+        )
+        .join('')
+    : '<li class="discret">Aucun programme ne se lance avec Windows.</li>';
+  afficherScore();
+}
+
+$('#demarrage-liste').addEventListener('change', async (e) => {
+  const p = demarrage[e.target.dataset.i];
+  try {
+    await appel('demarrage_changer', { source: p.source, nom: p.nom, actif: e.target.checked });
+    toast(e.target.checked ? `${p.nom} se lancera avec Windows.` : `${p.nom} ne se lancera plus avec Windows.`);
+  } catch {}
+  chargerDemarrage();
+});
 
 /* ---------- Jeux ---------- */
 
@@ -779,6 +812,10 @@ async function init() {
   } catch {}
   if (derniereAnalyse) afficherScore();
   else analyser();
+  invoke('demarrage_liste').then((d) => {
+    demarrage = d;
+    afficherScore();
+  });
   invoke('tweaks_liste').then((t) => {
     tweaks = t;
     afficherScore();

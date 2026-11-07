@@ -74,17 +74,17 @@
       </header>
       <p class="discret">Chaque réglage est réversible : FPS Cagoule garde la valeur d'origine et le bouton « Annuler » la remet.</p>
       <ul class="tweaks" data-categorie="windows"></ul>
-      <div class="grille-2">
+      <div class="pile">
         <div class="carte">
           <h2>Fichiers temporaires</h2>
           <p class="discret">Supprime les fichiers temporaires de plus de 24 h de Windows et des applications.</p>
           <button id="btn-nettoyer">Nettoyer</button> <span id="nettoyage-resultat" class="discret"></span>
         </div>
-        <div class="carte">
-          <h2>Programmes au démarrage</h2>
-          <p class="discret">Chaque programme lancé avec Windows tourne en permanence en arrière-plan.</p>
-          <button id="btn-demarrage">Gérer les programmes au démarrage</button>
-        </div>
+      <div class="carte" id="carte-demarrage">
+        <h2>Programmes au démarrage <span id="nb-demarrage" class="discret"></span></h2>
+        <p class="discret">Ils se lancent avec Windows et tournent en arrière-plan pendant tes parties. Désactiver un programme ne le désinstalle pas : il se lance quand tu l'ouvres toi-même, et tu peux le réactiver ici.</p>
+        <ul id="demarrage-liste" class="liste-demarrage"><li class="discret">Chargement…</li></ul>
+      </div>
       </div>
     </section>
 

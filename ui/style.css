@@ -243,6 +243,15 @@ input[type="range"] { accent-color: var(--accent); padding: 0; border: 0; backgr
 .tableau td.actions { text-align: right; white-space: nowrap; }
 .tableau td.actions button { margin-left: 6px; }
 
+/* Démarrage */
+.pile { display: flex; flex-direction: column; gap: 18px; }
+.liste-demarrage { list-style: none; margin: 0; padding: 0; }
+.liste-demarrage li { display: flex; align-items: center; gap: 14px; padding: 10px 0; border-top: 1px solid var(--bordure); }
+.liste-demarrage li:first-child { border-top: 0; }
+.liste-demarrage .info { flex: 1; min-width: 0; }
+.liste-demarrage small { display: block; color: var(--discret); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.liste-demarrage li.inactif strong { color: var(--discret); }
+
 /* Notification */
 #toast {
   position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
