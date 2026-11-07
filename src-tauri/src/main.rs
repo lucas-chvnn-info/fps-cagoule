@@ -448,7 +448,7 @@ mod tests_windows {
         let dossier = std::env::temp_dir().join("fps-cagoule-test");
         let stock = Stockage::ouvrir(dossier);
         let liste = tweaks::liste(&stock);
-        assert_eq!(liste.len(), 36);
+        assert_eq!(liste.len(), 41);
         assert!(liste.iter().any(|t| t.tweak.categorie == "reseau"));
     }
 }

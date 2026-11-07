@@ -699,5 +699,89 @@
       "*LsoV2IPv6"
     ],
     "cible": "0"
+  },
+  {
+    "id": "spectre",
+    "categorie": "risque",
+    "niveau": "risque",
+    "titre": "Désactiver les protections Spectre et Meltdown",
+    "description": "Retire les protections du processeur contre les failles Spectre et Meltdown. Gain de 2 à 10 % sur les processeurs d'avant 2019 (Intel 8e génération, Ryzen 2000 et plus anciens), presque rien sur les récents. Un site ou un programme malveillant pourrait alors lire des données en mémoire (mots de passe, sessions).",
+    "gain": "moyen",
+    "redemarrage": true,
+    "valeurs": [
+      {
+        "ruche": "HKLM",
+        "chemin": "SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Memory Management",
+        "nom": "FeatureSettingsOverride",
+        "type": "dword",
+        "valeur": 3
+      },
+      {
+        "ruche": "HKLM",
+        "chemin": "SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Memory Management",
+        "nom": "FeatureSettingsOverrideMask",
+        "type": "dword",
+        "valeur": 3
+      }
+    ]
+  },
+  {
+    "id": "vbs",
+    "categorie": "risque",
+    "niveau": "risque",
+    "titre": "Désactiver l'isolation du noyau (VBS)",
+    "description": "Coupe la sécurité basée sur la virtualisation et l'intégrité de la mémoire : 5 à 10 % de FPS en plus sur certains PC. Les pilotes malveillants ne sont plus bloqués. Certains anti-triches (FACEIT, Vanguard) peuvent l'exiger : si un jeu refuse de se lancer, annule ce réglage. Sans effet si l'isolation est verrouillée par le BIOS (PC d'entreprise).",
+    "gain": "moyen",
+    "redemarrage": true,
+    "valeurs": [
+      {
+        "ruche": "HKLM",
+        "chemin": "SYSTEM\\CurrentControlSet\\Control\\DeviceGuard",
+        "nom": "EnableVirtualizationBasedSecurity",
+        "type": "dword",
+        "valeur": 0
+      },
+      {
+        "ruche": "HKLM",
+        "chemin": "SYSTEM\\CurrentControlSet\\Control\\DeviceGuard\\Scenarios\\HypervisorEnforcedCodeIntegrity",
+        "nom": "Enabled",
+        "type": "dword",
+        "valeur": 0
+      }
+    ]
+  },
+  {
+    "id": "hyperviseur",
+    "categorie": "risque",
+    "niveau": "risque",
+    "titre": "Désactiver l'hyperviseur de Windows",
+    "description": "Complète la désactivation de VBS : Windows ne démarre plus sous l'hyperviseur. WSL 2, Hyper-V, le bac à sable Windows et les émulateurs Android qui s'en servent ne fonctionneront plus. BitLocker est suspendu le temps d'un redémarrage pour éviter la demande de clé de récupération.",
+    "gain": "faible",
+    "redemarrage": true,
+    "special": "bcd",
+    "parametre": "hypervisorlaunchtype",
+    "cible": "Off"
+  },
+  {
+    "id": "dynamic-tick",
+    "categorie": "risque",
+    "niveau": "risque",
+    "titre": "Désactiver le « dynamic tick »",
+    "description": "Le minuteur de Windows bat à rythme constant au lieu de s'endormir entre deux événements : latence un peu plus régulière, consommation au repos un peu plus élevée. BitLocker est suspendu le temps d'un redémarrage pour éviter la demande de clé de récupération.",
+    "gain": "faible",
+    "redemarrage": true,
+    "special": "bcd",
+    "parametre": "disabledynamictick",
+    "cible": "Yes"
+  },
+  {
+    "id": "defender-jeux",
+    "categorie": "risque",
+    "niveau": "risque",
+    "titre": "Exclure tes dossiers de jeux de l'analyse Defender",
+    "description": "Defender n'analyse plus les fichiers de tes jeux (Steam et ses autres bibliothèques, Epic, Riot, Ubisoft, EA, Battle.net) : chargements plus rapides et moins de saccades quand un jeu lit ses fichiers. Le reste du PC reste protégé. Un fichier malveillant placé dans ces dossiers ne serait pas détecté.",
+    "gain": "moyen",
+    "redemarrage": false,
+    "special": "defender"
   }
 ]

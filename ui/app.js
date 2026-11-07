@@ -147,7 +147,7 @@ function ligneTweak(t) {
   else droite = `${t.annulable ? `<button class="petit" data-annuler="${esc(t.id)}">Annuler</button>` : ''}<button class="petit principal" data-activer="${esc(t.id)}">Activer</button>`;
   return `<li class="tweak">
       <div>
-        <div class="titre">${esc(t.titre)} ${gainBadge[t.gain] || ''} ${t.niveau === 'max' ? '<span class="badge violet">Boost max</span>' : ''} ${t.redemarrage ? '<span class="badge orange">Après redémarrage</span>' : ''}</div>
+        <div class="titre">${esc(t.titre)} ${gainBadge[t.gain] || ''} ${t.niveau === 'max' ? '<span class="badge violet">Boost max</span>' : ''}${t.niveau === 'risque' ? '<span class="badge rouge">Risqué</span>' : ''} ${t.redemarrage ? '<span class="badge orange">Après redémarrage</span>' : ''}</div>
         <p>${esc(t.description)}</p>
       </div>
       <div class="droite">${droite}</div>
@@ -169,7 +169,18 @@ async function chargerTweaks() {
 document.querySelectorAll('.tweaks[data-categorie]').forEach((ul) =>
   ul.addEventListener('click', async (e) => {
     const b = e.target.closest('button');
-    if (b?.dataset.activer) return appliquerTweaks([b.dataset.activer], b);
+    if (b?.dataset.activer) {
+      const t = tweaks.find((x) => x.id === b.dataset.activer);
+      if (t?.niveau === 'risque') {
+        const ok = await confirmer(
+          t.titre,
+          `<p>${esc(t.description)}</p><p class="alerte">Ce réglage réduit la sécurité ou modifie le démarrage de Windows. Tu pourras l'annuler ici à tout moment.</p>`,
+          'Activer quand même'
+        );
+        if (!ok) return;
+      }
+      return appliquerTweaks([b.dataset.activer], b);
+    }
     if (!b?.dataset.annuler) return;
     const [r] = await appel('tweaks_annuler', { ids: [b.dataset.annuler] }, b);
     toast(r.ok ? 'Réglage remis comme avant' : `Impossible d'annuler : ${r.erreur}`);
@@ -206,7 +217,8 @@ function confirmer(titre, html, libelle = 'Confirmer') {
 
 async function optimiserTout(max, bouton) {
   if (!tweaks.length) tweaks = await appel('tweaks_liste');
-  const a = tweaks.filter((t) => t.disponible && !t.actif && (max || t.niveau !== 'max'));
+  // Les réglages risqués ne partent jamais en lot
+  const a = tweaks.filter((t) => t.disponible && !t.actif && (max ? t.niveau !== 'risque' : t.niveau === 'recommande'));
   if (!a.length) return toast('Tout est déjà optimisé.');
   const reseau = a.some((t) => t.special === 'adaptateur');
   const redemarrage = a.some((t) => t.redemarrage);

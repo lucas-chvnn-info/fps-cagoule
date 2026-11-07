@@ -258,6 +258,7 @@ input[type="range"] { accent-color: var(--accent); padding: 0; border: 0; backgr
 .boutons-boost { display: flex; flex-direction: column; gap: 8px; min-width: 220px; }
 button.principal.max { background: linear-gradient(135deg, #1f4fc4, #6f3bf5); border-color: transparent; }
 button.principal.max:hover:not(:disabled) { background: linear-gradient(135deg, #2a5fe0, #7f50ff); }
+h2.section.danger { color: var(--rouge); }
 h2.section { margin: 10px 0 -6px; font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: var(--discret); }
 .badge.violet { background: rgba(127, 80, 255, .16); color: #a98bff; }
 

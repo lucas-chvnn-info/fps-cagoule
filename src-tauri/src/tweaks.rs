@@ -34,7 +34,7 @@ pub struct Tweak {
     pub description: String,
     pub gain: String,
     pub redemarrage: bool,
-    /// Réglages qui ne sont pas de simples valeurs de registre : plan, adaptateur, nagle, powercfg
+    /// Réglages qui ne sont pas de simples valeurs de registre : plan, adaptateur, nagle, powercfg, bcd, defender
     #[serde(default)]
     pub special: Option<String>,
     #[serde(default)]
@@ -51,7 +51,8 @@ pub struct Tweak {
     pub parametre: String,
     #[serde(default)]
     pub index: u32,
-    /// recommande : sans contrepartie notable ; max : plus agressif (consommation, confort), inclus dans « Boost maximum »
+    /// recommande : sans contrepartie notable ; max : plus agressif (consommation, confort), inclus dans « Boost maximum » ;
+    /// risque : baisse la sécurité ou touche au démarrage, jamais appliqué en lot
     #[serde(default = "niveau_recommande")]
     pub niveau: String,
 }
@@ -240,6 +241,81 @@ fn ecrire_alimentation(plan: &str, t: &Tweak, valeur: u32) -> bool {
     systeme::executer("powercfg", &["/setacvalueindex", plan, &t.sous_groupe, &t.parametre, &valeur.to_string()]).is_ok_and(|s| s.status.success())
 }
 
+/* ---------- Démarrage de Windows (bcdedit) ---------- */
+
+/// Valeur actuelle d'un paramètre de démarrage, None s'il n'est pas défini.
+fn lire_bcd(cle: &str) -> Option<String> {
+    let sortie = systeme::executer("bcdedit", &["/enum", "{current}"]).ok()?;
+    String::from_utf8_lossy(&sortie.stdout).lines().find_map(|l| {
+        let mut mots = l.split_whitespace();
+        mots.next().filter(|m| m.eq_ignore_ascii_case(cle)).map(|_| mots.collect::<Vec<_>>().join(" "))
+    })
+}
+
+/// BitLocker vérifie la configuration de démarrage : sans suspension, un changement peut faire
+/// demander la clé de récupération. On le suspend pour un seul redémarrage, comme le recommande Microsoft.
+fn suspendre_bitlocker() -> Result<(), String> {
+    ps::executer(
+        "$lecteur = $env:SystemDrive
+$etat = (New-Object -ComObject Shell.Application).NameSpace($lecteur + '\').Self.ExtendedProperty('System.Volume.BitLockerProtection')
+if ($etat -eq 1 -or $etat -eq 3) {
+  manage-bde -protectors -disable $lecteur -RebootCount 1 | Out-Null
+  if ($LASTEXITCODE -ne 0) { throw 'Impossible de suspendre BitLocker : changement annulé' }
+}",
+    )
+    .map(|_| ())
+}
+
+fn ecrire_bcd(cle: &str, valeur: Option<&str>) -> Result<(), String> {
+    suspendre_bitlocker()?;
+    let sortie = match valeur {
+        Some(v) => systeme::executer("bcdedit", &["/set", "{current}", cle, v]),
+        None => systeme::executer("bcdedit", &["/deletevalue", "{current}", cle]),
+    }
+    .map_err(|e| e.to_string())?;
+    if sortie.status.success() {
+        Ok(())
+    } else {
+        Err(format!("bcdedit : {}", String::from_utf8_lossy(&sortie.stdout).trim()))
+    }
+}
+
+/* ---------- Exclusions Defender pour les dossiers de jeux ---------- */
+
+#[derive(Default, Deserialize)]
+#[serde(default)]
+struct EtatDefender {
+    dossiers: Vec<String>,
+    exclus: Vec<String>,
+}
+
+/// Dossiers de jeux présents (Steam et ses autres bibliothèques, Epic, Riot, Ubisoft, EA, Battle.net)
+/// et ceux déjà exclus de l'analyse. Erreur si Defender n'est pas l'antivirus actif.
+fn lire_defender() -> Result<EtatDefender, String> {
+    let v = ps::json(
+        r#"$x86 = ${env:ProgramFiles(x86)}
+$d = @("$x86\Steam\steamapps\common", "$env:ProgramFiles\Epic Games", "$env:SystemDrive\Riot Games",
+  "$x86\Ubisoft\Ubisoft Game Launcher\games", "$env:ProgramFiles\EA Games", "$env:ProgramFiles\Electronic Arts", "$x86\Battle.net")
+$vdf = "$x86\Steam\steamapps\libraryfolders.vdf"
+if (Test-Path $vdf) {
+  Select-String -Path $vdf -Pattern '"path"\s+"(.+)"' | ForEach-Object { $d += (($_.Matches[0].Groups[1].Value -replace '\\\\', '\') + '\steamapps\common') }
+}
+$d = @($d | Where-Object { Test-Path $_ } | Select-Object -Unique)
+$ex = @((Get-MpPreference).ExclusionPath)
+ConvertTo-Json -Compress @{ dossiers = $d; exclus = @($ex | Where-Object { $d -contains $_ }) }"#,
+    )?;
+    serde_json::from_value(v).map_err(|e| e.to_string())
+}
+
+fn exclusions(ajouter: bool, dossiers: &[String]) -> Result<(), String> {
+    if dossiers.is_empty() {
+        return Ok(());
+    }
+    let liste = dossiers.iter().map(|d| ps::chaine(d)).collect::<Vec<_>>().join(",");
+    let cmd = if ajouter { "Add-MpPreference" } else { "Remove-MpPreference" };
+    ps::executer(&format!("{cmd} -ExclusionPath @({liste})")).map(|_| ())
+}
+
 /* ---------- État, application et annulation ---------- */
 
 pub fn liste(stock: &Stockage) -> Vec<TweakEtat> {
@@ -257,6 +333,11 @@ pub fn liste(stock: &Stockage) -> Vec<TweakEtat> {
         .map(|t| {
             let (actif, disponible) = match t.special.as_deref() {
                 Some("plan") => (systeme::plan_actif().is_some_and(|g| systeme::est_plan_perf(&g, &persos)), true),
+                Some("bcd") => (lire_bcd(&t.parametre).is_some_and(|v| v.eq_ignore_ascii_case(&t.cible)), true),
+                Some("defender") => match lire_defender() {
+                    Ok(d) => (!d.dossiers.is_empty() && d.dossiers.len() == d.exclus.len(), !d.dossiers.is_empty()),
+                    Err(_) => (false, false),
+                },
                 Some("adaptateur") => {
                     let miennes: Vec<_> = cartes.iter().filter(|p| t.mots_cles.iter().any(|m| m.eq_ignore_ascii_case(&p.k))).collect();
                     (!miennes.is_empty() && miennes.iter().all(|p| p.v == t.cible), !miennes.is_empty())
@@ -289,6 +370,26 @@ fn appliquer_un(stock: &Stockage, t: &Tweak) -> Result<(), String> {
                 d.sauvegardes.insert(t.id.clone(), json!(avant));
             }
             Ok(())
+        }
+        Some("bcd") => {
+            if !deja {
+                d.sauvegardes.insert(t.id.clone(), lire_bcd(&t.parametre).map_or(Value::Null, Value::String));
+            }
+            drop(d);
+            ecrire_bcd(&t.parametre, Some(&t.cible))
+        }
+        Some("defender") => {
+            let etat = lire_defender().map_err(|e| format!("Defender n'est pas ton antivirus actif ({e})"))?;
+            let a_ajouter: Vec<String> = etat.dossiers.iter().filter(|x| !etat.exclus.contains(x)).cloned().collect();
+            if etat.dossiers.is_empty() {
+                return Err("Aucun dossier de jeux trouvé".into());
+            }
+            // On ne retire ensuite que ce que l'app a ajouté
+            let mut ajoutes: Vec<String> = d.sauvegardes.get(&t.id).and_then(|v| serde_json::from_value(v.clone()).ok()).unwrap_or_default();
+            ajoutes.extend(a_ajouter.iter().cloned());
+            d.sauvegardes.insert(t.id.clone(), json!(ajoutes));
+            drop(d);
+            exclusions(true, &a_ajouter)
         }
         Some("adaptateur") => {
             let actuelles = lire_cartes(&t.mots_cles);
@@ -341,6 +442,17 @@ fn annuler_un(stock: &Stockage, t: &Tweak) -> Result<(), String> {
             if !systeme::activer_plan_guid(origine.as_str().unwrap_or(systeme::PLAN_PERF)) {
                 return Err("Impossible de remettre l'ancien plan d'alimentation".into());
             }
+        }
+        Some("bcd") => {
+            drop(d);
+            ecrire_bcd(&t.parametre, origine.as_str())?;
+            d = stock.donnees.lock().unwrap();
+        }
+        Some("defender") => {
+            let ajoutes: Vec<String> = serde_json::from_value(origine).unwrap_or_default();
+            drop(d);
+            exclusions(false, &ajoutes)?;
+            d = stock.donnees.lock().unwrap();
         }
         Some("adaptateur") => {
             let proprietes: Vec<ProprieteCarte> = serde_json::from_value(origine).unwrap_or_default();
