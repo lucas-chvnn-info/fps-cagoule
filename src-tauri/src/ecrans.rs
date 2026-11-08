@@ -14,7 +14,8 @@ use windows_sys::Win32::Devices::Display::{
 };
 use windows_sys::Win32::Graphics::Gdi::{
     ChangeDisplaySettingsExW, CreateDCW, DeleteDC, EnumDisplayDevicesW, EnumDisplaySettingsW, CDS_UPDATEREGISTRY, DEVMODEW,
-    DISPLAY_DEVICEW, DISPLAY_DEVICE_ATTACHED_TO_DESKTOP, DISPLAY_DEVICE_PRIMARY_DEVICE, DISP_CHANGE_SUCCESSFUL, DM_DISPLAYFREQUENCY,
+    DISPLAY_DEVICEW, DISPLAY_DEVICE_ATTACHED_TO_DESKTOP, DISPLAY_DEVICE_PRIMARY_DEVICE, DISP_CHANGE_BADMODE, DISP_CHANGE_RESTART,
+    DISP_CHANGE_SUCCESSFUL, DMDFO_CENTER, DMDFO_STRETCH, DM_DISPLAYFIXEDOUTPUT, DM_DISPLAYFREQUENCY, DM_PELSHEIGHT, DM_PELSWIDTH,
     ENUM_CURRENT_SETTINGS,
 };
 use windows_sys::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryW};
@@ -46,10 +47,21 @@ pub struct Ecran {
     pub hauteur: u32,
     pub hz: u32,
     pub frequences: Vec<u32>,
+    /// Toutes les résolutions proposées, de la plus grande à la plus petite
+    pub modes: Vec<Mode>,
+    /// Mise à l'échelle des résolutions non natives : 0 par défaut, 1 étirée, 2 bandes noires
+    pub mise_echelle: u32,
     pub hdr_supporte: bool,
     pub hdr_actif: bool,
     /// Vibrance actuelle en %, si l'écran est branché sur une carte NVIDIA
     pub vibrance: Option<u32>,
+}
+
+#[derive(Serialize, Clone)]
+pub struct Mode {
+    pub largeur: u32,
+    pub hauteur: u32,
+    pub frequences: Vec<u32>,
 }
 
 fn wide(s: &str) -> Vec<u16> {
@@ -66,10 +78,10 @@ fn mode_actuel(id: &str) -> Option<DEVMODEW> {
     (unsafe { EnumDisplaySettingsW(wide(id).as_ptr(), ENUM_CURRENT_SETTINGS, &mut dm) } != 0).then_some(dm)
 }
 
-/// Fréquences possibles dans la résolution actuelle.
-fn frequences(id: &str, largeur: u32, hauteur: u32) -> Vec<u32> {
+/// Résolutions et fréquences proposées par l'écran.
+fn modes(id: &str) -> Vec<Mode> {
     let nom = wide(id);
-    let mut liste = Vec::new();
+    let mut liste: Vec<Mode> = Vec::new();
     let mut i = 0;
     loop {
         let mut dm: DEVMODEW = unsafe { std::mem::zeroed() };
@@ -77,12 +89,20 @@ fn frequences(id: &str, largeur: u32, hauteur: u32) -> Vec<u32> {
         if unsafe { EnumDisplaySettingsW(nom.as_ptr(), i, &mut dm) } == 0 {
             break;
         }
-        if dm.dmPelsWidth == largeur && dm.dmPelsHeight == hauteur && dm.dmDisplayFrequency > 1 && !liste.contains(&dm.dmDisplayFrequency) {
-            liste.push(dm.dmDisplayFrequency);
-        }
         i += 1;
+        if dm.dmDisplayFrequency <= 1 {
+            continue;
+        }
+        match liste.iter_mut().find(|m| m.largeur == dm.dmPelsWidth && m.hauteur == dm.dmPelsHeight) {
+            Some(m) if !m.frequences.contains(&dm.dmDisplayFrequency) => m.frequences.push(dm.dmDisplayFrequency),
+            Some(_) => {}
+            None => liste.push(Mode { largeur: dm.dmPelsWidth, hauteur: dm.dmPelsHeight, frequences: vec![dm.dmDisplayFrequency] }),
+        }
     }
-    liste.sort_unstable();
+    for m in &mut liste {
+        m.frequences.sort_unstable();
+    }
+    liste.sort_by_key(|m| std::cmp::Reverse((m.largeur * m.hauteur, m.largeur)));
     liste
 }
 
@@ -150,13 +170,17 @@ pub fn liste() -> Vec<Ecran> {
         let id = texte(&dd.DeviceName);
         let Some(dm) = mode_actuel(&id) else { continue };
         let info = infos.get(&id);
+        let modes = modes(&id);
+        let frequences = modes.iter().find(|m| m.largeur == dm.dmPelsWidth && m.hauteur == dm.dmPelsHeight).map(|m| m.frequences.clone()).unwrap_or_default();
         ecrans.push(Ecran {
             nom: info.map(|i| i.nom.clone()).filter(|n| !n.is_empty()).unwrap_or_else(|| texte(&dd.DeviceString)),
             principal: dd.StateFlags & DISPLAY_DEVICE_PRIMARY_DEVICE != 0,
             largeur: dm.dmPelsWidth,
             hauteur: dm.dmPelsHeight,
             hz: dm.dmDisplayFrequency,
-            frequences: frequences(&id, dm.dmPelsWidth, dm.dmPelsHeight),
+            frequences,
+            modes,
+            mise_echelle: unsafe { dm.Anonymous1.Anonymous2.dmDisplayFixedOutput },
             hdr_supporte: info.is_some_and(|i| i.hdr_supporte),
             hdr_actif: info.is_some_and(|i| i.hdr_actif),
             vibrance: vibrances.get(&id).map(|v| v.pourcent()),
@@ -167,16 +191,105 @@ pub fn liste() -> Vec<Ecran> {
     ecrans
 }
 
-pub fn changer_frequence(id: &str, hz: u32) -> Result<(), String> {
+/// Change la résolution, la fréquence et la mise à l'échelle. `flags` = 0 : changement temporaire
+/// (oublié au redémarrage) ; CDS_UPDATEREGISTRY : enregistré. Renvoie un avertissement éventuel.
+fn appliquer_mode(id: &str, largeur: u32, hauteur: u32, hz: Option<u32>, echelle: Option<u32>, flags: u32) -> Result<Option<String>, String> {
     let mut dm = mode_actuel(id).ok_or("Écran introuvable")?;
-    dm.dmDisplayFrequency = hz;
-    dm.dmFields = DM_DISPLAYFREQUENCY;
-    let r = unsafe { ChangeDisplaySettingsExW(wide(id).as_ptr(), &dm, std::ptr::null_mut(), CDS_UPDATEREGISTRY, std::ptr::null()) };
-    if r == DISP_CHANGE_SUCCESSFUL {
-        Ok(())
+    let freqs = modes(id)
+        .into_iter()
+        .find(|m| m.largeur == largeur && m.hauteur == hauteur)
+        .ok_or_else(|| format!("{largeur} × {hauteur} n'est pas proposé par cet écran"))?
+        .frequences;
+    // Fréquence demandée si possible, sinon la plus haute de cette résolution
+    dm.dmDisplayFrequency = hz.filter(|h| freqs.contains(h)).or_else(|| freqs.iter().max().copied()).unwrap_or(dm.dmDisplayFrequency);
+    dm.dmPelsWidth = largeur;
+    dm.dmPelsHeight = hauteur;
+    dm.dmFields = DM_PELSWIDTH | DM_PELSHEIGHT | DM_DISPLAYFREQUENCY;
+    let changer = |dm: &DEVMODEW| unsafe { ChangeDisplaySettingsExW(wide(id).as_ptr(), dm, std::ptr::null_mut(), flags, std::ptr::null()) };
+    let mut avertissement = None;
+    let mut r = if let Some(e) = echelle {
+        let mut avec = dm;
+        avec.dmFields |= DM_DISPLAYFIXEDOUTPUT;
+        avec.Anonymous1.Anonymous2.dmDisplayFixedOutput = e; // écrire un champ d'union est sûr
+        changer(&avec)
     } else {
-        Err(format!("Windows a refusé {hz} Hz (code {r})"))
+        changer(&dm)
+    };
+    if r != DISP_CHANGE_SUCCESSFUL && echelle.is_some() {
+        // Certains pilotes (souvent NVIDIA) gèrent eux-mêmes la mise à l'échelle
+        r = changer(&dm);
+        avertissement = Some("Ton pilote refuse de régler la mise à l'échelle depuis Windows : choisis « Plein écran » (NVIDIA : Ajuster la taille et la position du bureau) ou « Plein panneau » (AMD) dans son panneau.".to_string());
     }
+    match r {
+        DISP_CHANGE_SUCCESSFUL => Ok(avertissement),
+        DISP_CHANGE_RESTART => Err("Windows demande un redémarrage pour ce mode".into()),
+        DISP_CHANGE_BADMODE => Err("Mode refusé par l'écran ou le pilote".into()),
+        code => Err(format!("Windows a refusé ce mode (code {code})")),
+    }
+}
+
+/// Remet le mode enregistré dans Windows (annule un changement temporaire).
+pub fn retablir_mode(id: &str) -> bool {
+    unsafe { ChangeDisplaySettingsExW(wide(id).as_ptr(), std::ptr::null(), std::ptr::null_mut(), 0, std::ptr::null()) == DISP_CHANGE_SUCCESSFUL }
+}
+
+/// Essai en cours (écran, numéro) : sans confirmation sous 15 s, l'ancien mode revient tout seul,
+/// même si l'interface ne s'affiche plus (écran noir, mode non géré).
+static ESSAI: Mutex<Option<(String, u64)>> = Mutex::new(None);
+static NUMERO: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+pub fn essayer_mode(id: &str, largeur: u32, hauteur: u32, hz: Option<u32>, echelle: Option<u32>) -> Result<Option<String>, String> {
+    let avertissement = appliquer_mode(id, largeur, hauteur, hz, echelle, 0)?;
+    let n = NUMERO.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+    *ESSAI.lock().unwrap() = Some((id.to_string(), n));
+    let id = id.to_string();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_secs(15));
+        let mut essai = ESSAI.lock().unwrap();
+        if essai.as_ref().is_some_and(|(i, k)| *i == id && *k == n) {
+            *essai = None;
+            drop(essai);
+            retablir_mode(&id);
+        }
+    });
+    Ok(avertissement)
+}
+
+/// Garde le mode essayé : il est enregistré et survit au redémarrage.
+pub fn confirmer_mode(id: &str) -> Result<(), String> {
+    let mut essai = ESSAI.lock().unwrap();
+    if !essai.as_ref().is_some_and(|(i, _)| i == id) {
+        return Err("Délai dépassé : l'ancienne résolution a été remise".into());
+    }
+    *essai = None;
+    drop(essai);
+    let dm = mode_actuel(id).ok_or("Écran introuvable")?;
+    let echelle = unsafe { dm.Anonymous1.Anonymous2.dmDisplayFixedOutput };
+    appliquer_mode(id, dm.dmPelsWidth, dm.dmPelsHeight, Some(dm.dmDisplayFrequency), Some(echelle), CDS_UPDATEREGISTRY).map(|_| ())
+}
+
+pub fn annuler_essai(id: &str) {
+    let mut essai = ESSAI.lock().unwrap();
+    if essai.as_ref().is_some_and(|(i, _)| i == id) {
+        *essai = None;
+        drop(essai);
+        retablir_mode(id);
+    }
+}
+
+fn ecran_principal() -> Option<String> {
+    (0..16).find_map(|i| {
+        let mut dd: DISPLAY_DEVICEW = unsafe { std::mem::zeroed() };
+        dd.cb = std::mem::size_of::<DISPLAY_DEVICEW>() as u32;
+        (unsafe { EnumDisplayDevicesW(std::ptr::null(), i, &mut dd, 0) } != 0 && dd.StateFlags & DISPLAY_DEVICE_PRIMARY_DEVICE != 0).then(|| texte(&dd.DeviceName))
+    })
+}
+
+/// Résolution d'un jeu sur l'écran principal, le temps de la partie (non enregistrée).
+pub fn mode_pour_jeu(largeur: u32, hauteur: u32, etirer: bool) -> Result<(String, Option<String>), String> {
+    let id = ecran_principal().ok_or("Écran principal introuvable")?;
+    let echelle = if etirer { DMDFO_STRETCH } else { DMDFO_CENTER };
+    appliquer_mode(&id, largeur, hauteur, None, Some(echelle), 0).map(|a| (id, a))
 }
 
 /// Rampes et vibrances d'origine, remises à la fin de la partie.

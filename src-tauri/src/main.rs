@@ -221,9 +221,20 @@ fn ecrans_liste() -> Vec<ecrans::Ecran> {
     ecrans::liste()
 }
 
+/// Essaie un mode d'affichage : sans confirmation sous 15 s, l'ancien revient tout seul.
 #[tauri::command(async)]
-fn ecran_frequence(id: String, hz: u32) -> Res<()> {
-    ecrans::changer_frequence(&id, hz)
+fn ecran_mode_essayer(id: String, largeur: u32, hauteur: u32, hz: Option<u32>, echelle: Option<u32>) -> Res<Option<String>> {
+    ecrans::essayer_mode(&id, largeur, hauteur, hz, echelle)
+}
+
+#[tauri::command(async)]
+fn ecran_mode_confirmer(id: String) -> Res<()> {
+    ecrans::confirmer_mode(&id)
+}
+
+#[tauri::command(async)]
+fn ecran_mode_annuler(id: String) {
+    ecrans::annuler_essai(&id)
 }
 
 #[tauri::command]
@@ -337,6 +348,7 @@ fn main() {
             // L'app a été coupée en pleine partie : on remet le plan d'alimentation d'avant
             jeux::restaurer_plan(&etat);
             jeux::restaurer_couleurs(&etat);
+            jeux::restaurer_resolution(&etat);
             app.manage(etat);
 
             fenetres::creer_icone(app.handle())?;
@@ -373,7 +385,9 @@ fn main() {
             maj_verifier,
             maj_installer,
             ecrans_liste,
-            ecran_frequence,
+            ecran_mode_essayer,
+            ecran_mode_confirmer,
+            ecran_mode_annuler,
             couleurs_get,
             couleurs_set,
             couleurs_essayer,
@@ -430,8 +444,12 @@ mod tests_windows {
 
     #[test]
     fn ecrans_et_reseau() {
-        // Le PC de GitHub a un écran virtuel : la liste ne doit pas planter, même vide
-        let _ = ecrans::liste();
+        // Le PC de GitHub a un écran virtuel : on réessaie son mode actuel, puis on annule
+        for e in ecrans::liste() {
+            assert!(!e.modes.is_empty(), "aucune résolution pour {}", e.id);
+            ecrans::essayer_mode(&e.id, e.largeur, e.hauteur, Some(e.hz), None).expect("essai du mode actuel");
+            ecrans::annuler_essai(&e.id);
+        }
         let ping = reseau::tester();
         assert!(!ping.is_empty());
         assert!(reseau::cartes().is_ok());

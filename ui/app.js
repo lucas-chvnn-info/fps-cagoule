@@ -51,7 +51,10 @@ document.querySelectorAll('nav button').forEach((b) =>
     if (b.dataset.page === 'ecrans') chargerEcrans();
     if (b.dataset.page === 'pilotes') chargerPilotes();
     if (b.dataset.page === 'fps') chargerSessions();
-    if (b.dataset.page === 'jeux') chargerChoixFermer();
+    if (b.dataset.page === 'jeux') {
+      chargerChoixFermer();
+      chargerModesJeu();
+    }
   })
 );
 
@@ -277,16 +280,27 @@ async function appliquerTweaks(ids, bouton) {
   await chargerTweaks();
 }
 
-function confirmer(titre, html, libelle = 'Confirmer') {
+function confirmer(titre, html, libelle = 'Confirmer', { delai = 0, non = 'Annuler' } = {}) {
   return new Promise((resoudre) => {
     $('#fenetre-titre').textContent = titre;
     $('#fenetre-texte').innerHTML = html;
     $('#fenetre-oui').textContent = libelle;
+    $('#fenetre-non').textContent = non;
     $('#fenetre').hidden = false;
-    const fin = (r) => {
+    let reste = delai;
+    const minuteur = delai
+      ? setInterval(() => {
+          reste--;
+          $('#fenetre-non').textContent = `${non} (${reste})`;
+          if (reste <= 0) fin(false);
+        }, 1000)
+      : null;
+    if (delai) $('#fenetre-non').textContent = `${non} (${reste})`;
+    function fin(r) {
+      clearInterval(minuteur);
       $('#fenetre').hidden = true;
       resoudre(r);
-    };
+    }
     $('#fenetre-oui').onclick = () => fin(true);
     $('#fenetre-non').onclick = () => fin(false);
   });
@@ -447,6 +461,42 @@ $('#demarrage-liste').addEventListener('change', async (e) => {
 
 /* ---------- Jeux ---------- */
 
+let modesPrincipal = [];
+
+async function chargerModesJeu() {
+  const ecrans = await appel('ecrans_liste').catch(() => []);
+  modesPrincipal = (ecrans.find((e) => e.principal) || ecrans[0])?.modes || [];
+  afficherProfils();
+}
+
+/** Liste des résolutions pour un jeu : même format que l'écran = agrandie, autre format = étirée ou bandes noires */
+function optionsResolution(p) {
+  const r = p.resolution;
+  const choisie = r ? `${r.largeur}x${r.hauteur}x${r.etirer ? 1 : 0}` : '';
+  const natif = modesPrincipal[0];
+  const formatNatif = natif ? formatEcran(natif.largeur, natif.hauteur) : '';
+  const valeurs = [];
+  const parFormat = {};
+  for (const m of modesPrincipal) (parFormat[formatEcran(m.largeur, m.hauteur)] ??= []).push(m);
+  let html = `<option value="">Celle du bureau</option>`;
+  for (const [format, modes] of Object.entries(parFormat)) {
+    html += `<optgroup label="${format}">`;
+    for (const m of modes) {
+      const base = `${m.largeur}x${m.hauteur}`;
+      const variantes = format === formatNatif ? [[1, '']] : [[1, ' étirée'], [0, ' bandes noires']];
+      for (const [e, nom] of variantes) {
+        const v = `${base}x${e}`;
+        valeurs.push(v);
+        html += `<option value="${v}" ${v === choisie ? 'selected' : ''}>${m.largeur} × ${m.hauteur}${nom}</option>`;
+      }
+    }
+    html += '</optgroup>';
+  }
+  // Résolution enregistrée mais absente de la liste (liste pas encore chargée, autre écran)
+  if (choisie && !valeurs.includes(choisie)) html += `<option value="${choisie}" selected>${r.largeur} × ${r.hauteur}${r.etirer ? ' étirée' : ''}</option>`;
+  return html;
+}
+
 function afficherProfils() {
   const caseP = (i, champ, titre) => `<td><input type="checkbox" data-i="${i}" data-champ="${champ}" ${profils[i][champ] ? 'checked' : ''} aria-label="${titre}"></td>`;
   $('#profils tbody').innerHTML = profils
@@ -454,6 +504,7 @@ function afficherProfils() {
       (p, i) => `<tr>
         <td>${esc(p.nom)}<small>${esc(p.exes.join(', '))}</small></td>
         ${caseP(i, 'actif', 'Détection')}${caseP(i, 'boost', 'Boost')}${caseP(i, 'priorite_haute', 'Priorité haute')}${caseP(i, 'gpu_perf', 'GPU puissant')}
+        <td><select data-i="${i}" data-resolution aria-label="Résolution pendant ${esc(p.nom)}">${optionsResolution(p)}</select></td>
         <td><button class="petit discret-btn" data-suppr="${i}" title="Retirer">✕</button></td>
       </tr>`
     )
@@ -471,6 +522,11 @@ $('#profils').addEventListener('change', (e) => {
     profils[c.dataset.i][c.dataset.champ] = c.checked;
     sauverProfils();
   }
+  if (c.dataset.resolution !== undefined) {
+    const [largeur, hauteur, etirer] = c.value.split('x').map(Number);
+    profils[c.dataset.i].resolution = c.value ? { largeur, hauteur, etirer: etirer === 1 } : null;
+    sauverProfils();
+  }
 });
 $('#profils').addEventListener('click', (e) => {
   const i = e.target.closest('button')?.dataset.suppr;
@@ -483,7 +539,7 @@ $('#ajout-jeu').addEventListener('submit', (e) => {
   e.preventDefault();
   let exe = $('#ajout-exe').value.trim();
   if (!exe.toLowerCase().endsWith('.exe')) exe += '.exe';
-  profils.push({ nom: $('#ajout-nom').value.trim(), exes: [exe], actif: true, boost: true, priorite_haute: true, gpu_perf: true });
+  profils.push({ nom: $('#ajout-nom').value.trim(), exes: [exe], actif: true, boost: true, priorite_haute: true, gpu_perf: true, resolution: null });
   e.target.reset();
   sauverProfils();
 });
@@ -639,6 +695,49 @@ $('#btn-ping').addEventListener('click', async (e) => {
 /* ---------- Écrans ---------- */
 
 let couleurs = {};
+let ecransListe = [];
+const FORMATS = [['32:9', 32 / 9], ['21:9', 21 / 9], ['16:9', 16 / 9], ['16:10', 1.6], ['3:2', 1.5], ['4:3', 4 / 3], ['5:4', 1.25]];
+const pgcd = (a, b) => (b ? pgcd(b, a % b) : a);
+/** Format d'une résolution : 16:9, 4:3… (les 21:9 « réels » vont de 2,33 à 2,39) */
+function formatEcran(l, h) {
+  const r = l / h;
+  const f = FORMATS.find(([, v]) => Math.abs(r - v) / v < 0.035);
+  if (f) return f[0];
+  const g = pgcd(l, h);
+  return `${l / g}:${h / g}`;
+}
+const ECHELLES = [
+  [0, 'Par défaut'],
+  [1, 'Étirée (plein écran)'],
+  [2, 'Bandes noires'],
+];
+
+/** Remplit les listes résolution / fréquence d'une carte d'écran pour le format choisi */
+function remplirAffichage(carte, choix) {
+  const e = ecransListe.find((x) => x.id === carte.dataset.id);
+  const format = carte.dataset.format;
+  const natif = e.modes[0];
+  const modes = e.modes.filter((m) => !format || formatEcran(m.largeur, m.hauteur) === format);
+  const actuel = choix || `${e.largeur}x${e.hauteur}`;
+  const selRes = carte.querySelector('[data-res]');
+  selRes.innerHTML = modes
+    .map((m) => {
+      const v = `${m.largeur}x${m.hauteur}`;
+      return `<option value="${v}" ${v === actuel ? 'selected' : ''}>${m.largeur} × ${m.hauteur}${m === natif ? ' (native)' : ''}</option>`;
+    })
+    .join('');
+  remplirFrequences(carte);
+  carte.querySelectorAll('[data-format]').forEach((b) => b.classList.toggle('actif', b.dataset.format === format));
+}
+
+function remplirFrequences(carte) {
+  const e = ecransListe.find((x) => x.id === carte.dataset.id);
+  const [l, h] = carte.querySelector('[data-res]').value.split('x').map(Number);
+  const m = e.modes.find((x) => x.largeur === l && x.hauteur === h);
+  const freqs = m ? m.frequences : [e.hz];
+  const voulue = l === e.largeur && h === e.hauteur ? e.hz : Math.max(...freqs);
+  carte.querySelector('[data-freq]').innerHTML = freqs.map((f) => `<option ${f === voulue ? 'selected' : ''}>${f}</option>`).join('');
+}
 const NEUTRE = { luminosite: 0, contraste: 1, gamma: 1, vibrance: null };
 const CURSEURS = [
   { champ: 'luminosite', titre: 'Luminosité', min: -0.3, max: 0.3, pas: 0.01, aff: (v) => `${v > 0 ? '+' : ''}${Math.round(v * 100)}` },
@@ -649,6 +748,7 @@ const CURSEURS = [
 async function chargerEcrans() {
   const [ecrans, c] = await Promise.all([appel('ecrans_liste'), appel('couleurs_get')]);
   couleurs = c;
+  ecransListe = ecrans;
   $('#ecrans').innerHTML = ecrans.length
     ? ecrans
         .map((e) => {
@@ -664,11 +764,17 @@ async function chargerEcrans() {
               : '<p class="discret">Vibrance : disponible seulement sur les écrans branchés à une carte NVIDIA.</p>';
           return `<div class="carte ecran" data-id="${esc(e.id)}">
             <div class="entete"><h2>${esc(e.nom)}</h2>${e.principal ? '<span class="badge">Principal</span>' : ''}${e.hdr_actif ? '<span class="badge bleu">HDR actif</span>' : e.hdr_supporte ? '<span class="badge">HDR possible</span>' : ''}</div>
-            ${ligne('Résolution', `${e.largeur} × ${e.hauteur}`)}
-            <div class="ligne-info"><span>Fréquence</span><span>
-              <select data-hz>${e.frequences.map((f) => `<option ${f === e.hz ? 'selected' : ''}>${f}</option>`).join('')}</select> Hz
-              ${e.hz < max ? `<span class="alerte"> (max ${max} Hz)</span>` : ''}
-            </span></div>
+            <p class="discret">Actuellement ${e.largeur} × ${e.hauteur} (${formatEcran(e.largeur, e.hauteur)}) à ${e.hz} Hz${e.hz < max ? ` · <span class="alerte">ton écran monte à ${max} Hz</span>` : ''}</p>
+            <div class="formats">
+              <button class="petit" data-format="">Tous</button>
+              ${[...new Set(e.modes.map((m) => formatEcran(m.largeur, m.hauteur)))].map((f) => `<button class="petit" data-format="${f}">${f}</button>`).join('')}
+            </div>
+            <div class="reglages-affichage">
+              <label>Résolution<select data-res></select></label>
+              <label>Fréquence<select data-freq></select></label>
+              <label>Mise à l'échelle<select data-echelle>${ECHELLES.map(([v, n]) => `<option value="${v}" ${v === e.mise_echelle ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+              <button class="principal" data-action="mode">Appliquer</button>
+            </div>
             <h2 style="margin-top:14px">Couleurs en jeu</h2>
             ${curseurs}${vibrance}
             <div class="boutons">
@@ -681,6 +787,39 @@ async function chargerEcrans() {
         })
         .join('')
     : '<p class="discret">Aucun écran trouvé.</p>';
+  document.querySelectorAll('#ecrans .ecran').forEach((carte) => {
+    const e = ecransListe.find((x) => x.id === carte.dataset.id);
+    carte.dataset.format = formatEcran(e.largeur, e.hauteur);
+    remplirAffichage(carte);
+  });
+}
+
+/** Essaie le mode choisi ; sans « Garder » sous 15 s, l'ancien revient (côté app ET côté interface) */
+async function essayerAffichage(carte, bouton) {
+  const e = ecransListe.find((x) => x.id === carte.dataset.id);
+  const [largeur, hauteur] = carte.querySelector('[data-res]').value.split('x').map(Number);
+  const hz = Number(carte.querySelector('[data-freq]').value);
+  const echelle = Number(carte.querySelector('[data-echelle]').value);
+  const params = { id: e.id, largeur, hauteur, hz, echelle: echelle === 0 && e.mise_echelle === 0 ? null : echelle };
+  let avertissement;
+  try {
+    avertissement = await appel('ecran_mode_essayer', params, bouton);
+  } catch {
+    return;
+  }
+  const garder = await confirmer(
+    'Garder cet affichage ?',
+    `<p>${largeur} × ${hauteur} (${formatEcran(largeur, hauteur)}) à ${hz} Hz.</p>${avertissement ? `<p class="alerte">${esc(avertissement)}</p>` : ''}<p>Sans réponse, l'ancien affichage revient tout seul.</p>`,
+    'Garder',
+    { delai: 14, non: 'Revenir' }
+  );
+  if (garder) {
+    await appel('ecran_mode_confirmer', { id: e.id }).then(() => toast('Affichage enregistré.')).catch(() => {});
+  } else {
+    await invoke('ecran_mode_annuler', { id: e.id });
+    toast('Ancien affichage remis.');
+  }
+  chargerEcrans();
 }
 
 function lireCarteEcran(carte) {
@@ -696,12 +835,8 @@ $('#ecrans').addEventListener('input', (e) => {
   i.nextElementSibling.textContent = k ? k.aff(Number(i.value)) : `${i.value} %`;
 });
 
-$('#ecrans').addEventListener('change', async (e) => {
-  if (!e.target.matches('[data-hz]')) return;
-  const carte = e.target.closest('.ecran');
-  const hz = Number(e.target.value);
-  await appel('ecran_frequence', { id: carte.dataset.id, hz }).then(() => toast(`Écran réglé à ${hz} Hz.`)).catch(() => {});
-  chargerEcrans();
+$('#ecrans').addEventListener('change', (e) => {
+  if (e.target.matches('[data-res]')) remplirFrequences(e.target.closest('.ecran'));
 });
 
 $('#ecrans').addEventListener('click', async (e) => {
@@ -709,6 +844,11 @@ $('#ecrans').addEventListener('click', async (e) => {
   const carte = b?.closest('.ecran');
   if (!carte) return;
   const id = carte.dataset.id;
+  if (b.dataset.format !== undefined) {
+    carte.dataset.format = b.dataset.format;
+    return remplirAffichage(carte);
+  }
+  if (b.dataset.action === 'mode') return essayerAffichage(carte, b);
   const r = lireCarteEcran(carte);
   if (b.dataset.action === 'enregistrer') {
     couleurs[id] = r;

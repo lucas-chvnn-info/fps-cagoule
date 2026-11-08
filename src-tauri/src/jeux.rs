@@ -195,6 +195,24 @@ fn demarrer(app: &AppHandle, etat: &Etat, profil: &crate::config::Profil, pid: u
         actions,
         capture,
     });
+    // Résolution propre au jeu (ex. 4:3 étiré), appliquée même sans boost
+    if let Some(r) = &profil.resolution {
+        let message = match crate::ecrans::mode_pour_jeu(r.largeur, r.hauteur, r.etirer) {
+            Ok((id, avertissement)) => {
+                etat.stock.donnees.lock().unwrap().ecran_jeu = Some(id);
+                etat.stock.sauver();
+                let base = format!("Résolution {} × {}{}", r.largeur, r.hauteur, if r.etirer { " étirée" } else { "" });
+                match avertissement {
+                    Some(a) => format!("{base} ({a})"),
+                    None => base,
+                }
+            }
+            Err(e) => format!("Résolution : {e}"),
+        };
+        if let Some(s) = etat.session.lock().unwrap().as_mut() {
+            s.actions.push(message);
+        }
+    }
     if reglages.couleurs_en_jeu {
         let couleurs = etat.stock.donnees.lock().unwrap().couleurs.clone();
         if !couleurs.is_empty() {
@@ -218,6 +236,7 @@ pub fn terminer(app: &AppHandle, etat: &Etat) {
     let Some(s) = etat.session.lock().unwrap().take() else { return };
     restaurer_plan(etat);
     restaurer_couleurs(etat);
+    restaurer_resolution(etat);
     systeme::minuteur_precis(false);
     *etat.fps_live.lock().unwrap() = None;
     crate::fenetres::fermer_overlay(app);
@@ -263,6 +282,14 @@ pub fn restaurer_couleurs(etat: &Etat) {
     if !avant.is_empty() {
         // Cas d'une app coupée en pleine partie : la rampe gamma est déjà revenue, pas la vibrance
         crate::ecrans::restaurer_vibrances(&avant);
+        etat.stock.sauver();
+    }
+}
+
+pub fn restaurer_resolution(etat: &Etat) {
+    let ecran = etat.stock.donnees.lock().unwrap().ecran_jeu.take();
+    if let Some(id) = ecran {
+        crate::ecrans::retablir_mode(&id);
         etat.stock.sauver();
     }
 }

@@ -39,11 +39,20 @@ pub struct Profil {
     pub boost: bool,
     pub priorite_haute: bool,
     pub gpu_perf: bool,
+    /// Résolution de l'écran principal pendant ce jeu (ex. 4:3 étiré), None = celle du bureau
+    pub resolution: Option<ResolutionJeu>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct ResolutionJeu {
+    pub largeur: u32,
+    pub hauteur: u32,
+    pub etirer: bool,
 }
 
 impl Default for Profil {
     fn default() -> Self {
-        Self { nom: String::new(), exes: vec![], actif: true, boost: true, priorite_haute: true, gpu_perf: true }
+        Self { nom: String::new(), exes: vec![], actif: true, boost: true, priorite_haute: true, gpu_perf: true, resolution: None }
     }
 }
 
@@ -90,6 +99,8 @@ pub struct Donnees {
     pub couleurs: HashMap<String, Couleurs>,
     /// Vibrance NVIDIA d'avant la partie, remise au prochain lancement si l'app a été coupée en pleine partie
     pub vibrance_avant: HashMap<String, i32>,
+    /// Écran dont la résolution a été changée pour un jeu (remise au prochain lancement si l'app a été coupée)
+    pub ecran_jeu: Option<String>,
 }
 
 impl Default for Donnees {
@@ -105,6 +116,7 @@ impl Default for Donnees {
             redemarrage: HashMap::new(),
             couleurs: HashMap::new(),
             vibrance_avant: HashMap::new(),
+            ecran_jeu: None,
         }
     }
 }

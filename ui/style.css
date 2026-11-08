@@ -304,6 +304,15 @@ h2.danger { color: var(--rouge); }
 .liste-programmes .info { flex: 1; min-width: 0; }
 .liste-programmes small { display: block; color: var(--discret); }
 
+/* Affichage (résolution, format, mise à l'échelle) */
+.formats { display: flex; gap: 6px; flex-wrap: wrap; margin: 4px 0 10px; }
+.formats button.actif { background: var(--accent-fond); border-color: var(--accent); color: var(--accent-clair); }
+.reglages-affichage { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: end; }
+.reglages-affichage label { display: flex; flex-direction: column; gap: 4px; color: var(--discret); font-size: 12px; }
+.reglages-affichage select { width: 100%; }
+.reglages-affichage button { grid-column: 1 / -1; justify-self: start; }
+#profils select { padding: 4px 8px; font-size: 13px; max-width: 200px; }
+
 /* Notification */
 #toast {
   position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
