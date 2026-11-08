@@ -284,6 +284,7 @@ h2.section { margin: 10px 0 -6px; font-size: 13px; text-transform: uppercase; le
 .entete-categorie { display: flex; align-items: baseline; gap: 12px; margin-top: 8px; }
 .entete-categorie h2 { margin: 0; font-size: 17px; }
 .entete-categorie .compte { color: var(--discret); font-size: 13px; }
+.entete-categorie button { margin-left: auto; }
 h2.danger { color: var(--rouge); }
 
 /* Nettoyage */

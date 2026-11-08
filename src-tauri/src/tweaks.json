@@ -828,6 +828,38 @@
     "index": 1
   },
   {
+    "id": "nvidia-textures",
+    "categorie": "carte-graphique",
+    "niveau": "max",
+    "titre": "NVIDIA : filtrage des textures en hautes performances",
+    "description": "Qualité de filtrage « Hautes performances » et optimisation de l'échantillon anisotrope : 1 à 3 % de FPS en plus, textures à peine moins fines de loin. C'est le réglage des pros sur les jeux de tir.",
+    "gain": "faible",
+    "redemarrage": false,
+    "special": "nvidia",
+    "reglages_nvidia": [
+      [
+        13510289,
+        20
+      ],
+      [
+        15151633,
+        1
+      ]
+    ]
+  },
+  {
+    "id": "nvidia-vsync",
+    "categorie": "carte-graphique",
+    "niveau": "choix",
+    "titre": "NVIDIA : forcer la synchronisation verticale désactivée",
+    "description": "La V-Sync est coupée dans tous les jeux, même si le jeu l'active : moins de latence, mais l'image peut se déchirer. Avec un écran G-Sync ou FreeSync, le mieux reste la V-Sync activée dans le panneau NVIDIA et les FPS limités à 3 sous la fréquence de l'écran : n'active pas ce réglage dans ce cas.",
+    "gain": "moyen",
+    "redemarrage": false,
+    "special": "nvidia",
+    "id_nvidia": 11041231,
+    "index": 138504007
+  },
+  {
     "id": "mpo",
     "categorie": "carte-graphique",
     "niveau": "max",

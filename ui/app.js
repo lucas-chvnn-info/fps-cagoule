@@ -167,7 +167,7 @@ function ligneTweak(t) {
   const redemarrage = t.redemarrage && !t.actif && !t.attente ? '<span class="badge">Redémarrage nécessaire</span>' : '';
   return `<li class="tweak">
       <div>
-        <div class="titre">${esc(t.titre)} ${gainBadge[t.gain] || ''} ${t.niveau === 'max' ? '<span class="badge violet">Boost max</span>' : ''}${t.niveau === 'risque' ? '<span class="badge rouge">Risqué</span>' : ''} ${redemarrage}</div>
+        <div class="titre">${esc(t.titre)} ${gainBadge[t.gain] || ''} ${t.niveau === 'max' ? '<span class="badge violet">Boost max</span>' : ''}${t.niveau === 'risque' ? '<span class="badge rouge">Risqué</span>' : ''}${t.niveau === 'choix' ? '<span class="badge">À choisir</span>' : ''} ${redemarrage}</div>
         <p>${esc(t.description)}</p>
       </div>
       <div class="droite">${droite}</div>
@@ -235,6 +235,7 @@ async function chargerTweaks() {
   const actifs = dispo.filter((t) => t.actif).length;
   $('#resume-tweaks').textContent = `${actifs} optimisation${actifs > 1 ? 's' : ''} active${actifs > 1 ? 's' : ''} sur ${dispo.length} disponibles sur ton PC.`;
   $('#btn-tout-annuler').disabled = !tweaks.some((t) => t.annulable);
+  $('#btn-nvidia-reglages').hidden = !tweaks.some((t) => t.special === 'nvidia' && t.disponible);
   const enAttente = tweaks.filter((t) => t.attente).length;
   $('#banniere-redemarrage').hidden = !enAttente;
   $('#banniere-texte').textContent = `${enAttente} optimisation${enAttente > 1 ? 's attendent' : ' attend'} un redémarrage de ton PC pour prendre effet.`;
@@ -312,7 +313,7 @@ function confirmer(titre, html, libelle = 'Confirmer', { delai = 0, non = 'Annul
 async function optimiserTout(max, bouton) {
   if (!tweaks.length) tweaks = await appel('tweaks_liste');
   // Les réglages risqués ne partent jamais en lot
-  const a = tweaks.filter((t) => t.disponible && !t.actif && (max ? t.niveau !== 'risque' : t.niveau === 'recommande'));
+  const a = tweaks.filter((t) => t.disponible && !t.actif && (max ? !['risque', 'choix'].includes(t.niveau) : t.niveau === 'recommande'));
   if (!a.length) return toast('Tout est déjà optimisé.');
   const reseau = a.some((t) => t.special === 'adaptateur');
   const redemarrage = a.some((t) => t.redemarrage);
@@ -329,6 +330,16 @@ async function optimiserTout(max, bouton) {
 }
 
 $('#btn-recommande').addEventListener('click', (e) => optimiserTout(false, e.target));
+$('#btn-nvidia-reglages').addEventListener('click', async (e) => {
+  const a = tweaks.filter((t) => t.special === 'nvidia' && t.disponible && !t.actif && t.niveau !== 'choix');
+  if (!a.length) return toast('Les réglages NVIDIA sont déjà appliqués.');
+  const ok = await confirmer(
+    'Réglages NVIDIA',
+    `<ul>${a.map((t) => `<li>${esc(t.titre.replace(/^NVIDIA : /, ''))}</li>`).join('')}</ul><p>Appliqués aux paramètres globaux du panneau NVIDIA. Les jeux qui ont leur propre réglage dans le panneau le gardent. La V-Sync reste à choisir selon ton écran.</p>`,
+    'Appliquer'
+  );
+  if (ok) appliquerTweaks(a.map((t) => t.id), e.target);
+});
 $('#btn-max').addEventListener('click', (e) => optimiserTout(true, e.target));
 $('#btn-tout-annuler').addEventListener('click', async (e) => {
   const a = tweaks.filter((t) => t.annulable);

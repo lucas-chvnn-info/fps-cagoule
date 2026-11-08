@@ -54,8 +54,12 @@ pub struct Tweak {
     /// Réglage du pilote NVIDIA (special = nvidia), valeur voulue dans `index`
     #[serde(default)]
     pub id_nvidia: u32,
+    /// Plusieurs réglages NVIDIA d'un coup : [numéro, valeur voulue]
+    #[serde(default)]
+    pub reglages_nvidia: Vec<(u32, u32)>,
     /// recommande : sans contrepartie notable ; max : plus agressif (consommation, confort), inclus dans « Boost maximum » ;
     /// risque : baisse la sécurité ou touche au démarrage, jamais appliqué en lot
+    /// choix : dépend du matériel (ex. écran G-Sync), jamais appliqué en lot non plus
     #[serde(default = "niveau_recommande")]
     pub niveau: String,
 }
@@ -286,6 +290,11 @@ fn ecrire_bcd(cle: &str, valeur: Option<&str>) -> Result<(), String> {
     }
 }
 
+/// Réglages NVIDIA d'une optimisation : la liste, ou le réglage unique (id_nvidia, index).
+fn reglages_nvidia(t: &Tweak) -> Vec<(u32, u32)> {
+    if t.reglages_nvidia.is_empty() { vec![(t.id_nvidia, t.index)] } else { t.reglages_nvidia.clone() }
+}
+
 /* ---------- Veille prolongée (fichier hiberfil.sys) ---------- */
 
 fn veille_prolongee_active() -> bool {
@@ -377,10 +386,13 @@ pub fn liste(stock: &Stockage) -> Vec<TweakEtat> {
                     (actif, actif || systeme::veille_moderne())
                 }
                 Some("bcd") => (lire_bcd(&t.parametre).is_some_and(|v| v.eq_ignore_ascii_case(&t.cible)), true),
-                Some("nvidia") => match crate::nvidia::lire(t.id_nvidia) {
-                    Ok(v) => (v == Some(t.index), true),
-                    Err(_) => (false, false),
-                },
+                Some("nvidia") => {
+                    let lus: Result<Vec<bool>, String> = reglages_nvidia(t).iter().map(|(id, v)| crate::nvidia::lire(*id).map(|l| l == Some(*v))).collect();
+                    match lus {
+                        Ok(l) => (l.iter().all(|b| *b), true),
+                        Err(_) => (false, false),
+                    }
+                }
                 Some("veille-prolongee") => (!veille_prolongee_active(), true),
                 Some("defender") => match lire_defender() {
                     Ok(d) => (!d.dossiers.is_empty() && d.dossiers.len() == d.exclus.len(), !d.dossiers.is_empty()),
@@ -428,12 +440,16 @@ fn appliquer_un(stock: &Stockage, t: &Tweak) -> Result<(), String> {
             Ok(())
         }
         Some("nvidia") => {
-            let avant = crate::nvidia::lire(t.id_nvidia)?;
+            // Sauvegarde : { "numéro": valeur ou null (= réglage par défaut) }
+            let mut avant = serde_json::Map::new();
+            for (id, _) in reglages_nvidia(t) {
+                avant.insert(id.to_string(), crate::nvidia::lire(id)?.map_or(Value::Null, |v| json!(v)));
+            }
             if !deja {
-                d.sauvegardes.insert(t.id.clone(), avant.map_or(Value::Null, |v| json!(v)));
+                d.sauvegardes.insert(t.id.clone(), Value::Object(avant));
             }
             drop(d);
-            crate::nvidia::ecrire(t.id_nvidia, Some(t.index))
+            reglages_nvidia(t).into_iter().try_for_each(|(id, v)| crate::nvidia::ecrire(id, Some(v)))
         }
         Some("veille-prolongee") => {
             if !deja {
@@ -525,7 +541,17 @@ fn annuler_un(stock: &Stockage, t: &Tweak) -> Result<(), String> {
         }
         Some("nvidia") => {
             drop(d);
-            crate::nvidia::ecrire(t.id_nvidia, origine.as_u64().map(|v| v as u32))?;
+            match &origine {
+                Value::Object(m) => {
+                    for (id, v) in m {
+                        if let Ok(id) = id.parse::<u32>() {
+                            crate::nvidia::ecrire(id, v.as_u64().map(|v| v as u32))?;
+                        }
+                    }
+                }
+                // Version 0.10 : un seul réglage, valeur ou null
+                autre => crate::nvidia::ecrire(t.id_nvidia, autre.as_u64().map(|v| v as u32))?,
+            }
             d = stock.donnees.lock().unwrap();
         }
         Some("veille-prolongee") => {
