@@ -103,6 +103,8 @@ pub struct Donnees {
     pub ecran_jeu: Option<String>,
     /// Priorités hautes au lancement créées par l'app (Image File Execution Options)
     pub priorites: Vec<PrioriteCree>,
+    /// Copies d'origine des fichiers de réglages des jeux : id du jeu → [(fichier, copie)]
+    pub configs_jeux: HashMap<String, Vec<(String, String)>>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -127,6 +129,7 @@ impl Default for Donnees {
             vibrance_avant: HashMap::new(),
             ecran_jeu: None,
             priorites: Vec::new(),
+            configs_jeux: HashMap::new(),
         }
     }
 }
@@ -175,6 +178,10 @@ impl Stockage {
         let _ = fs::create_dir_all(&dossier);
         let donnees = lire_json(&dossier.join("config.json"));
         Self { dossier, donnees: Mutex::new(donnees) }
+    }
+
+    pub fn dossier(&self) -> &Path {
+        &self.dossier
     }
 
     pub fn sauver(&self) {

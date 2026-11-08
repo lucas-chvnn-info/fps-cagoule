@@ -317,6 +317,16 @@ h2.danger { color: var(--rouge); }
 .reglages-affichage button { grid-column: 1 / -1; justify-self: start; }
 #profils select { padding: 4px 8px; font-size: 13px; max-width: 200px; }
 
+/* Réglages dans les jeux */
+.liste-jeux-configs { list-style: none; margin: 0; padding: 0; }
+.liste-jeux-configs > li { padding: 12px 0; border-top: 1px solid var(--bordure); }
+.liste-jeux-configs > li:first-child { border-top: 0; }
+.jeu-config-entete { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.jeu-config-entete strong { margin-right: auto; }
+.liste-jeux-configs details { margin-top: 6px; color: var(--discret); font-size: 13px; }
+.liste-jeux-configs details ul { margin: 6px 0; padding-left: 18px; }
+.liste-jeux-configs .note { font-size: 12px; color: var(--discret); margin: 6px 0 0; }
+
 /* Notification */
 #toast {
   position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);

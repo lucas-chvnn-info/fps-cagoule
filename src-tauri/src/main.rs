@@ -3,10 +3,12 @@
 
 mod config;
 mod demarrage;
+mod edition;
 mod ecrans;
 mod fenetres;
 mod fps;
 mod jeux;
+mod jeux_config;
 mod nettoyage;
 mod nvidia;
 mod pilotes;
@@ -100,6 +102,21 @@ fn applis_windows() -> Res<Vec<programmes::AppliWindows>> {
 #[tauri::command(async)]
 fn applis_windows_supprimer(paquets: Vec<String>) -> Res<serde_json::Value> {
     programmes::supprimer_applis(&paquets)
+}
+
+#[tauri::command(async)]
+fn jeux_configs(app: AppHandle) -> Vec<jeux_config::EtatJeu> {
+    jeux_config::liste(&etat(&app).stock)
+}
+
+#[tauri::command(async)]
+fn jeux_config_appliquer(app: AppHandle, id: String) -> Res<usize> {
+    jeux_config::appliquer(&etat(&app).stock, &id)
+}
+
+#[tauri::command(async)]
+fn jeux_config_restaurer(app: AppHandle, id: String) -> Res<()> {
+    jeux_config::restaurer(&etat(&app).stock, &id)
 }
 
 #[tauri::command(async)]
@@ -388,6 +405,9 @@ fn main() {
             nettoyage_nettoyer,
             programmes_liste,
             optimiser_disques,
+            jeux_configs,
+            jeux_config_appliquer,
+            jeux_config_restaurer,
             applis_windows,
             applis_windows_supprimer,
             programme_desinstaller,
@@ -530,6 +550,31 @@ mod tests_windows {
         assert!(stock.donnees.lock().unwrap().priorites.is_empty());
         // Pas de carte NVIDIA sur le PC de GitHub : erreur propre, sans plantage
         assert!(nvidia::lire(0x007B_A09E).is_err());
+    }
+
+    #[test]
+    fn reglages_dans_les_jeux() {
+        use edition::{Changement, Format};
+        // Fichier UTF-16 en lecture seule, comme certains joueurs les laissent
+        let f = std::env::temp_dir().join("fps-cagoule-test-GameUserSettings.ini");
+        if let Ok(m) = std::fs::metadata(&f) {
+            let mut p = m.permissions();
+            p.set_readonly(false);
+            let _ = std::fs::set_permissions(&f, p);
+            let _ = std::fs::remove_file(&f);
+        }
+        std::fs::write(&f, edition::encoder("[ScalabilityGroups]\r\nsg.ShadowQuality=3\r\n", edition::Encodage::Utf16)).unwrap();
+        let mut p = std::fs::metadata(&f).unwrap().permissions();
+        p.set_readonly(true);
+        std::fs::set_permissions(&f, p).unwrap();
+        let ch = [Changement { section: Some("ScalabilityGroups"), cle: "sg.ShadowQuality", valeur: "0" }];
+        assert_eq!(jeux_config::optimiser_fichier(&f, Format::Ini, &ch).unwrap(), 1);
+        let (texte, enc) = edition::decoder(&std::fs::read(&f).unwrap());
+        assert_eq!((texte.as_str(), enc), ("[ScalabilityGroups]\r\nsg.ShadowQuality=0\r\n", edition::Encodage::Utf16));
+        assert!(std::fs::metadata(&f).unwrap().permissions().readonly());
+        // Aucun jeu installé sur le PC de GitHub : la liste se fait sans erreur
+        let stock = Stockage::ouvrir(std::env::temp_dir().join("fps-cagoule-test-jeux"));
+        assert_eq!(jeux_config::liste(&stock).len(), 8);
     }
 
     #[test]

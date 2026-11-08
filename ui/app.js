@@ -55,6 +55,7 @@ document.querySelectorAll('nav button').forEach((b) =>
     if (b.dataset.page === 'jeux') {
       chargerChoixFermer();
       chargerModesJeu();
+      chargerConfigsJeux();
     }
   })
 );
@@ -530,6 +531,50 @@ $('#demarrage-liste').addEventListener('change', async (e) => {
 });
 
 /* ---------- Jeux ---------- */
+
+/* ---------- Réglages dans les jeux ---------- */
+
+async function chargerConfigsJeux() {
+  const jeux = await appel('jeux_configs').catch(() => []);
+  const installes = jeux.filter((j) => j.fichiers);
+  const absents = jeux.filter((j) => !j.fichiers);
+  $('#jeux-configs').innerHTML =
+    installes
+      .map((j) => {
+        const a_changer = j.reglages.filter((r) => r.actuel.toLowerCase() !== r.cible.toLowerCase());
+        let etat;
+        if (j.en_cours) etat = '<span class="badge orange">Jeu lancé : ferme-le d\'abord</span>';
+        else if (j.optimise) etat = '<span class="badge accent">Optimisé</span>';
+        else etat = `<span class="badge">${a_changer.length} réglage${a_changer.length > 1 ? 's' : ''} à changer</span>`;
+        const boutons = [
+          !j.optimise && !j.en_cours && j.reglages.length ? `<button class="petit principal" data-optimiser="${j.id}">Optimiser</button>` : '',
+          j.sauvegarde && !j.en_cours ? `<button class="petit" data-restaurer="${j.id}">Restaurer</button>` : '',
+        ].join('');
+        const detail = j.reglages.length
+          ? `<details><summary>Ce qui change</summary><ul>${j.reglages
+              .map((r) => `<li>${esc(r.libelle)}${r.actuel.toLowerCase() === r.cible.toLowerCase() ? ' ✓' : ` <span class="discret">(${esc(r.actuel)} → ${esc(r.cible)})</span>`}</li>`)
+              .join('')}</ul></details>`
+          : '<p class="note">Aucun réglage connu dans ce fichier (version du jeu différente).</p>';
+        return `<li><div class="jeu-config-entete"><strong>${esc(j.nom)}</strong>${etat}${boutons}</div>${detail}<p class="note">${esc(j.note)}${j.fichiers > 1 ? ` (${j.fichiers} comptes)` : ''}</p></li>`;
+      })
+      .join('') +
+    (absents.length ? `<li class="discret">Pas trouvés sur ce PC (ou jamais lancés) : ${absents.map((j) => esc(j.nom)).join(', ')}.</li>` : '');
+}
+
+$('#jeux-configs').addEventListener('click', async (e) => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  try {
+    if (b.dataset.optimiser) {
+      const n = await appel('jeux_config_appliquer', { id: b.dataset.optimiser }, b);
+      toast(n ? `${n} réglage${n > 1 ? 's' : ''} changé${n > 1 ? 's' : ''}. Lance le jeu pour en profiter.` : 'Déjà optimisé.');
+    } else if (b.dataset.restaurer) {
+      await appel('jeux_config_restaurer', { id: b.dataset.restaurer }, b);
+      toast('Réglages du jeu remis comme avant.');
+    }
+  } catch {}
+  chargerConfigsJeux();
+});
 
 let modesPrincipal = [];
 

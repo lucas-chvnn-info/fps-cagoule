@@ -10,6 +10,7 @@ Analyse, optimisation et boost par jeu pour Windows 11. Gratuit, pour moi et mes
 - **Écrans** : résolution par format (16:9, 16:10, 4:3, 5:4, 21:9…), fréquence, mise à l'échelle (étirée ou bandes noires) avec retour automatique après 15 s sans confirmation, HDR, couleurs en jeu (luminosité, contraste, gamma, vibrance NVIDIA). Résolution par jeu (ex. 4:3 étiré) appliquée le temps de la partie.
 - **Nettoyage** (façon CCleaner) : fichiers temporaires, corbeille, caches des navigateurs, de Discord et de Steam, rapports d'erreurs, anciens téléchargements de Windows Update, journaux, caches de shaders (au choix), optimisation des disques (TRIM), suppression des applis préinstallées de Windows (Candy Crush, TikTok, Clipchamp…) et désinstallation des programmes. Pas de nettoyage du registre.
 - **Pilotes** : tous les périphériques du PC avec leur pilote et leur état, mises à jour Windows Update associées à chaque appareil, recherche web par identifiant matériel, dernier pilote NVIDIA téléchargé directement (sans NVIDIA App).
+- **Réglages dans les jeux** : Fortnite, Valorant, Rainbow Six Siege, CS2, Apex Legends, Rocket League, Marvel Rivals et The Finals. Seules les clés déjà présentes dans leurs fichiers sont changées (V-Sync, flou, ombres lourdes, effets), distance d'affichage et textures gardées, copie d'origine et bouton « Restaurer ».
 - **Compteur FPS** : FPS moyen, 1 % low et 0,1 % low de chaque partie (avec [PresentMon](https://github.com/GameTechDev/PresentMon), Intel, licence MIT), comparaison avec et sans boost.
 
 ## Léger en arrière-plan
