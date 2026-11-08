@@ -34,7 +34,7 @@ pub struct Tweak {
     pub description: String,
     pub gain: String,
     pub redemarrage: bool,
-    /// Réglages qui ne sont pas de simples valeurs de registre : plan, adaptateur, nagle, powercfg, bcd, defender
+    /// Réglages qui ne sont pas de simples valeurs de registre : plan, adaptateur, nagle, powercfg, bcd, defender, nvidia, veille-prolongee
     #[serde(default)]
     pub special: Option<String>,
     #[serde(default)]
@@ -51,6 +51,9 @@ pub struct Tweak {
     pub parametre: String,
     #[serde(default)]
     pub index: u32,
+    /// Réglage du pilote NVIDIA (special = nvidia), valeur voulue dans `index`
+    #[serde(default)]
+    pub id_nvidia: u32,
     /// recommande : sans contrepartie notable ; max : plus agressif (consommation, confort), inclus dans « Boost maximum » ;
     /// risque : baisse la sécurité ou touche au démarrage, jamais appliqué en lot
     #[serde(default = "niveau_recommande")]
@@ -283,6 +286,24 @@ fn ecrire_bcd(cle: &str, valeur: Option<&str>) -> Result<(), String> {
     }
 }
 
+/* ---------- Veille prolongée (fichier hiberfil.sys) ---------- */
+
+fn veille_prolongee_active() -> bool {
+    RegKey::predef(HKEY_LOCAL_MACHINE)
+        .open_subkey_with_flags(r"SYSTEM\CurrentControlSet\Control\Power", KEY_READ)
+        .and_then(|k| k.get_value::<u32, _>("HibernateEnabled"))
+        .map_or(true, |v| v != 0)
+}
+
+fn veille_prolongee(activer: bool) -> Result<(), String> {
+    let sortie = systeme::executer("powercfg", &["/hibernate", if activer { "on" } else { "off" }]).map_err(|e| e.to_string())?;
+    if sortie.status.success() {
+        Ok(())
+    } else {
+        Err(format!("powercfg : {}", String::from_utf8_lossy(&sortie.stdout).trim()))
+    }
+}
+
 /* ---------- Exclusions Defender pour les dossiers de jeux ---------- */
 
 #[derive(Default, Deserialize)]
@@ -356,6 +377,11 @@ pub fn liste(stock: &Stockage) -> Vec<TweakEtat> {
                     (actif, actif || systeme::veille_moderne())
                 }
                 Some("bcd") => (lire_bcd(&t.parametre).is_some_and(|v| v.eq_ignore_ascii_case(&t.cible)), true),
+                Some("nvidia") => match crate::nvidia::lire(t.id_nvidia) {
+                    Ok(v) => (v == Some(t.index), true),
+                    Err(_) => (false, false),
+                },
+                Some("veille-prolongee") => (!veille_prolongee_active(), true),
                 Some("defender") => match lire_defender() {
                     Ok(d) => (!d.dossiers.is_empty() && d.dossiers.len() == d.exclus.len(), !d.dossiers.is_empty()),
                     Err(_) => (false, false),
@@ -400,6 +426,21 @@ fn appliquer_un(stock: &Stockage, t: &Tweak) -> Result<(), String> {
                 );
             }
             Ok(())
+        }
+        Some("nvidia") => {
+            let avant = crate::nvidia::lire(t.id_nvidia)?;
+            if !deja {
+                d.sauvegardes.insert(t.id.clone(), avant.map_or(Value::Null, |v| json!(v)));
+            }
+            drop(d);
+            crate::nvidia::ecrire(t.id_nvidia, Some(t.index))
+        }
+        Some("veille-prolongee") => {
+            if !deja {
+                d.sauvegardes.insert(t.id.clone(), json!(veille_prolongee_active()));
+            }
+            drop(d);
+            veille_prolongee(false)
         }
         Some("bcd") => {
             if !deja {
@@ -480,6 +521,18 @@ fn annuler_un(stock: &Stockage, t: &Tweak) -> Result<(), String> {
         Some("bcd") => {
             drop(d);
             ecrire_bcd(&t.parametre, origine.as_str())?;
+            d = stock.donnees.lock().unwrap();
+        }
+        Some("nvidia") => {
+            drop(d);
+            crate::nvidia::ecrire(t.id_nvidia, origine.as_u64().map(|v| v as u32))?;
+            d = stock.donnees.lock().unwrap();
+        }
+        Some("veille-prolongee") => {
+            drop(d);
+            if origine.as_bool().unwrap_or(true) {
+                veille_prolongee(true)?;
+            }
             d = stock.donnees.lock().unwrap();
         }
         Some("defender") => {

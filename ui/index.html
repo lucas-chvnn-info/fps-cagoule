@@ -113,6 +113,10 @@
         <div class="entete-categorie"><h2>Windows</h2><span class="compte"></span></div>
         <ul class="tweaks" data-categorie="windows"></ul>
       </section>
+      <section class="categorie" data-categorie="carte-graphique">
+        <div class="entete-categorie"><h2>Carte graphique</h2><span class="compte"></span></div>
+        <ul class="tweaks" data-categorie="carte-graphique"></ul>
+      </section>
       <section class="categorie" data-categorie="alimentation">
         <div class="entete-categorie"><h2>Alimentation et processeur</h2><span class="compte"></span></div>
         <ul class="tweaks" data-categorie="alimentation"></ul>
@@ -128,6 +132,10 @@
       <section class="categorie" data-categorie="peripheriques">
         <div class="entete-categorie"><h2>Souris, clavier et USB</h2><span class="compte"></span></div>
         <ul class="tweaks" data-categorie="peripheriques"></ul>
+      </section>
+      <section class="categorie" data-categorie="confort">
+        <div class="entete-categorie"><h2>Confort et vie privée</h2><span class="compte"></span></div>
+        <ul class="tweaks" data-categorie="confort"></ul>
       </section>
       <section class="categorie" data-categorie="demarrage" id="carte-demarrage">
         <div class="entete-categorie"><h2>Programmes au démarrage</h2><span class="compte"></span></div>
@@ -155,6 +163,20 @@
       </div>
       <ul id="nettoyage-categories" class="liste-nettoyage"></ul>
       <p class="discret">Les fichiers en cours d'utilisation sont ignorés : ferme tes navigateurs, Discord et Steam pour tout nettoyer. Pas de « nettoyage du registre » : Microsoft le déconseille, le gain est nul et il peut casser des programmes.</p>
+      <div class="grille-2">
+        <div class="carte">
+          <h2>Optimiser les disques</h2>
+          <p class="discret">Comme l'outil de Windows : TRIM pour les SSD (quelques secondes), défragmentation pour les disques durs (peut prendre longtemps).</p>
+          <button id="btn-disques">Optimiser les disques</button>
+          <div id="disques-resultat" class="discret"></div>
+        </div>
+        <div class="carte">
+          <h2>Applis préinstallées de Windows <span id="nb-applis" class="discret"></span></h2>
+          <p class="discret">Les applis que Windows installe d'office. Elles se réinstallent depuis le Microsoft Store si tu changes d'avis. Le Store, Edge et ce qu'il faut aux jeux Xbox ne sont jamais proposés.</p>
+          <ul id="applis-liste" class="liste-applis"><li class="discret">Chargement…</li></ul>
+          <button class="principal" id="btn-applis" disabled>Désinstaller la sélection</button>
+        </div>
+      </div>
       <div class="carte">
         <h2>Désinstaller des programmes <span id="nb-programmes" class="discret"></span></h2>
         <div class="ligne-form"><input id="filtre-programmes" type="search" placeholder="Rechercher un programme, un éditeur…"></div>
@@ -198,6 +220,7 @@
         <label class="bascule"><input type="checkbox" id="mesure-fps"><span></span> Mesurer les FPS pendant les parties</label>
       </div>
       <p class="discret">Pendant une partie, le boost active le plan Performances élevées, donne la priorité haute au jeu, choisit la carte graphique la plus puissante et ferme les programmes de ta liste. Tout est remis comme avant à la fin.</p>
+      <p class="discret">La priorité haute est aussi enregistrée dans Windows, qui l'applique lui-même au lancement du jeu : l'anti-triche ne peut pas la refuser.</p>
       <p class="discret">Colonne « Résolution » : l'écran principal passe dans cette résolution pendant la partie (par exemple 4:3 étiré), puis revient à celle du bureau. Dans le jeu, choisis la même résolution en plein écran. Une résolution comme 1440 × 1080 doit d'abord être créée dans le panneau de ta carte graphique (« Résolutions personnalisées ») pour apparaître ici.</p>
       <table class="tableau" id="profils">
         <thead><tr><th>Jeu</th><th>Détecté</th><th>Boost</th><th>Priorité haute</th><th>GPU puissant</th><th>Résolution</th><th></th></tr></thead>

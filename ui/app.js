@@ -47,6 +47,7 @@ document.querySelectorAll('nav button').forEach((b) =>
     if (b.dataset.page === 'nettoyage') {
       if (!nettoyage) analyserNettoyage();
       chargerProgrammes();
+      chargerApplis();
     }
     if (b.dataset.page === 'ecrans') chargerEcrans();
     if (b.dataset.page === 'pilotes') chargerPilotes();
@@ -175,10 +176,12 @@ function ligneTweak(t) {
 
 const CATEGORIES_OPTI = [
   ['windows', 'Windows'],
+  ['carte-graphique', 'Carte graphique'],
   ['alimentation', 'Alimentation'],
   ['arriere-plan', 'Arrière-plan'],
   ['reseau', 'Réseau'],
   ['peripheriques', 'Souris et clavier'],
+  ['confort', 'Confort et vie privée'],
   ['demarrage', 'Démarrage'],
   ['risque', 'Zone risquée'],
 ];
@@ -392,6 +395,62 @@ $('#btn-nettoyer').addEventListener('click', async (e) => {
     e.target.textContent = 'Nettoyer la sélection';
   }
   analyserNettoyage();
+});
+
+/* ---------- Disques et applis préinstallées ---------- */
+
+$('#btn-disques').addEventListener('click', async (e) => {
+  e.target.textContent = 'Optimisation en cours…';
+  try {
+    const r = await appel('optimiser_disques', {}, e.target);
+    $('#disques-resultat').innerHTML = r
+      .map((d) => `<p class="${d.ok ? 'ok' : 'alerte'}">${esc(d.lecteur)} ${d.type === 'HDD' ? 'défragmenté' : 'TRIM fait'}${d.ok ? '' : ` : échec (${esc(d.erreur)})`}</p>`)
+      .join('');
+  } finally {
+    e.target.textContent = 'Optimiser les disques';
+  }
+});
+
+let applis = [];
+
+async function chargerApplis() {
+  applis = await appel('applis_windows').catch(() => []);
+  $('#nb-applis').textContent = `(${applis.length})`;
+  $('#applis-liste').innerHTML = applis.length
+    ? applis
+        .map(
+          (a) => `<li><label><input type="checkbox" value="${esc(a.paquet)}" ${a.defaut ? 'checked' : ''}>
+            <span>${esc(a.nom)}${a.description ? `<small>${esc(a.description)}</small>` : ''}</span></label></li>`
+        )
+        .join('')
+    : '<li class="ok">Aucune appli préinstallée inutile : c\'est propre.</li>';
+  majBoutonApplis();
+}
+
+function majBoutonApplis() {
+  const n = document.querySelectorAll('#applis-liste input:checked').length;
+  $('#btn-applis').disabled = !n;
+  $('#btn-applis').textContent = n ? `Désinstaller la sélection (${n})` : 'Désinstaller la sélection';
+}
+
+$('#applis-liste').addEventListener('change', majBoutonApplis);
+$('#btn-applis').addEventListener('click', async (e) => {
+  const paquets = [...document.querySelectorAll('#applis-liste input:checked')].map((c) => c.value);
+  const noms = applis.filter((a) => paquets.includes(a.paquet)).map((a) => a.nom);
+  const ok = await confirmer(
+    'Désinstaller les applis préinstallées',
+    `<ul>${noms.map((n) => `<li>${esc(n)}</li>`).join('')}</ul><p>Elles se réinstallent depuis le Microsoft Store si tu changes d'avis.</p>`,
+    'Désinstaller'
+  );
+  if (!ok) return;
+  e.target.textContent = 'Désinstallation…';
+  try {
+    const r = await appel('applis_windows_supprimer', { paquets }, e.target);
+    const echecs = r.filter((x) => !x.ok);
+    toast(echecs.length ? `${r.length - echecs.length} désinstallée(s), ${echecs.length} échec(s) : ${echecs.map((x) => x.erreur).join(' ; ')}` : `${r.length} appli(s) désinstallée(s).`, 7000);
+  } finally {
+    chargerApplis();
+  }
 });
 
 /* ---------- Désinstallation ---------- */

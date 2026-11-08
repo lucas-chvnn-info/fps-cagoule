@@ -250,3 +250,22 @@ pub fn nettoyer(ids: &[String]) -> Vec<Bilan> {
         .collect();
     fils.into_iter().filter_map(|f| f.join().ok()).collect()
 }
+
+/// Optimise les disques comme l'outil « Optimiser les lecteurs » de Windows :
+/// TRIM pour les SSD (rapide), défragmentation pour les disques durs (peut être long).
+pub fn optimiser_disques() -> Result<serde_json::Value, String> {
+    ps::json(
+        r#"$res = @()
+Get-Volume | Where-Object { $_.DriveLetter -and $_.DriveType -eq 'Fixed' -and $_.FileSystem -eq 'NTFS' } | ForEach-Object {
+  $l = $_.DriveLetter
+  $type = "$((Get-Partition -DriveLetter $l -ErrorAction SilentlyContinue | Get-Disk | Get-PhysicalDisk | Select-Object -First 1).MediaType)"
+  try {
+    if ($type -eq 'HDD') { Optimize-Volume -DriveLetter $l -Defrag -ErrorAction Stop } else { Optimize-Volume -DriveLetter $l -ReTrim -ErrorAction Stop }
+    $res += [ordered]@{ lecteur = "$($l):"; type = $type; ok = $true; erreur = $null }
+  } catch {
+    $res += [ordered]@{ lecteur = "$($l):"; type = $type; ok = $false; erreur = $_.Exception.Message }
+  }
+}
+ConvertTo-Json -Compress -Depth 3 -InputObject @($res)"#,
+    )
+}

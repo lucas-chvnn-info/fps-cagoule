@@ -19,6 +19,9 @@ pub struct EnCours {
     boost: bool,
     pub actions: Vec<String>,
     capture: Option<fps::Capture>,
+    /// Vidages de la mémoire en veille pendant la partie
+    derniere_purge: Option<Instant>,
+    purges: u32,
 }
 
 pub struct Etat {
@@ -73,6 +76,7 @@ fn verifier(app: &AppHandle) -> bool {
                 terminer(app, &etat);
                 return false;
             }
+            entretenir_memoire(&etat);
             true
         }
         None => {
@@ -194,6 +198,8 @@ fn demarrer(app: &AppHandle, etat: &Etat, profil: &crate::config::Profil, pid: u
         boost,
         actions,
         capture,
+        derniere_purge: None,
+        purges: 0,
     });
     // Résolution propre au jeu (ex. 4:3 étiré), appliquée même sans boost
     if let Some(r) = &profil.resolution {
@@ -291,5 +297,98 @@ pub fn restaurer_resolution(etat: &Etat) {
     if let Some(id) = ecran {
         crate::ecrans::retablir_mode(&id);
         etat.stock.sauver();
+    }
+}
+
+/// Pendant une partie boostée, vide la mémoire en veille quand la mémoire libre devient basse
+/// (comme l'outil ISLC) : utile surtout avec 16 Go de RAM ou moins, ou en Boost max.
+fn entretenir_memoire(etat: &Etat) {
+    const GO: u64 = 1 << 30;
+    let boost_max = etat.stock.donnees.lock().unwrap().reglages.boost_max;
+    let mut session = etat.session.lock().unwrap();
+    let Some(s) = session.as_mut() else { return };
+    let total = systeme::memoire_totale();
+    if !s.boost || !(boost_max || total <= 17 * GO) {
+        return;
+    }
+    if s.derniere_purge.is_some_and(|t| t.elapsed() < Duration::from_secs(60)) || systeme::memoire_libre() >= (total / 10).max(GO) {
+        return;
+    }
+    if systeme::vider_memoire_veille().is_ok() {
+        s.derniere_purge = Some(Instant::now());
+        s.purges += 1;
+        let texte = format!("Mémoire en veille vidée pendant la partie ({} fois)", s.purges);
+        match s.actions.iter_mut().find(|a| a.starts_with("Mémoire en veille vidée pendant")) {
+            Some(a) => *a = texte,
+            None => s.actions.push(texte),
+        }
+    }
+}
+
+const IFEO: &str = r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options";
+
+/// Priorité haute au lancement des jeux, appliquée par Windows lui-même (PerfOptions\CpuPriorityClass) :
+/// contrairement au changement de priorité en cours de partie, l'anti-triche ne peut pas la refuser.
+/// Seules les entrées créées par l'app sont retirées.
+pub fn synchroniser_priorites(stock: &Stockage) {
+    use crate::config::PrioriteCree;
+    use winreg::enums::{HKEY_LOCAL_MACHINE, KEY_ALL_ACCESS};
+    use winreg::RegKey;
+
+    let (voulus, mut crees) = {
+        let d = stock.donnees.lock().unwrap();
+        let mut voulus: Vec<String> = Vec::new();
+        if d.reglages.boost_auto {
+            for p in d.profils.iter().filter(|p| p.actif && p.boost && p.priorite_haute) {
+                for e in &p.exes {
+                    let e = e.to_lowercase();
+                    if !voulus.contains(&e) {
+                        voulus.push(e);
+                    }
+                }
+            }
+        }
+        (voulus, d.priorites.clone())
+    };
+    let Ok(racine) = RegKey::predef(HKEY_LOCAL_MACHINE).open_subkey_with_flags(IFEO, KEY_ALL_ACCESS) else { return };
+    let avant = crees.len();
+    let mut change = false;
+
+    let a_ajouter: Vec<String> = voulus.iter().filter(|e| !crees.iter().any(|c| &c.exe == *e)).cloned().collect();
+    for exe in &a_ajouter {
+        let existait = racine.open_subkey(exe).is_ok();
+        let Ok((perf, _)) = racine.create_subkey(format!(r"{exe}\PerfOptions")) else { continue };
+        // Déjà réglé par l'utilisateur ou un autre outil : on n'y touche pas
+        if perf.get_value::<u32, _>("CpuPriorityClass").is_ok() {
+            continue;
+        }
+        if perf.set_value("CpuPriorityClass", &3u32).is_ok() {
+            crees.push(PrioriteCree { exe: exe.clone(), cle_creee: !existait });
+            change = true;
+        }
+    }
+    crees.retain(|c| {
+        if voulus.contains(&c.exe) {
+            return true;
+        }
+        let chemin = format!(r"{}\PerfOptions", c.exe);
+        if let Ok(perf) = racine.open_subkey_with_flags(&chemin, KEY_ALL_ACCESS) {
+            let _ = perf.delete_value("CpuPriorityClass");
+            if perf.query_info().is_ok_and(|i| i.values == 0 && i.sub_keys == 0) {
+                let _ = racine.delete_subkey(&chemin);
+            }
+        }
+        if c.cle_creee {
+            if let Ok(k) = racine.open_subkey(&c.exe) {
+                if k.query_info().is_ok_and(|i| i.values == 0 && i.sub_keys == 0) {
+                    let _ = racine.delete_subkey(&c.exe);
+                }
+            }
+        }
+        false
+    });
+    if change || crees.len() != avant {
+        stock.donnees.lock().unwrap().priorites = crees;
+        stock.sauver();
     }
 }

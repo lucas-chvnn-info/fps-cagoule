@@ -74,7 +74,7 @@
         "valeur": 2
       }
     ],
-    "categorie": "windows",
+    "categorie": "carte-graphique",
     "niveau": "recommande"
   },
   {
@@ -287,9 +287,9 @@
   },
   {
     "id": "clavier",
-    "categorie": "peripheriques",
+    "categorie": "confort",
     "titre": "Clavier plus réactif",
-    "description": "Délai avant répétition le plus court et répétition la plus rapide. Prend effet à la prochaine ouverture de session.",
+    "description": "Délai avant répétition le plus court et répétition la plus rapide. Ne change rien en jeu (les jeux lisent l'appui des touches, pas leur répétition) : utile pour écrire et naviguer dans les menus. Prend effet à la prochaine ouverture de session.",
     "gain": "faible",
     "redemarrage": true,
     "valeurs": [
@@ -312,7 +312,7 @@
   },
   {
     "id": "accessibilite",
-    "categorie": "peripheriques",
+    "categorie": "confort",
     "titre": "Bloquer les fenêtres « Touches rémanentes »",
     "description": "Appuyer 5 fois sur Maj (ou garder Maj droite enfoncée) en pleine partie n'ouvre plus de fenêtre qui te sort du jeu. Prend effet à la prochaine ouverture de session.",
     "gain": "faible",
@@ -346,7 +346,7 @@
     "id": "coeurs-actifs",
     "categorie": "alimentation",
     "titre": "Garder tous les cœurs du processeur éveillés",
-    "description": "Windows « parque » les cœurs inutilisés pour économiser l'énergie ; les réveiller prend du temps au moment où le jeu en a besoin.",
+    "description": "Windows « parque » les cœurs inutilisés pour économiser l'énergie ; les réveiller prend du temps au moment où le jeu en a besoin. Sur la plupart des PC fixes, Windows le fait déjà : l'effet se voit surtout sur les portables.",
     "gain": "moyen",
     "redemarrage": false,
     "special": "powercfg",
@@ -458,7 +458,7 @@
   },
   {
     "id": "jeux-fenetres",
-    "categorie": "windows",
+    "categorie": "carte-graphique",
     "titre": "Optimisations pour les jeux en fenêtre",
     "description": "Les jeux en fenêtré sans bordure utilisent le même mode d'affichage que le plein écran : moins de latence, et le G-Sync/FreeSync fonctionne.",
     "gain": "moyen",
@@ -476,7 +476,7 @@
   },
   {
     "id": "plein-ecran",
-    "categorie": "windows",
+    "categorie": "carte-graphique",
     "titre": "Désactiver les optimisations plein écran",
     "description": "Les jeux en plein écran gardent l'accès exclusif à l'écran au lieu du mode hybride de Windows. Gagnant dans certains jeux anciens (DirectX 9 à 11), sans effet sur les autres.",
     "gain": "faible",
@@ -802,5 +802,278 @@
         "valeur": 0
       }
     ]
+  },
+  {
+    "id": "nvidia-faible-latence",
+    "categorie": "carte-graphique",
+    "niveau": "recommande",
+    "titre": "NVIDIA : mode de faible latence",
+    "description": "Le processeur ne prépare plus qu'une image d'avance pour la carte graphique : moins de retard entre ta souris et l'écran quand la carte est à 100 %. Les jeux qui ont NVIDIA Reflex (Valorant, Fortnite, CS2…) utilisent Reflex à la place, qui reste prioritaire.",
+    "gain": "moyen",
+    "redemarrage": false,
+    "special": "nvidia",
+    "id_nvidia": 8102046,
+    "index": 1
+  },
+  {
+    "id": "nvidia-performances",
+    "categorie": "carte-graphique",
+    "niveau": "max",
+    "titre": "NVIDIA : performances maximales",
+    "description": "La carte graphique ne baisse plus sa fréquence quand la charge varie : fini les chutes de FPS au début d'un combat. Elle reste aussi à haute fréquence sur le bureau, donc consomme et chauffe plus (sur un portable, la batterie dure moins).",
+    "gain": "moyen",
+    "redemarrage": false,
+    "special": "nvidia",
+    "id_nvidia": 274197361,
+    "index": 1
+  },
+  {
+    "id": "mpo",
+    "categorie": "carte-graphique",
+    "niveau": "max",
+    "titre": "Désactiver la superposition multiplan (MPO)",
+    "description": "Corrige les clignotements, écrans noirs et saccades dans certains jeux en fenêtré, surtout avec plusieurs écrans ou des fréquences différentes. Sans effet notable si tu n'as pas ces problèmes.",
+    "gain": "faible",
+    "redemarrage": true,
+    "valeurs": [
+      {
+        "ruche": "HKLM",
+        "chemin": "SOFTWARE\\Microsoft\\Windows\\Dwm",
+        "nom": "OverlayTestMode",
+        "type": "dword",
+        "valeur": 5
+      }
+    ]
+  },
+  {
+    "id": "copilot",
+    "categorie": "confort",
+    "niveau": "recommande",
+    "titre": "Désactiver Copilot et Recall",
+    "description": "Masque Copilot et coupe Recall, qui capture régulièrement ton écran pour l'IA de Windows (sur les PC Copilot+).",
+    "gain": "faible",
+    "redemarrage": true,
+    "valeurs": [
+      {
+        "ruche": "HKCU",
+        "chemin": "Software\\Policies\\Microsoft\\Windows\\WindowsCopilot",
+        "nom": "TurnOffWindowsCopilot",
+        "type": "dword",
+        "valeur": 1
+      },
+      {
+        "ruche": "HKLM",
+        "chemin": "SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsCopilot",
+        "nom": "TurnOffWindowsCopilot",
+        "type": "dword",
+        "valeur": 1
+      },
+      {
+        "ruche": "HKCU",
+        "chemin": "Software\\Policies\\Microsoft\\Windows\\WindowsAI",
+        "nom": "DisableAIDataAnalysis",
+        "type": "dword",
+        "valeur": 1
+      }
+    ]
+  },
+  {
+    "id": "recherche-web",
+    "categorie": "confort",
+    "niveau": "recommande",
+    "titre": "Retirer Bing de la recherche Windows",
+    "description": "La recherche du menu Démarrer cherche seulement sur ton PC : plus rapide, sans résultats web ni publicités.",
+    "gain": "faible",
+    "redemarrage": true,
+    "valeurs": [
+      {
+        "ruche": "HKCU",
+        "chemin": "Software\\Policies\\Microsoft\\Windows\\Explorer",
+        "nom": "DisableSearchBoxSuggestions",
+        "type": "dword",
+        "valeur": 1
+      },
+      {
+        "ruche": "HKCU",
+        "chemin": "Software\\Microsoft\\Windows\\CurrentVersion\\Search",
+        "nom": "BingSearchEnabled",
+        "type": "dword",
+        "valeur": 0
+      }
+    ]
+  },
+  {
+    "id": "suggestions",
+    "categorie": "confort",
+    "niveau": "recommande",
+    "titre": "Couper les pubs et suggestions de Windows",
+    "description": "Plus d'applis installées sans te demander (Candy Crush, TikTok…), de suggestions dans le menu Démarrer, de « conseils » ni d'écran de bienvenue après les mises à jour.",
+    "gain": "faible",
+    "redemarrage": false,
+    "valeurs": [
+      {
+        "ruche": "HKCU",
+        "chemin": "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager",
+        "nom": "SilentInstalledAppsEnabled",
+        "type": "dword",
+        "valeur": 0
+      },
+      {
+        "ruche": "HKCU",
+        "chemin": "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager",
+        "nom": "SystemPaneSuggestionsEnabled",
+        "type": "dword",
+        "valeur": 0
+      },
+      {
+        "ruche": "HKCU",
+        "chemin": "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager",
+        "nom": "SoftLandingEnabled",
+        "type": "dword",
+        "valeur": 0
+      },
+      {
+        "ruche": "HKCU",
+        "chemin": "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager",
+        "nom": "SubscribedContent-338388Enabled",
+        "type": "dword",
+        "valeur": 0
+      },
+      {
+        "ruche": "HKCU",
+        "chemin": "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager",
+        "nom": "SubscribedContent-338389Enabled",
+        "type": "dword",
+        "valeur": 0
+      },
+      {
+        "ruche": "HKCU",
+        "chemin": "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager",
+        "nom": "SubscribedContent-310093Enabled",
+        "type": "dword",
+        "valeur": 0
+      },
+      {
+        "ruche": "HKCU",
+        "chemin": "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager",
+        "nom": "SubscribedContent-353694Enabled",
+        "type": "dword",
+        "valeur": 0
+      },
+      {
+        "ruche": "HKCU",
+        "chemin": "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager",
+        "nom": "SubscribedContent-353696Enabled",
+        "type": "dword",
+        "valeur": 0
+      }
+    ]
+  },
+  {
+    "id": "historique-activite",
+    "categorie": "confort",
+    "niveau": "recommande",
+    "titre": "Couper l'historique d'activité",
+    "description": "Windows n'enregistre plus les fichiers et sites que tu ouvres pour les envoyer à Microsoft.",
+    "gain": "faible",
+    "redemarrage": false,
+    "valeurs": [
+      {
+        "ruche": "HKLM",
+        "chemin": "SOFTWARE\\Policies\\Microsoft\\Windows\\System",
+        "nom": "PublishUserActivities",
+        "type": "dword",
+        "valeur": 0
+      },
+      {
+        "ruche": "HKLM",
+        "chemin": "SOFTWARE\\Policies\\Microsoft\\Windows\\System",
+        "nom": "UploadUserActivities",
+        "type": "dword",
+        "valeur": 0
+      }
+    ]
+  },
+  {
+    "id": "id-publicitaire",
+    "categorie": "confort",
+    "niveau": "recommande",
+    "titre": "Couper l'identifiant publicitaire",
+    "description": "Les applications ne peuvent plus te suivre avec un identifiant commun pour cibler les publicités.",
+    "gain": "faible",
+    "redemarrage": false,
+    "valeurs": [
+      {
+        "ruche": "HKCU",
+        "chemin": "Software\\Microsoft\\Windows\\CurrentVersion\\AdvertisingInfo",
+        "nom": "Enabled",
+        "type": "dword",
+        "valeur": 0
+      }
+    ]
+  },
+  {
+    "id": "fin-de-tache",
+    "categorie": "confort",
+    "niveau": "recommande",
+    "titre": "« Fin de tâche » au clic droit sur la barre des tâches",
+    "description": "Un jeu figé se ferme d'un clic droit sur son icône, sans ouvrir le Gestionnaire des tâches.",
+    "gain": "faible",
+    "redemarrage": false,
+    "valeurs": [
+      {
+        "ruche": "HKCU",
+        "chemin": "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced\\TaskbarDeveloperSettings",
+        "nom": "TaskbarEndTask",
+        "type": "dword",
+        "valeur": 1
+      }
+    ]
+  },
+  {
+    "id": "rapports-erreurs",
+    "categorie": "arriere-plan",
+    "niveau": "recommande",
+    "titre": "Couper les rapports d'erreurs",
+    "description": "Après un plantage, Windows ne prépare plus de rapport pour Microsoft en arrière-plan (ça peut occuper le disque et le processeur un moment).",
+    "gain": "faible",
+    "redemarrage": false,
+    "valeurs": [
+      {
+        "ruche": "HKLM",
+        "chemin": "SOFTWARE\\Microsoft\\Windows\\Windows Error Reporting",
+        "nom": "Disabled",
+        "type": "dword",
+        "valeur": 1
+      }
+    ]
+  },
+  {
+    "id": "indexation",
+    "categorie": "arriere-plan",
+    "niveau": "max",
+    "titre": "Désactiver l'indexation de la recherche",
+    "description": "L'indexation parcourt tes fichiers en arrière-plan et sollicite le disque. Sans elle, chercher un fichier ou un e-mail est plus lent ; trouver une application dans le menu Démarrer marche toujours.",
+    "gain": "faible",
+    "redemarrage": true,
+    "valeurs": [
+      {
+        "ruche": "HKLM",
+        "chemin": "SYSTEM\\CurrentControlSet\\Services\\WSearch",
+        "nom": "Start",
+        "type": "dword",
+        "valeur": 4
+      }
+    ]
+  },
+  {
+    "id": "veille-prolongee",
+    "categorie": "windows",
+    "niveau": "max",
+    "titre": "Désactiver la veille prolongée",
+    "description": "Supprime le fichier hiberfil.sys et libère sur le disque l'équivalent de 40 % de ta RAM (environ 6 Go pour 16 Go). La veille normale fonctionne toujours ; sur un portable, tu perds la veille prolongée quand la batterie est faible.",
+    "gain": "faible",
+    "redemarrage": false,
+    "special": "veille-prolongee"
   }
 ]

@@ -8,6 +8,7 @@ mod fenetres;
 mod fps;
 mod jeux;
 mod nettoyage;
+mod nvidia;
 mod pilotes;
 mod maj;
 mod programmes;
@@ -92,6 +93,21 @@ fn nettoyage_nettoyer(ids: Vec<String>) -> Vec<nettoyage::Bilan> {
 }
 
 #[tauri::command(async)]
+fn applis_windows() -> Res<Vec<programmes::AppliWindows>> {
+    programmes::applis_windows()
+}
+
+#[tauri::command(async)]
+fn applis_windows_supprimer(paquets: Vec<String>) -> Res<serde_json::Value> {
+    programmes::supprimer_applis(&paquets)
+}
+
+#[tauri::command(async)]
+fn optimiser_disques() -> Res<serde_json::Value> {
+    nettoyage::optimiser_disques()
+}
+
+#[tauri::command(async)]
 fn programmes_liste() -> Vec<programmes::Programme> {
     programmes::liste()
 }
@@ -128,6 +144,7 @@ fn profils_set(app: AppHandle, profils: Vec<Profil>) {
     let e = etat(&app);
     e.stock.donnees.lock().unwrap().profils = profils;
     e.stock.sauver();
+    jeux::synchroniser_priorites(&e.stock);
 }
 
 #[tauri::command]
@@ -145,6 +162,7 @@ fn reglages_set(app: AppHandle, reglages: Reglages) {
     let e = etat(&app);
     e.stock.donnees.lock().unwrap().reglages = reglages;
     e.stock.sauver();
+    jeux::synchroniser_priorites(&e.stock);
 }
 
 #[tauri::command(async)]
@@ -349,6 +367,7 @@ fn main() {
             jeux::restaurer_plan(&etat);
             jeux::restaurer_couleurs(&etat);
             jeux::restaurer_resolution(&etat);
+            jeux::synchroniser_priorites(&etat.stock);
             app.manage(etat);
 
             fenetres::creer_icone(app.handle())?;
@@ -368,6 +387,9 @@ fn main() {
             nettoyage_analyser,
             nettoyage_nettoyer,
             programmes_liste,
+            optimiser_disques,
+            applis_windows,
+            applis_windows_supprimer,
             programme_desinstaller,
             redemarrer_pc,
             demarrage_liste,
@@ -490,6 +512,30 @@ mod tests_windows {
         let bilan = nettoyage::nettoyer(&["temp".into(), "rapports".into()]);
         assert_eq!(bilan.len(), 2);
         assert!(!programmes::liste().is_empty());
+        programmes::applis_windows().expect("liste des applis préinstallées");
+    }
+
+    #[test]
+    fn priorite_au_lancement() {
+        use winreg::enums::HKEY_LOCAL_MACHINE;
+        let chemin = r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\fpscagouletest.exe\PerfOptions";
+        let stock = Stockage::ouvrir(std::env::temp_dir().join("fps-cagoule-test-priorite"));
+        stock.donnees.lock().unwrap().profils = vec![Profil { nom: "Test".into(), exes: vec!["FPSCagouleTest.exe".into()], ..Default::default() }];
+        jeux::synchroniser_priorites(&stock);
+        let lire = || winreg::RegKey::predef(HKEY_LOCAL_MACHINE).open_subkey(chemin).and_then(|k| k.get_value::<u32, _>("CpuPriorityClass")).ok();
+        assert_eq!(lire(), Some(3));
+        stock.donnees.lock().unwrap().profils.clear();
+        jeux::synchroniser_priorites(&stock);
+        assert_eq!(lire(), None);
+        assert!(stock.donnees.lock().unwrap().priorites.is_empty());
+        // Pas de carte NVIDIA sur le PC de GitHub : erreur propre, sans plantage
+        assert!(nvidia::lire(0x007B_A09E).is_err());
+    }
+
+    #[test]
+    fn disques() {
+        let r = nettoyage::optimiser_disques().expect("optimisation des disques");
+        assert!(r.as_array().is_some_and(|l| !l.is_empty()), "{r}");
     }
 
     #[test]
@@ -506,7 +552,7 @@ mod tests_windows {
         let dossier = std::env::temp_dir().join("fps-cagoule-test");
         let stock = Stockage::ouvrir(dossier);
         let liste = tweaks::liste(&stock);
-        assert_eq!(liste.len(), 42);
+        assert_eq!(liste.len(), 54);
         assert!(liste.iter().any(|t| t.tweak.categorie == "reseau"));
     }
 }

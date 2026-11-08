@@ -101,6 +101,15 @@ pub struct Donnees {
     pub vibrance_avant: HashMap<String, i32>,
     /// Écran dont la résolution a été changée pour un jeu (remise au prochain lancement si l'app a été coupée)
     pub ecran_jeu: Option<String>,
+    /// Priorités hautes au lancement créées par l'app (Image File Execution Options)
+    pub priorites: Vec<PrioriteCree>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct PrioriteCree {
+    pub exe: String,
+    /// La clé du jeu n'existait pas avant : on la supprime aussi au retrait
+    pub cle_creee: bool,
 }
 
 impl Default for Donnees {
@@ -117,6 +126,7 @@ impl Default for Donnees {
             couleurs: HashMap::new(),
             vibrance_avant: HashMap::new(),
             ecran_jeu: None,
+            priorites: Vec::new(),
         }
     }
 }

@@ -318,6 +318,16 @@ pub fn memoire_libre() -> u64 {
     }
 }
 
+/// Mémoire vive installée (octets).
+pub fn memoire_totale() -> u64 {
+    use windows_sys::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
+    unsafe {
+        let mut m: MEMORYSTATUSEX = std::mem::zeroed();
+        m.dwLength = std::mem::size_of::<MEMORYSTATUSEX>() as u32;
+        if GlobalMemoryStatusEx(&mut m) != 0 { m.ullTotalPhys } else { 0 }
+    }
+}
+
 /// Vide la liste de mémoire en veille (comme l'outil ISLC) : évite les saccades quand Windows
 /// tarde à libérer de la mémoire pour le jeu. Renvoie le nombre d'octets rendus disponibles.
 pub fn vider_memoire_veille() -> Result<u64, String> {
