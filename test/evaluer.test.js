@@ -68,3 +68,13 @@ test('le mode « Meilleures performances » compte comme un plan performances', 
   assert.equal(evaluer(pc, { maintenant }).score, 100);
   assert.equal(evaluer({ ...pc, plan: { ...pc.plan, mode: '' } }, { maintenant }).problemes[0].id, 'plan');
 });
+
+test('analyse complète : msconfig, nettoyage, optimisations, jeux', () => {
+  const pc = { ...pcSain, limitesDemarrage: [{ cle: 'numproc', valeur: '4' }] };
+  const extra = { nettoyable: 3 * Go, recommandeesInactives: 6, applis: 2, jeux: ['Rainbow Six Siege'], attente: 1 };
+  const { problemes, score } = evaluer(pc, { maintenant, extra });
+  assert.deepEqual(problemes.map((p) => p.id), ['msconfig', 'redemarrage', 'optimisations', 'nettoyage-espace', 'applis', 'jeux']);
+  assert.equal(problemes[3].titre, '3,0 Go de fichiers inutiles');
+  assert.equal(score, 100 - 15 - 8 - 8 - 8 - 2 - 2);
+  assert.equal(evaluer(pcSain, { maintenant, extra: { nettoyable: 100 * 1024 ** 2 } }).score, 100);
+});

@@ -3,6 +3,8 @@
 
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+use tauri::webview::PageLoadEvent;
+use tauri::window::Color;
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 
 const ICONE: &str = "principale";
@@ -16,11 +18,20 @@ pub fn ouvrir_principale(app: &AppHandle) {
     }
     let app2 = app.clone();
     let _ = app.run_on_main_thread(move || {
+        // Cachée et sur fond sombre jusqu'au chargement de la page : pas d'éclair blanc avant l'écran de démarrage
         let _ = WebviewWindowBuilder::new(&app2, "main", WebviewUrl::App("index.html".into()))
             .title("FPS Cagoule")
             .inner_size(1120.0, 740.0)
             .min_inner_size(920.0, 620.0)
             .center()
+            .visible(false)
+            .background_color(Color(11, 12, 16, 255))
+            .on_page_load(|f, p| {
+                if p.event() == PageLoadEvent::Finished {
+                    let _ = f.show();
+                    let _ = f.set_focus();
+                }
+            })
             .build();
     });
 }

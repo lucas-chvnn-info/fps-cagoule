@@ -137,11 +137,12 @@ input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px;
 .retrait { margin: -6px 0 0 50px; font-size: 12px; }
 
 /* Score */
-.score-carte { display: flex; flex-direction: column; align-items: center; position: relative; text-align: center; }
+.score-carte { display: flex; flex-direction: column; align-items: center; text-align: center; }
+.anneau-zone { position: relative; width: 170px; height: 170px; }
 .anneau { width: 170px; height: 170px; transform: rotate(-90deg); }
 .anneau-fond { fill: none; stroke: #232733; stroke-width: 10; }
 .anneau-valeur { fill: none; stroke: var(--accent-clair); stroke-width: 10; stroke-linecap: round; stroke-dasharray: 326.7; stroke-dashoffset: 326.7; transition: stroke-dashoffset .8s ease, stroke .3s; }
-.score { position: absolute; top: 76px; font-size: 44px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.score { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 44px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .score small { font-size: 15px; color: var(--discret); font-weight: 400; }
 #score-texte { margin-top: 10px; }
 
@@ -326,6 +327,66 @@ h2.danger { color: var(--rouge); }
 .liste-jeux-configs details { margin-top: 6px; color: var(--discret); font-size: 13px; }
 .liste-jeux-configs details ul { margin: 6px 0; padding-left: 18px; }
 .liste-jeux-configs .note { font-size: 12px; color: var(--discret); margin: 6px 0 0; }
+
+/* Écran de démarrage */
+#splash {
+  position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center;
+  background: radial-gradient(circle at 50% 42%, #14244a 0%, #0b0c10 62%);
+  transition: opacity .5s ease, visibility .5s;
+}
+#splash.fini { opacity: 0; visibility: hidden; }
+.splash-contenu { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+.splash-logo { animation: splash-logo .9s cubic-bezier(.2, .9, .3, 1.2) both; }
+.splash-logo img { display: block; animation: splash-lueur 2.2s ease-in-out .6s infinite; }
+.splash-titre { font-size: 32px; font-weight: 800; letter-spacing: .02em; animation: splash-texte .7s ease .25s both; }
+.splash-titre span { color: var(--accent-clair); }
+.splash-sous-titre { color: var(--discret); font-size: 13px; animation: splash-texte .7s ease .4s both; }
+.splash-barre { width: 180px; height: 4px; border-radius: 2px; background: #1d2230; overflow: hidden; margin-top: 6px; animation: splash-texte .5s ease .5s both; }
+.splash-barre div { width: 40%; height: 100%; border-radius: 2px; background: linear-gradient(90deg, transparent, var(--accent-clair), transparent); animation: splash-barre 1.1s ease-in-out infinite; }
+@keyframes splash-logo { from { opacity: 0; transform: scale(.6) translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes splash-lueur { 0%, 100% { filter: drop-shadow(0 0 0 rgba(77, 139, 255, 0)); } 50% { filter: drop-shadow(0 0 22px rgba(77, 139, 255, .55)); } }
+@keyframes splash-texte { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes splash-barre { from { transform: translateX(-110%); } to { transform: translateX(260%); } }
+
+/* Animations générales */
+@keyframes apparition { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes tourne { to { transform: rotate(360deg); } }
+@keyframes pop { 0% { transform: scale(.4); opacity: 0; } 70% { transform: scale(1.15); } 100% { transform: scale(1); opacity: 1; } }
+@keyframes reussite { 0% { box-shadow: 0 0 0 0 rgba(77, 139, 255, .55); border-color: var(--accent); } 100% { box-shadow: 0 0 0 14px rgba(77, 139, 255, 0); } }
+.page.actif { animation: apparition .28s ease; }
+button.chargement { pointer-events: none; opacity: .85; }
+button.chargement::before {
+  content: ""; display: inline-block; width: 12px; height: 12px; margin-right: 8px; vertical-align: -2px;
+  border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: tourne .7s linear infinite;
+}
+.tweak { transition: border-color .2s, opacity .2s; }
+.tweak.en-cours { border-color: var(--accent); opacity: .75; }
+.tweak.reussi { animation: reussite .9s ease-out; }
+.carte { transition: border-color .2s; }
+.problemes .probleme { animation: apparition .3s ease both; }
+#toast { transition: opacity .25s, transform .25s; }
+#toast[hidden] { display: block; opacity: 0; transform: translate(-50%, 16px); pointer-events: none; }
+
+/* Analyse */
+.anneau-attente { fill: none; stroke: var(--accent-clair); stroke-width: 10; stroke-linecap: round; stroke-dasharray: 70 256.7; opacity: 0; transform-box: fill-box; transform-origin: center; }
+.score-carte.analyse .anneau-attente { opacity: 1; animation: tourne 1.1s linear infinite; }
+.score-carte.analyse .anneau-valeur { opacity: .15; }
+.score-carte.analyse #score-texte { display: none; }
+.etapes { list-style: none; margin: 12px 0 0; padding: 0; text-align: left; font-size: 13px; display: flex; flex-direction: column; gap: 6px; }
+.etapes[hidden] { display: none; }
+.etapes li { display: flex; align-items: center; gap: 10px; color: var(--discret); }
+.etapes li.fait { color: var(--texte); }
+.etapes .icone { width: 16px; height: 16px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; }
+.etapes li:not(.fait):not(.echec) .icone::before { content: ""; width: 12px; height: 12px; border: 2px solid var(--accent-clair); border-right-color: transparent; border-radius: 50%; animation: tourne .7s linear infinite; }
+.etapes li.fait .icone::before { content: "✓"; color: var(--accent-clair); font-weight: 700; animation: pop .35s ease; }
+.etapes li.echec .icone::before { content: "✕"; color: var(--rouge); }
+.petit-texte { font-size: 12px; margin: 10px 0 0; }
+.entete-diagnostic { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.entete-diagnostic h2 { margin: 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}
 
 /* Notification */
 #toast {

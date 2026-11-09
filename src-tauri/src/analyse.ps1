@@ -35,6 +35,11 @@ $demarrage = @(Essai { Get-CimInstance Win32_StartupCommand | ForEach-Object {
   [ordered]@{ nom = $_.Name; commande = $_.Command; emplacement = $_.Location }
 } })
 
+# Limites posées dans msconfig (Démarrer → Options avancées) : nombre de processeurs, mémoire maximale
+$limites = @(Essai { bcdedit /enum '{current}' } | ForEach-Object {
+  if ($_ -match '^(numproc|truncatememory|removememory)\s+(\S+)') { [ordered]@{ cle = $Matches[1]; valeur = $Matches[2] } }
+})
+
 $vbs = Essai { (Get-CimInstance -Namespace root\Microsoft\Windows\DeviceGuard -ClassName Win32_DeviceGuard).VirtualizationBasedSecurityStatus }
 
 $tempGpu = $null; $chargeGpu = $null
@@ -65,6 +70,7 @@ if ($smi) {
     accelerationSouris = Lire 'HKCU:\Control Panel\Mouse' 'MouseSpeed'
   }
   vbs = $vbs
+  limitesDemarrage = $limites
   tempGpu = $tempGpu; chargeGpu = $chargeGpu
   date = (Get-Date).ToString('s')
 } | ConvertTo-Json -Depth 6 -Compress

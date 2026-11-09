@@ -7,6 +7,15 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <!-- Écran de démarrage : affiché pendant le chargement, puis il s'efface -->
+  <div id="splash" aria-hidden="true">
+    <div class="splash-contenu">
+      <div class="splash-logo"><img src="logo.png" width="132" height="132" alt=""></div>
+      <div class="splash-titre">FPS <span>Cagoule</span></div>
+      <div class="splash-sous-titre">Préparation de ton PC…</div>
+      <div class="splash-barre"><div></div></div>
+    </div>
+  </div>
   <aside class="menu">
     <div class="marque">
       <img src="icone.png" alt="" width="36" height="36">
@@ -35,13 +44,18 @@
     <section id="page-accueil" class="page actif">
       <header><h1>Accueil</h1><button id="btn-analyser" class="principal">Analyser mon PC</button></header>
       <div class="grille-accueil">
-        <div class="carte score-carte">
-          <svg viewBox="0 0 120 120" class="anneau" aria-hidden="true">
-            <circle cx="60" cy="60" r="52" class="anneau-fond"/>
-            <circle cx="60" cy="60" r="52" class="anneau-valeur" id="anneau"/>
-          </svg>
-          <div class="score"><span id="score">–</span><small>/100</small></div>
+        <div class="carte score-carte" id="carte-score">
+          <div class="anneau-zone">
+            <svg viewBox="0 0 120 120" class="anneau" aria-hidden="true">
+              <circle cx="60" cy="60" r="52" class="anneau-fond"/>
+              <circle cx="60" cy="60" r="52" class="anneau-valeur" id="anneau"/>
+              <circle cx="60" cy="60" r="52" class="anneau-attente"/>
+            </svg>
+            <div class="score"><div><span id="score">–</span><small>/100</small></div></div>
+          </div>
           <p id="score-texte" class="discret">Lance une analyse pour obtenir ton score.</p>
+          <ul id="etapes-analyse" class="etapes" hidden></ul>
+          <p id="date-derniere" class="discret petit-texte"></p>
         </div>
         <div class="carte" id="carte-jeu">
           <h2>Partie en cours</h2>
@@ -54,7 +68,10 @@
         </div>
       </div>
       <div class="carte">
-        <h2>Problèmes détectés</h2>
+        <div class="entete-diagnostic">
+          <h2>Diagnostic</h2>
+          <button id="btn-tout-corriger" class="principal" hidden>Tout corriger</button>
+        </div>
         <ul id="problemes" class="problemes"><li class="discret">Pas encore d'analyse.</li></ul>
       </div>
     </section>

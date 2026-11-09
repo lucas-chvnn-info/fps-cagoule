@@ -10,7 +10,9 @@ const GO = 1024 ** 3;
 
 // Liste des problèmes détectés : gravite 'haute' | 'moyenne' | 'info'.
 // `correctif` renvoie à une optimisation que l'app peut appliquer elle-même.
-export function evaluer(info, { planPerso = null, maintenant = new Date() } = {}) {
+// `extra` : ce que l'analyse complète a trouvé en plus du matériel (tout est facultatif)
+//   nettoyable (octets), recommandeesInactives (nombre), applis (nombre), jeux (noms), attente (nombre)
+export function evaluer(info, { planPerso = null, maintenant = new Date(), extra = {} } = {}) {
   const pb = [];
   const ajoute = (id, gravite, titre, detail, correctif) => pb.push({ id, gravite, titre, detail, correctif });
 
@@ -129,6 +131,39 @@ export function evaluer(info, { planPerso = null, maintenant = new Date() } = {}
   if (Number(info.tempGpu) >= 85) {
     ajoute('temp-gpu', 'haute', `Carte graphique à ${info.tempGpu} °C`,
       'Elle va baisser sa fréquence pour refroidir. Nettoie la poussière et vérifie la ventilation du boîtier.');
+  }
+
+  // msconfig : « Nombre de processeurs » et « Mémoire maximale » brident Windows (fausse astuce des vidéos)
+  const limites = info.limitesDemarrage || [];
+  if (limites.length) {
+    const quoi = limites.map((l) => (l.cle === 'numproc' ? `nombre de processeurs limité à ${l.valeur}` : 'mémoire limitée')).join(', ');
+    ajoute('msconfig', 'haute', 'Windows est bridé par msconfig',
+      `Option de démarrage avancée : ${quoi}. C'est un réglage de débogage, pas un boost : il empêche Windows d'utiliser tout ton PC.`, 'msconfig');
+  }
+
+  // Analyse complète
+  const Go2 = 1024 ** 3;
+  if (extra.attente > 0) {
+    ajoute('redemarrage', 'moyenne', `${extra.attente} optimisation${extra.attente > 1 ? 's attendent' : ' attend'} un redémarrage`,
+      `Redémarre ton PC pour qu'${extra.attente > 1 ? 'elles prennent' : 'elle prenne'} effet.`, 'redemarrer');
+  }
+  if (extra.recommandeesInactives > 0) {
+    ajoute('optimisations', extra.recommandeesInactives >= 5 ? 'moyenne' : 'info',
+      `${extra.recommandeesInactives} optimisation${extra.recommandeesInactives > 1 ? 's recommandées' : ' recommandée'} pas encore appliquée${extra.recommandeesInactives > 1 ? 's' : ''}`,
+      'Réglages sans contrepartie pour Windows, la carte graphique, le réseau et l\'arrière-plan. Toutes annulables.', 'optimiser');
+  }
+  if (extra.nettoyable >= 500 * 1024 ** 2) {
+    const go = extra.nettoyable / Go2;
+    ajoute('nettoyage-espace', go >= 2 ? 'moyenne' : 'info', `${go >= 1 ? go.toFixed(1).replace('.', ',') + ' Go' : Math.round(extra.nettoyable / 1024 ** 2) + ' Mo'} de fichiers inutiles`,
+      'Fichiers temporaires, caches des navigateurs et de Discord, corbeille, rapports d\'erreurs…', 'nettoyer');
+  }
+  if (extra.applis > 0) {
+    ajoute('applis', 'info', `${extra.applis} appli${extra.applis > 1 ? 's' : ''} préinstallée${extra.applis > 1 ? 's' : ''} inutile${extra.applis > 1 ? 's' : ''}`,
+      'Installées d\'office par Windows (Candy Crush, TikTok, Clipchamp…).', 'applis');
+  }
+  if (extra.jeux?.length) {
+    ajoute('jeux', 'info', `Réglages pas optimisés dans ${extra.jeux.join(', ')}`,
+      'V-Sync, flou et effets lourds encore actifs dans le jeu.', 'jeux');
   }
 
   const poids = { haute: 15, moyenne: 8, info: 2 };

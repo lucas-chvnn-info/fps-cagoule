@@ -71,59 +71,215 @@ function memoriserAnalyse(info) {
   try { localStorage.setItem('analyse', JSON.stringify(info)); } catch {}
 }
 
+let extraAnalyse = {};
+let scoreAffiche = 0;
+let analyseEnCours = false;
+let nettoyageAnalyse = null;
+let jeuxAnalyse = null;
+
+/** Ce que l'analyse complète ajoute au score (voir evaluer.js) */
+function calculerExtra() {
+  const ex = { ...extraAnalyse };
+  if (tweaks.length) {
+    ex.recommandeesInactives = tweaks.filter((t) => t.disponible && !t.actif && !t.attente && t.niveau === 'recommande').length;
+    ex.attente = tweaks.filter((t) => t.attente).length;
+  }
+  if (nettoyageAnalyse) ex.nettoyable = nettoyageAnalyse.filter((c) => c.defaut).reduce((t, c) => t + c.octets, 0);
+  if (applis.length || nettoyageAnalyse) ex.applis = applis.filter((a) => a.defaut).length;
+  if (jeuxAnalyse) ex.jeux = jeuxAnalyse.filter((j) => j.fichiers && !j.optimise && j.reglages.length).map((j) => j.nom);
+  extraAnalyse = ex;
+  try {
+    localStorage.setItem('extra', JSON.stringify(ex));
+  } catch {}
+  return ex;
+}
+
+function animerScore(cible) {
+  const depart = scoreAffiche;
+  const debut = performance.now();
+  const duree = 900;
+  const etape = () => {
+    const p = Math.max(0, Math.min(1, (performance.now() - debut) / duree));
+    const v = Math.round(depart + (cible - depart) * (1 - Math.pow(1 - p, 3)));
+    $('#score').textContent = v;
+    if (p < 1) requestAnimationFrame(etape);
+  };
+  requestAnimationFrame(etape);
+  scoreAffiche = cible;
+}
+
+const BOUTONS_CORRECTIF = {
+  nettoyer: ['Nettoyer', 'nettoyer'],
+  nettoyage: ['Nettoyer', 'nettoyer'],
+  optimiser: ['Optimiser', 'optimiser'],
+  msconfig: ['Retirer la limite', 'msconfig'],
+  redemarrer: ['Redémarrer', 'redemarrer'],
+  pilotes: ['Voir', 'pilotes'],
+  demarrage: ['Gérer', 'demarrage'],
+  applis: ['Voir', 'applis'],
+  jeux: ['Voir', 'jeux'],
+};
+
 function afficherScore() {
   if (!derniereAnalyse) return;
   const info = demarrage ? { ...derniereAnalyse, demarrage: demarrage.filter((p) => p.actif) } : derniereAnalyse;
-  const { score, problemes } = evaluer(info, { planPerso: [etat.plan_perso, etat.plan_max] });
-  $('#score').textContent = score;
+  const { score, problemes } = evaluer(info, { planPerso: [etat.plan_perso, etat.plan_max], extra: calculerExtra() });
+  animerScore(score);
   const anneau = $('#anneau');
   anneau.style.strokeDashoffset = 326.7 * (1 - score / 100);
-  anneau.style.stroke = score >= 80 ? 'var(--accent)' : score >= 55 ? 'var(--orange)' : 'var(--rouge)';
+  anneau.style.stroke = score >= 80 ? 'var(--accent-clair)' : score >= 55 ? 'var(--orange)' : 'var(--rouge)';
   $('#score-texte').textContent =
-    score >= 80 ? 'Ton PC est bien réglé pour jouer.' : score >= 55 ? 'Quelques réglages peuvent te faire gagner des FPS.' : 'Plusieurs points freinent ton PC en jeu.';
+    score >= 90 ? 'Ton PC est au top pour jouer.' : score >= 70 ? 'Quelques réglages peuvent encore te faire gagner des FPS.' : 'Plusieurs points freinent ton PC en jeu.';
+  if (derniereAnalyse.date) {
+    const min = Math.round((Date.now() - new Date(derniereAnalyse.date)) / 60000);
+    $('#date-derniere').textContent = `Dernière analyse : ${min < 1 ? "à l'instant" : min < 60 ? `il y a ${min} min` : min < 1440 ? `il y a ${Math.round(min / 60)} h` : new Date(derniereAnalyse.date).toLocaleDateString('fr-CH')}`;
+  }
 
   const ids = new Set(tweaks.map((t) => t.id));
   $('#problemes').innerHTML = problemes.length
     ? problemes
-        .map((p) => {
+        .map((p, i) => {
           let bouton = '';
-          if (p.correctif === 'nettoyage') bouton = '<button class="petit" data-action="nettoyer">Nettoyer</button>';
-          else if (p.correctif === 'pilotes') bouton = '<button class="petit principal" data-action="pilotes">Voir</button>';
-          else if (p.correctif === 'demarrage') bouton = '<button class="petit" data-action="demarrage">Gérer</button>';
+          const b = BOUTONS_CORRECTIF[p.correctif];
+          if (b) bouton = `<button class="petit ${['nettoyer', 'optimiser', 'msconfig', 'redemarrer'].includes(b[1]) ? 'principal' : ''}" data-action="${b[1]}">${b[0]}</button>`;
           else if (p.correctif && (ids.has(p.correctif) || !tweaks.length)) bouton = `<button class="petit principal" data-tweak="${esc(p.correctif)}">Corriger</button>`;
-          return `<li class="probleme"><span class="point ${p.gravite}"></span><div><strong>${esc(p.titre)}</strong><p>${esc(p.detail)}</p></div>${bouton}</li>`;
+          return `<li class="probleme" style="animation-delay:${i * 40}ms"><span class="point ${p.gravite}"></span><div><strong>${esc(p.titre)}</strong><p>${esc(p.detail)}</p></div>${bouton}</li>`;
         })
         .join('')
-    : '<li class="discret">Aucun problème détecté. Bien joué !</li>';
+    : '<li class="ok">Aucun problème détecté : ton PC est au top. 🎯</li>';
+  $('#btn-tout-corriger').hidden = !correctifsAuto(problemes).length;
   afficherMateriel();
+}
+
+/** Problèmes que l'app peut corriger seule, sans choix à faire */
+function correctifsAuto(problemes) {
+  const ids = new Set(tweaks.map((t) => t.id));
+  return problemes.filter((p) => ['optimiser', 'nettoyer', 'nettoyage', 'msconfig'].includes(p.correctif) || ids.has(p.correctif));
+}
+
+async function nettoyerRapide(bouton) {
+  const ids = (nettoyageAnalyse || []).filter((c) => c.defaut && c.octets).map((c) => c.id);
+  if (!ids.length) return 0;
+  const bilan = await appel('nettoyage_nettoyer', { ids }, bouton);
+  return bilan.reduce((t, b) => t + b.octets, 0);
+}
+
+async function reparerMsconfig(bouton) {
+  const r = await appel('reparer_msconfig', {}, bouton);
+  if (r.length) toast('Limite msconfig retirée. Redémarre ton PC pour récupérer tous tes cœurs et ta mémoire.', 8000);
 }
 
 $('#problemes').addEventListener('click', async (e) => {
   const b = e.target.closest('button');
   if (!b) return;
-  if (b.dataset.action === 'nettoyer') return allerA('nettoyage');
-  if (b.dataset.action === 'demarrage') {
-    allerA('optimisations');
-    return choisirCategorie('demarrage');
-  }
-  if (b.dataset.action === 'pilotes') return allerA('pilotes');
-  if (b.dataset.tweak) {
-    await appliquerTweaks([b.dataset.tweak], b);
-    await analyser();
-  }
+  const action = b.dataset.action;
+  try {
+    if (action === 'nettoyer') {
+      const o = await nettoyerRapide(b);
+      toast(`${formatOctets(o)} libérés.`);
+      nettoyageAnalyse = await invoke('nettoyage_analyser');
+    } else if (action === 'optimiser') {
+      await optimiserTout(false, b);
+    } else if (action === 'msconfig') {
+      if (!(await confirmer('Retirer la limite msconfig', "<p>L'option « Nombre de processeurs » ou « Mémoire maximale » de msconfig va être retirée : Windows utilisera de nouveau tout ton PC après un redémarrage. BitLocker est suspendu le temps de ce redémarrage.</p>", 'Retirer'))) return;
+      await reparerMsconfig(b);
+      memoriserAnalyse(await invoke('analyser'));
+    } else if (action === 'redemarrer') {
+      return $('#btn-redemarrer').click();
+    } else if (action === 'demarrage') {
+      allerA('optimisations');
+      return choisirCategorie('demarrage');
+    } else if (action === 'applis') return allerA('nettoyage');
+    else if (action === 'jeux') return allerA('jeux');
+    else if (action === 'pilotes') return allerA('pilotes');
+    else if (b.dataset.tweak) {
+      await appliquerTweaks([b.dataset.tweak], b);
+      memoriserAnalyse(await invoke('analyser'));
+    }
+  } catch {}
+  afficherScore();
 });
 
-async function analyser() {
-  const b = $('#btn-analyser');
-  b.disabled = true;
-  b.textContent = 'Analyse en cours…';
+$('#btn-tout-corriger').addEventListener('click', async (e) => {
+  const info = demarrage ? { ...derniereAnalyse, demarrage: demarrage.filter((p) => p.actif) } : derniereAnalyse;
+  const liste = correctifsAuto(evaluer(info, { planPerso: [etat.plan_perso, etat.plan_max], extra: extraAnalyse }).problemes);
+  const ok = await confirmer(
+    'Tout corriger',
+    `<p>FPS Cagoule va corriger :</p><ul>${liste.map((p) => `<li>${esc(p.titre)}</li>`).join('')}</ul><p>Tout reste annulable depuis la page Optimisations (sauf les fichiers nettoyés).</p>`,
+    'Tout corriger'
+  );
+  if (!ok) return;
+  const bouton = e.target;
+  bouton.classList.add('chargement');
   try {
-    memoriserAnalyse(await appel('analyser'));
-    afficherScore();
+    // Toutes les optimisations d'un coup (un seul point de restauration)
+    const ids = new Set(liste.filter((p) => tweaks.some((t) => t.id === p.correctif)).map((p) => p.correctif));
+    if (liste.some((p) => p.correctif === 'optimiser')) {
+      tweaks.filter((t) => t.disponible && !t.actif && !t.attente && t.niveau === 'recommande').forEach((t) => ids.add(t.id));
+    }
+    if (ids.size) await appliquerTweaks([...ids]);
+    if (liste.some((p) => ['nettoyer', 'nettoyage'].includes(p.correctif))) {
+      const o = await nettoyerRapide();
+      toast(`${formatOctets(o)} libérés.`);
+    }
+    if (liste.some((p) => p.correctif === 'msconfig')) await reparerMsconfig();
   } finally {
-    b.disabled = false;
+    bouton.classList.remove('chargement');
+  }
+  analyser();
+});
+
+const ETAPES = [
+  ['analyser', 'Matériel et Windows'],
+  ['tweaks_liste', 'Optimisations'],
+  ['nettoyage_analyser', 'Fichiers à nettoyer'],
+  ['demarrage_liste', 'Programmes au démarrage'],
+  ['applis_windows', 'Applis préinstallées'],
+  ['jeux_configs', 'Réglages des jeux'],
+];
+
+/** Analyse complète : toutes les vérifications en parallèle, chacune cochée quand elle finit */
+async function analyser() {
+  if (analyseEnCours) return;
+  analyseEnCours = true;
+  const b = $('#btn-analyser');
+  const carte = $('#carte-score');
+  b.classList.add('chargement');
+  b.textContent = 'Analyse…';
+  carte.classList.add('analyse');
+  const etapes = $('#etapes-analyse');
+  etapes.hidden = false;
+  etapes.innerHTML = ETAPES.map(([, nom]) => `<li><span class="icone"></span>${nom}</li>`).join('');
+  const lignes = etapes.querySelectorAll('li');
+  try {
+    const [info, t, n, d, a, j] = await Promise.all(
+      ETAPES.map(([cmd], i) =>
+        invoke(cmd)
+          .then((r) => {
+            lignes[i].classList.add('fait');
+            return r;
+          })
+          .catch(() => {
+            lignes[i].classList.add('echec');
+            return null;
+          })
+      )
+    );
+    if (info) memoriserAnalyse(info);
+    if (t) tweaks = t;
+    if (d) demarrage = d;
+    if (n) nettoyageAnalyse = n;
+    if (a) applis = a;
+    if (j) jeuxAnalyse = j;
+    await new Promise((r) => setTimeout(r, 400));
+  } finally {
+    analyseEnCours = false;
+    carte.classList.remove('analyse');
+    etapes.hidden = true;
+    b.classList.remove('chargement');
     b.textContent = 'Analyser mon PC';
   }
+  afficherScore();
 }
 $('#btn-analyser').addEventListener('click', analyser);
 
@@ -166,7 +322,7 @@ function ligneTweak(t) {
   else droite = `${annuler}${activer}`;
   // « Redémarrage nécessaire » n'est qu'une information tant que le réglage n'est pas appliqué
   const redemarrage = t.redemarrage && !t.actif && !t.attente ? '<span class="badge">Redémarrage nécessaire</span>' : '';
-  return `<li class="tweak">
+  return `<li class="tweak" data-id="${esc(t.id)}">
       <div>
         <div class="titre">${esc(t.titre)} ${gainBadge[t.gain] || ''} ${t.niveau === 'max' ? '<span class="badge violet">Boost max</span>' : ''}${t.niveau === 'risque' ? '<span class="badge rouge">Risqué</span>' : ''}${t.niveau === 'choix' ? '<span class="badge">À choisir</span>' : ''} ${redemarrage}</div>
         <p>${esc(t.description)}</p>
@@ -274,7 +430,14 @@ document.querySelectorAll('.tweaks[data-categorie]').forEach((ul) =>
 );
 
 async function appliquerTweaks(ids, bouton) {
-  const [point, resultats] = await appel('tweaks_appliquer', { ids, restauration: $('#restauration').checked }, bouton);
+  const lignes = () => ids.flatMap((id) => [...document.querySelectorAll(`.tweak[data-id="${CSS.escape(id)}"]`)]);
+  lignes().forEach((l) => l.classList.add('en-cours'));
+  let point, resultats;
+  try {
+    [point, resultats] = await appel('tweaks_appliquer', { ids, restauration: $('#restauration').checked }, bouton);
+  } finally {
+    lignes().forEach((l) => l.classList.remove('en-cours'));
+  }
   const echecs = resultats.filter((r) => !r.ok);
   const redemarrage = tweaks.some((t) => ids.includes(t.id) && t.redemarrage);
   const reussis = resultats.length - echecs.length;
@@ -283,6 +446,8 @@ async function appliquerTweaks(ids, bouton) {
   if (point) msg = `${point}. ${msg}`;
   toast(msg, 7000);
   await chargerTweaks();
+  // Petite onde sur les lignes réussies
+  resultats.filter((r) => r.ok).forEach((r) => document.querySelectorAll(`.tweak[data-id="${CSS.escape(r.id)}"]`).forEach((l) => l.classList.add('reussi')));
 }
 
 function confirmer(titre, html, libelle = 'Confirmer', { delai = 0, non = 'Annuler' } = {}) {
@@ -1290,28 +1455,41 @@ async function majConso() {
 /* ---------- Démarrage ---------- */
 
 async function init() {
-  etat = await appel('etat_app');
-  $('#version').textContent = `Version ${etat.version}`;
-  $('#maj-texte').textContent = `Version installée : ${etat.version}.`;
-  afficherJeu(etat.jeu);
-  [profils, reglages] = await Promise.all([appel('profils_get'), appel('reglages_get')]);
-  afficherProfils();
-  afficherReglages();
-  invoke('demarrage_auto_get').then((v) => ($('#demarrage-auto').checked = v));
+  const debutSplash = performance.now();
   try {
-    derniereAnalyse = JSON.parse(localStorage.getItem('analyse'));
-  } catch {}
-  if (derniereAnalyse) afficherScore();
-  else analyser();
-  invoke('demarrage_liste').then((d) => {
-    demarrage = d;
+    etat = await appel('etat_app');
+    $('#version').textContent = `Version ${etat.version}`;
+    $('#maj-texte').textContent = `Version installée : ${etat.version}.`;
+    afficherJeu(etat.jeu);
+    [profils, reglages] = await Promise.all([appel('profils_get'), appel('reglages_get')]);
+    afficherProfils();
+    afficherReglages();
+    invoke('demarrage_auto_get').then((v) => ($('#demarrage-auto').checked = v));
+    try {
+      derniereAnalyse = JSON.parse(localStorage.getItem('analyse'));
+      extraAnalyse = JSON.parse(localStorage.getItem('extra')) || {};
+    } catch {}
+  } finally {
+    // L'écran de démarrage reste au moins 1,2 s, le temps de son animation
+    const reste = 1200 - (performance.now() - debutSplash);
+    setTimeout(() => {
+      $('#splash').classList.add('fini');
+      setTimeout(() => $('#splash').remove(), 600);
+    }, Math.max(0, reste));
+  }
+  // Analyse complète au premier lancement, puis une fois par jour
+  const vieille = !derniereAnalyse?.date || Date.now() - new Date(derniereAnalyse.date) > 24 * 3600 * 1000;
+  if (vieille) {
+    setTimeout(analyser, 700);
+  } else {
     afficherScore();
-  });
-  invoke('tweaks_liste').then((t) => {
-    tweaks = t;
-    afficherCategories();
-    afficherScore();
-  });
+    Promise.all([invoke('demarrage_liste'), invoke('tweaks_liste')]).then(([d, t]) => {
+      demarrage = d;
+      tweaks = t;
+      afficherCategories();
+      afficherScore();
+    });
+  }
   majConso();
   setInterval(majConso, 3000);
 }

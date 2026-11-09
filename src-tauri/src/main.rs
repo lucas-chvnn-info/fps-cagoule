@@ -85,6 +85,11 @@ fn tweaks_annuler(app: AppHandle, ids: Vec<String>) -> Vec<tweaks::Resultat> {
 }
 
 #[tauri::command(async)]
+fn reparer_msconfig() -> Res<Vec<String>> {
+    tweaks::reparer_limites_demarrage()
+}
+
+#[tauri::command(async)]
 fn nettoyage_analyser() -> Vec<nettoyage::Categorie> {
     nettoyage::analyser()
 }
@@ -402,6 +407,7 @@ fn main() {
             tweaks_appliquer,
             tweaks_annuler,
             nettoyage_analyser,
+            reparer_msconfig,
             nettoyage_nettoyer,
             programmes_liste,
             optimiser_disques,

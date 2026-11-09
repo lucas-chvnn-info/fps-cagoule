@@ -313,6 +313,19 @@ fn veille_prolongee(activer: bool) -> Result<(), String> {
     }
 }
 
+/// Retire les limites posées dans msconfig (« Nombre de processeurs », « Mémoire maximale ») :
+/// ce sont des options de débogage qui brident Windows, pas des « boosts ». Renvoie ce qui a été retiré.
+pub fn reparer_limites_demarrage() -> Result<Vec<String>, String> {
+    let mut retirees = Vec::new();
+    for cle in ["numproc", "truncatememory", "removememory"] {
+        if lire_bcd(cle).is_some() {
+            ecrire_bcd(cle, None)?;
+            retirees.push(cle.to_string());
+        }
+    }
+    Ok(retirees)
+}
+
 /* ---------- Exclusions Defender pour les dossiers de jeux ---------- */
 
 #[derive(Default, Deserialize)]

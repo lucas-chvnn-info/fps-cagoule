@@ -2,7 +2,7 @@
 
 Analyse, optimisation et boost par jeu pour Windows 11. Gratuit, pour moi et mes potes.
 
-- **Analyse du PC** : matériel, réglages Windows, problèmes détectés et score sur 100.
+- **Analyse complète** : matériel, réglages Windows, optimisations, fichiers à nettoyer, démarrage, applis préinstallées, réglages des jeux et limites msconfig (« Nombre de processeurs » : fausse astuce qui bride Windows), score sur 100 et bouton « Tout corriger ».
 - **Optimisations** : réglages Windows réversibles (valeur d'origine sauvegardée, point de restauration), programmes au démarrage activables et désactivables (comme le Gestionnaire des tâches).
 - **Optimiser en un clic** : « Optimisation recommandée », « Boost maximum » (54 réglages : Windows, carte graphique dont NVIDIA, alimentation et processeur, arrière-plan, réseau, souris et clavier, confort et vie privée) et « Tout annuler ». Une « Zone risquée » à part (jamais appliquée en lot, confirmation pour chaque réglage) : protections Spectre/Meltdown, isolation du noyau (VBS), hyperviseur et dynamic tick (bcdedit, avec BitLocker suspendu pour un redémarrage), exclusion des dossiers de jeux de Defender.
 - **Boost par jeu** : quand un jeu se lance, plan Performances élevées, priorité haute, GPU le plus puissant, fermeture des programmes choisis. Tout revient comme avant à la fin. Priorité haute enregistrée dans Windows (appliquée au lancement, que l'anti-triche ne peut pas refuser), mémoire en veille vidée pendant la partie quand elle devient basse. Mode Boost max : plan Performances optimales, minuteur 0,5 ms.
