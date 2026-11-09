@@ -1,5 +1,5 @@
 import { evaluer } from './evaluer.js';
-import { testerGpu } from './benchmark-gpu.js';
+import { testerGpu, preparerStabilite, references, testerStabilite } from './benchmark-gpu.js';
 
 const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
@@ -46,6 +46,7 @@ document.querySelectorAll('nav button').forEach((b) =>
     }
     if (b.dataset.page === 'analyse') chargerCartes();
     if (b.dataset.page === 'benchmark') chargerBenchmarks();
+    if (b.dataset.page === 'oc') chargerOc();
     if (b.dataset.page === 'nettoyage') {
       if (!nettoyage) analyserNettoyage();
       chargerProgrammes();
@@ -1513,6 +1514,219 @@ $('#btn-bench-copier').addEventListener('click', async () => {
   } catch {
     toast(texte, 10000);
   }
+});
+
+/* ---------- Overclocking ---------- */
+
+let oc = null;
+let ocOccupe = false;
+
+async function chargerOc() {
+  try {
+    oc = await invoke('oc_etat');
+  } catch (e) {
+    $('#oc-contenu').hidden = true;
+    $('#oc-indisponible').hidden = false;
+    $('#oc-indisponible-texte').textContent = `${e}. L'overclocking n'est proposé que pour les cartes NVIDIA.`;
+    return;
+  }
+  $('#oc-indisponible').hidden = true;
+  $('#oc-contenu').hidden = false;
+  $('#oc-plantage').hidden = !oc.coupe_apres_plantage;
+  $('#oc-gpu').textContent = oc.gpu;
+  const [cmin, cmax, mmin, mmax] = oc.bornes;
+  const regler = (id, plage, min, max, valeur) => {
+    const i = $(id);
+    i.disabled = !plage?.modifiable;
+    i.min = Math.max(min, plage?.min ?? 0);
+    i.max = Math.min(max, plage?.max ?? 0);
+    i.value = valeur;
+  };
+  const e = oc.enregistre;
+  regler('#oc-coeur', oc.coeur, cmin, cmax, e?.coeur_mhz ?? oc.coeur?.actuel ?? 0);
+  regler('#oc-memoire', oc.memoire, mmin, mmax, e?.memoire_mhz ?? oc.memoire?.actuel ?? 0);
+  $('#oc-puissance-ligne').hidden = !oc.puissance;
+  if (oc.puissance) {
+    const p = $('#oc-puissance');
+    p.min = Math.round(oc.puissance.min);
+    p.max = Math.round(oc.puissance.max);
+    p.value = Math.round(e?.puissance_pct ?? oc.puissance.actuel);
+  }
+  $('#oc-demarrage').checked = !!e?.au_demarrage;
+  majCurseursOc();
+  const actif = (oc.coeur?.actuel || 0) !== 0 || (oc.memoire?.actuel || 0) !== 0;
+  $('#oc-resume').textContent = actif ? `Actif : GPU ${signe(oc.coeur?.actuel)} MHz, mémoire ${signe(oc.memoire?.actuel)} MHz` : 'Fréquences d\'origine';
+  $('#oc-resume').className = `badge ${actif ? 'accent' : ''}`;
+}
+
+const signe = (v) => (v > 0 ? `+${v}` : `${v ?? 0}`);
+
+function majCurseursOc() {
+  $('#oc-coeur-v').textContent = `${signe(Number($('#oc-coeur').value))} MHz`;
+  $('#oc-memoire-v').textContent = `${signe(Number($('#oc-memoire').value))} MHz`;
+  $('#oc-puissance-v').textContent = `${$('#oc-puissance').value} %`;
+}
+['#oc-coeur', '#oc-memoire', '#oc-puissance'].forEach((id) => $(id).addEventListener('input', majCurseursOc));
+
+const valeursOc = () => ({
+  coeur: Number($('#oc-coeur').value),
+  memoire: Number($('#oc-memoire').value),
+  puissance: oc?.puissance ? Number($('#oc-puissance').value) : null,
+});
+
+function journal(texte, classe = '') {
+  const li = document.createElement('li');
+  li.textContent = texte;
+  li.className = classe;
+  $('#oc-journal').append(li);
+  li.scrollIntoView({ block: 'nearest' });
+}
+
+/** Scène de test : un nouveau canvas à chaque fois (après un plantage du pilote, l'ancien est perdu) */
+function nouvelleScene() {
+  const ancien = $('#oc-canvas');
+  const canvas = ancien.cloneNode();
+  ancien.replaceWith(canvas);
+  canvas.hidden = false;
+  return preparerStabilite(canvas);
+}
+
+async function avecOccupation(bouton, f) {
+  if (ocOccupe) return;
+  ocOccupe = true;
+  bouton.classList.add('chargement');
+  $('#oc-barre-zone').hidden = false;
+  try {
+    await f();
+  } catch (e) {
+    toast(`Overclocking : ${e}`, 8000);
+  } finally {
+    ocOccupe = false;
+    bouton.classList.remove('chargement');
+    $('#oc-barre-zone').hidden = true;
+    $('#oc-canvas').hidden = true;
+    chargerOc();
+  }
+}
+
+const barreOc = (f) => ($('#oc-barre').style.width = `${f * 100}%`);
+
+/** Référence aux fréquences d'origine, puis test des fréquences voulues */
+async function testerReglage(coeur, memoire, puissance, duree) {
+  await invoke('oc_essayer', { coeur: 0, memoire: 0, puissance: null });
+  let scene = nouvelleScene();
+  const ref = references(scene);
+  await invoke('oc_essayer', { coeur, memoire, puissance });
+  return testerStabilite(scene, ref, duree, barreOc);
+}
+
+$('#btn-oc-tester').addEventListener('click', (e) =>
+  avecOccupation(e.target, async () => {
+    const v = valeursOc();
+    const r = await testerReglage(v.coeur, v.memoire, v.puissance, 30000);
+    if (r.ok) toast(`Stable pendant 30 s (${Math.round(r.images_s)} images/s). Clique sur « Appliquer » pour le garder.`, 8000);
+    else {
+      await invoke('oc_essayer', { coeur: 0, memoire: 0, puissance: null });
+      toast(`Pas stable : ${r.raison}. Fréquences d'origine remises : baisse les curseurs.`, 9000);
+    }
+  })
+);
+
+$('#btn-oc-appliquer').addEventListener('click', (e) =>
+  avecOccupation(e.target, async () => {
+    const v = valeursOc();
+    await appel('oc_enregistrer', { reglage: { coeur_mhz: v.coeur, memoire_mhz: v.memoire, puissance_pct: v.puissance, au_demarrage: $('#oc-demarrage').checked } });
+    toast('Overclocking appliqué. Si un jeu plante, baisse les curseurs ou remets par défaut.', 7000);
+  })
+);
+
+$('#btn-oc-defaut').addEventListener('click', (e) =>
+  avecOccupation(e.target, async () => {
+    await appel('oc_defaut');
+    toast("Fréquences et puissance d'origine remises.");
+  })
+);
+
+$('#oc-demarrage').addEventListener('change', async (e) => {
+  if (!oc?.enregistre) return;
+  await appel('oc_enregistrer', { reglage: { ...oc.enregistre, au_demarrage: e.target.checked } }).catch(() => {});
+});
+
+/** Mode automatique : monte par paliers tant que les images restent justes, puis garde une marge */
+$('#btn-oc-auto').addEventListener('click', async (e) => {
+  const ok = await confirmer(
+    'Overclocking automatique',
+    "<p>Environ 4 minutes. Ferme tes jeux et ne touche à rien : l'écran peut clignoter si le pilote graphique plante (il redémarre tout seul en quelques secondes).</p>",
+    'Lancer'
+  );
+  if (!ok) return;
+  $('#oc-journal').innerHTML = '';
+  avecOccupation(e.target, async () => {
+    const [, cmax, , mmax] = oc.bornes;
+    const maxCoeur = Math.min(cmax, oc.coeur?.max ?? 0);
+    const maxMem = Math.min(mmax, oc.memoire?.max ?? 0);
+    const puissance = oc.puissance ? Math.round(oc.puissance.max) : null;
+    await invoke('oc_essayer', { coeur: 0, memoire: 0, puissance: null });
+    let scene = nouvelleScene();
+    const ref = references(scene);
+    const base = await testerStabilite(scene, ref, 6000, barreOc);
+    journal(`Référence : ${Math.round(base.images_s)} images/s aux fréquences d'origine`);
+    const essai = async (c, m, duree) => {
+      await invoke('oc_essayer', { coeur: c, memoire: m, puissance });
+      if (scene.perdu()) scene = nouvelleScene();
+      return testerStabilite(scene, ref, duree, barreOc);
+    };
+
+    // 1. Fréquence du GPU
+    let coeur = 0;
+    if (oc.coeur?.modifiable) {
+      for (let c = 50; c <= maxCoeur; c += 25) {
+        const r = await essai(c, 0, 12000);
+        if (!r.ok) {
+          journal(`GPU +${c} MHz : ${r.raison}`, 'ko');
+          break;
+        }
+        journal(`GPU +${c} MHz : stable (${Math.round(r.images_s)} images/s)`, 'ok');
+        coeur = c;
+      }
+      coeur = Math.max(0, coeur - 25);
+    }
+
+    // 2. Mémoire : les erreurs y sont corrigées en ralentissant, on s'arrête quand les performances baissent
+    let memoire = 0;
+    if (oc.memoire?.modifiable) {
+      let meilleur = 0;
+      for (let m = 200; m <= maxMem; m += 200) {
+        const r = await essai(coeur, m, 10000);
+        if (!r.ok || r.images_s < meilleur * 0.99) {
+          journal(`Mémoire +${m} MHz : ${r.ok ? 'plus lent (erreurs corrigées par la carte)' : r.raison}`, 'ko');
+          break;
+        }
+        journal(`Mémoire +${m} MHz : stable (${Math.round(r.images_s)} images/s)`, 'ok');
+        meilleur = Math.max(meilleur, r.images_s);
+        memoire = m;
+      }
+      memoire = Math.max(0, memoire - 100);
+    }
+
+    // 3. Vérification finale plus longue, avec la marge de sécurité
+    let final = await essai(coeur, memoire, 20000);
+    if (!final.ok) {
+      journal(`Vérification finale ratée (${final.raison}) : je baisse encore`, 'ko');
+      coeur = Math.max(0, coeur - 50);
+      memoire = Math.max(0, memoire - 200);
+      final = await essai(coeur, memoire, 20000);
+    }
+    if (!final.ok || (coeur === 0 && memoire === 0)) {
+      await invoke('oc_defaut');
+      journal('Aucun overclocking stable trouvé : fréquences d\'origine remises', 'ko');
+      return;
+    }
+    const gain = ((final.images_s / base.images_s - 1) * 100).toFixed(1).replace('.', ',');
+    journal(`Résultat : GPU +${coeur} MHz, mémoire +${memoire} MHz, ${gain} % d'images en plus sur ce test`, 'ok');
+    await appel('oc_enregistrer', { reglage: { coeur_mhz: coeur, memoire_mhz: memoire, puissance_pct: puissance, au_demarrage: $('#oc-demarrage').checked } });
+    toast(`Overclocking trouvé et appliqué : GPU +${coeur} MHz, mémoire +${memoire} MHz.`, 8000);
+  });
 });
 
 /* ---------- Statistiques ---------- */

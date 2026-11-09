@@ -402,6 +402,17 @@ button.chargement::before {
 .ecart.plus { color: #4ade80; }
 .ecart.moins { color: var(--rouge); }
 
+/* Overclocking */
+.avertissement-oc { border-color: rgba(255, 181, 71, .4); }
+.avertissement-oc p { margin: 6px 0 0; color: var(--discret); }
+.journal { list-style: none; margin: 12px 0 0; padding: 0; font-size: 13px; max-height: 220px; overflow-y: auto; }
+.journal li { padding: 3px 0; color: var(--discret); animation: apparition .25s ease; }
+.journal li.ok { color: var(--accent-clair); }
+.journal li.ko { color: var(--orange); }
+#oc-canvas { width: 100%; max-width: 480px; aspect-ratio: 16 / 9; border-radius: 10px; margin-top: 12px; display: block; }
+#oc-canvas[hidden], #oc-barre-zone[hidden] { display: none; }
+#page-oc .curseur { grid-template-columns: 110px 1fr 80px; }
+
 /* Notification */
 #toast {
   position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);

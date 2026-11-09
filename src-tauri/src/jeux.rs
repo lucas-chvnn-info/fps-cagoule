@@ -201,6 +201,11 @@ fn demarrer(app: &AppHandle, etat: &Etat, profil: &crate::config::Profil, pid: u
         derniere_purge: None,
         purges: 0,
     });
+    // Partie jouée avec l'overclocking : marque effacée à la fin de la partie (voir oc_au_demarrage)
+    if etat.stock.donnees.lock().unwrap().oc.as_ref().is_some_and(|o| o.coeur_mhz != 0 || o.memoire_mhz != 0) {
+        etat.stock.donnees.lock().unwrap().oc_partie = Some(SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs()));
+        etat.stock.sauver();
+    }
     // Résolution propre au jeu (ex. 4:3 étiré), appliquée même sans boost
     if let Some(r) = &profil.resolution {
         let message = match crate::ecrans::mode_pour_jeu(r.largeur, r.hauteur, r.etirer) {
@@ -244,6 +249,9 @@ pub fn terminer(app: &AppHandle, etat: &Etat) {
     restaurer_couleurs(etat);
     restaurer_resolution(etat);
     systeme::minuteur_precis(false);
+    if etat.stock.donnees.lock().unwrap().oc_partie.take().is_some() {
+        etat.stock.sauver();
+    }
     *etat.fps_live.lock().unwrap() = None;
     crate::fenetres::fermer_overlay(app);
     crate::fenetres::infobulle(app, "FPS Cagoule");
@@ -390,5 +398,30 @@ pub fn synchroniser_priorites(stock: &Stockage) {
     if change || crees.len() != avant {
         stock.donnees.lock().unwrap().priorites = crees;
         stock.sauver();
+    }
+}
+
+/// Au lancement de l'app : réapplique l'overclocking demandé, sauf si le PC s'est arrêté brutalement
+/// pendant une partie avec l'OC (la marque de partie est restée et Windows a redémarré depuis).
+pub fn oc_au_demarrage(etat: &Etat) {
+    let mut d = etat.stock.donnees.lock().unwrap();
+    if let Some(debut) = d.oc_partie.take() {
+        if systeme::demarrage_windows() > debut {
+            if let Some(oc) = d.oc.as_mut() {
+                oc.au_demarrage = false;
+            }
+            d.oc_coupe_apres_plantage = true;
+            drop(d);
+            etat.stock.sauver();
+            return;
+        }
+    }
+    let oc = d.oc.clone();
+    drop(d);
+    if let Some(oc) = oc.filter(|o| o.au_demarrage) {
+        let _ = crate::nvidia::appliquer_oc(oc.coeur_mhz, oc.memoire_mhz);
+        if let Some(p) = oc.puissance_pct {
+            let _ = crate::nvidia::appliquer_puissance(p);
+        }
     }
 }

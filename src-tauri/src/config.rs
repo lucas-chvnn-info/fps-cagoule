@@ -105,6 +105,20 @@ pub struct Donnees {
     pub priorites: Vec<PrioriteCree>,
     /// Copies d'origine des fichiers de réglages des jeux : id du jeu → [(fichier, copie)]
     pub configs_jeux: HashMap<String, Vec<(String, String)>>,
+    /// Overclocking de la carte graphique enregistré (réappliqué au démarrage si demandé)
+    pub oc: Option<ReglageOc>,
+    /// Début d'une partie jouée avec l'overclocking : s'il reste là après un redémarrage, le PC s'est arrêté brutalement
+    pub oc_partie: Option<u64>,
+    /// L'OC a été coupé après un arrêt brutal (message à montrer une fois)
+    pub oc_coupe_apres_plantage: bool,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct ReglageOc {
+    pub coeur_mhz: i32,
+    pub memoire_mhz: i32,
+    pub puissance_pct: Option<f64>,
+    pub au_demarrage: bool,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -130,6 +144,9 @@ impl Default for Donnees {
             ecran_jeu: None,
             priorites: Vec::new(),
             configs_jeux: HashMap::new(),
+            oc: None,
+            oc_partie: None,
+            oc_coupe_apres_plantage: false,
         }
     }
 }

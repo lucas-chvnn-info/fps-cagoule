@@ -30,6 +30,7 @@
       <button data-page="pilotes">Pilotes</button>
       <button data-page="jeux">Boost par jeu</button>
       <button data-page="ecrans">Écrans</button>
+      <button data-page="oc">Overclocking</button>
       <button data-page="fps">Statistiques FPS</button>
       <button data-page="reglages">Réglages</button>
     </nav>
@@ -299,6 +300,44 @@
         <p class="discret retrait">La vibrance ne fonctionne qu'avec une carte NVIDIA. Luminosité, contraste et gamma passent par Windows : ils n'ont pas d'effet en HDR ni dans certains jeux en plein écran exclusif.</p>
       </div>
       <div id="ecrans" class="grille-2"><p class="discret">Chargement…</p></div>
+    </section>
+
+    <!-- Overclocking -->
+    <section id="page-oc" class="page">
+      <header><h1>Overclocking</h1></header>
+      <div class="carte avertissement-oc">
+        <strong>À lire avant</strong>
+        <p>Overclocker fait tourner ta carte graphique plus vite que prévu par le fabricant : 3 à 8 % de FPS en plus en général. Trop haut, le jeu ou le pilote plante, mais la carte ne s'abîme pas (le pilote limite tension et température). Tout revient à la normale au redémarrage du PC. Le processeur n'est pas overclockable ici : ça se règle dans le BIOS (PBO chez AMD).</p>
+      </div>
+      <div id="oc-indisponible" class="carte" hidden><p id="oc-indisponible-texte" class="discret"></p></div>
+      <div id="oc-contenu" hidden>
+        <p id="oc-plantage" class="carte alerte" hidden>Ton PC s'est arrêté brutalement pendant une partie avec l'overclocking : FPS Cagoule l'a désactivé par sécurité. Choisis un réglage plus bas.</p>
+        <div class="carte">
+          <div class="entete-diagnostic"><h2 id="oc-gpu">Carte graphique</h2><span id="oc-resume" class="badge"></span></div>
+          <div class="grille-2">
+            <div>
+              <h2>Automatique</h2>
+              <p class="discret">FPS Cagoule monte les fréquences par paliers et vérifie à chaque palier que la carte calcule encore des images parfaitement justes. Il garde ensuite une marge de sécurité. Environ 4 minutes, ne touche à rien pendant ce temps.</p>
+              <button class="principal" id="btn-oc-auto">Trouver mon overclocking</button>
+              <ul id="oc-journal" class="journal"></ul>
+            </div>
+            <div>
+              <h2>Manuel</h2>
+              <label class="curseur"><span>Fréquence GPU</span><input type="range" id="oc-coeur" step="5"><output id="oc-coeur-v"></output></label>
+              <label class="curseur"><span>Mémoire</span><input type="range" id="oc-memoire" step="25"><output id="oc-memoire-v"></output></label>
+              <label class="curseur" id="oc-puissance-ligne"><span>Puissance</span><input type="range" id="oc-puissance" step="1"><output id="oc-puissance-v"></output></label>
+              <label class="case"><input type="checkbox" id="oc-demarrage"> Réappliquer au démarrage de Windows</label>
+              <div class="boutons">
+                <button id="btn-oc-tester">Tester 30 s</button>
+                <button class="principal" id="btn-oc-appliquer">Appliquer</button>
+                <button class="discret-btn" id="btn-oc-defaut">Remettre par défaut</button>
+              </div>
+            </div>
+          </div>
+          <div class="barre" id="oc-barre-zone" hidden><div id="oc-barre"></div></div>
+          <canvas id="oc-canvas" width="1920" height="1080" hidden></canvas>
+        </div>
+      </div>
     </section>
 
     <!-- FPS -->

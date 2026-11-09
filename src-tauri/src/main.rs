@@ -150,6 +150,61 @@ fn benchmarks(app: AppHandle) -> Vec<benchmark::Resultat> {
     benchmark::historique(&etat(&app).stock)
 }
 
+#[derive(Serialize)]
+struct EtatOcApp {
+    #[serde(flatten)]
+    carte: nvidia::EtatOc,
+    enregistre: Option<config::ReglageOc>,
+    coupe_apres_plantage: bool,
+    bornes: [i32; 4],
+}
+
+#[tauri::command(async)]
+fn oc_etat(app: AppHandle) -> Res<EtatOcApp> {
+    let e = etat(&app);
+    let carte = nvidia::lire_oc()?;
+    let mut d = e.stock.donnees.lock().unwrap();
+    // Le message d'arrêt brutal n'est montré qu'une fois
+    let coupe = std::mem::take(&mut d.oc_coupe_apres_plantage);
+    let enregistre = d.oc.clone();
+    drop(d);
+    if coupe {
+        e.stock.sauver();
+    }
+    Ok(EtatOcApp { carte, enregistre, coupe_apres_plantage: coupe, bornes: [nvidia::COEUR_MIN, nvidia::COEUR_MAX, nvidia::MEMOIRE_MIN, nvidia::MEMOIRE_MAX] })
+}
+
+/// Applique sans enregistrer (essais et mode automatique).
+#[tauri::command(async)]
+fn oc_essayer(coeur: i32, memoire: i32, puissance: Option<f64>) -> Res<()> {
+    nvidia::appliquer_oc(coeur, memoire)?;
+    if let Some(p) = puissance {
+        nvidia::appliquer_puissance(p)?;
+    }
+    Ok(())
+}
+
+#[tauri::command(async)]
+fn oc_enregistrer(app: AppHandle, reglage: config::ReglageOc) -> Res<()> {
+    nvidia::appliquer_oc(reglage.coeur_mhz, reglage.memoire_mhz)?;
+    if let Some(p) = reglage.puissance_pct {
+        nvidia::appliquer_puissance(p)?;
+    }
+    let e = etat(&app);
+    e.stock.donnees.lock().unwrap().oc = Some(reglage);
+    e.stock.sauver();
+    Ok(())
+}
+
+#[tauri::command(async)]
+fn oc_defaut(app: AppHandle) -> Res<()> {
+    nvidia::remettre_par_defaut()?;
+    let e = etat(&app);
+    e.stock.donnees.lock().unwrap().oc = None;
+    e.stock.sauver();
+    Ok(())
+}
+
 #[tauri::command(async)]
 fn optimiser_disques() -> Res<serde_json::Value> {
     nettoyage::optimiser_disques()
@@ -416,6 +471,7 @@ fn main() {
             jeux::restaurer_couleurs(&etat);
             jeux::restaurer_resolution(&etat);
             jeux::synchroniser_priorites(&etat.stock);
+            jeux::oc_au_demarrage(&etat);
             app.manage(etat);
 
             fenetres::creer_icone(app.handle())?;
@@ -437,6 +493,10 @@ fn main() {
             nettoyage_nettoyer,
             programmes_liste,
             optimiser_disques,
+            oc_etat,
+            oc_essayer,
+            oc_enregistrer,
+            oc_defaut,
             benchmark_cpu,
             benchmark_ram,
             benchmark_disque,
@@ -587,6 +647,7 @@ mod tests_windows {
         assert!(stock.donnees.lock().unwrap().priorites.is_empty());
         // Pas de carte NVIDIA sur le PC de GitHub : erreur propre, sans plantage
         assert!(nvidia::lire(0x007B_A09E).is_err());
+        assert!(nvidia::lire_oc().is_err());
     }
 
     #[test]

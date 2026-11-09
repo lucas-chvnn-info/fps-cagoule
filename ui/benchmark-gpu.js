@@ -117,3 +117,77 @@ export function testerGpu(canvas, duree, progression) {
     requestAnimationFrame(image);
   });
 }
+
+/* ---------- Test de stabilité (overclocking) ---------- */
+
+const ZONE = 256;
+
+/** Prépare la scène sur `canvas` pour des images fixes, comparables pixel par pixel. */
+export function preparerStabilite(canvas) {
+  const gl = canvas.getContext('webgl2', { powerPreference: 'high-performance', antialias: false, preserveDrawingBuffer: true });
+  if (!gl) throw new Error('WebGL 2 indisponible');
+  let perdu = false;
+  canvas.addEventListener('webglcontextlost', (e) => {
+    perdu = true;
+    e.preventDefault();
+  });
+  const compiler = (type, source) => {
+    const s = gl.createShader(type);
+    gl.shaderSource(s, source);
+    gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+    return s;
+  };
+  const prog = gl.createProgram();
+  gl.attachShader(prog, compiler(gl.VERTEX_SHADER, SOMMETS));
+  gl.attachShader(prog, compiler(gl.FRAGMENT_SHADER, PIXELS));
+  gl.linkProgram(prog);
+  gl.useProgram(prog);
+  gl.viewport(0, 0, canvas.width, canvas.height);
+  gl.uniform2f(gl.getUniformLocation(prog, 'res'), canvas.width, canvas.height);
+  const uT = gl.getUniformLocation(prog, 't');
+  const pixels = new Uint8Array(ZONE * ZONE * 4);
+  const x = (canvas.width - ZONE) >> 1;
+  const y = (canvas.height - ZONE) >> 1;
+  // Image fixe n° i : empreinte (FNV-1a) des pixels du centre
+  const empreinte = (i) => {
+    gl.uniform1f(uT, i * 1.37);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.readPixels(x, y, ZONE, ZONE, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+    let h = 0x811c9dc5;
+    for (let k = 0; k < pixels.length; k++) h = Math.imul(h ^ pixels[k], 0x01000193);
+    return h >>> 0;
+  };
+  return { empreinte, perdu: () => perdu || gl.isContextLost() };
+}
+
+/**
+ * Fait tourner la scène `duree` ms en comparant chaque image à `reference` (empreintes calculées aux
+ * fréquences d'origine). Renvoie { ok, raison, images_s }.
+ */
+export function testerStabilite(scene, reference, duree, progression) {
+  return new Promise((resoudre) => {
+    const debut = performance.now();
+    let images = 0;
+    const image = () => {
+      if (scene.perdu()) return resoudre({ ok: false, raison: 'le pilote graphique a planté', images_s: 0 });
+      const maintenant = performance.now();
+      if (maintenant - debut >= duree) return resoudre({ ok: true, images_s: images / ((maintenant - debut) / 1000) });
+      do {
+        const i = images % reference.length;
+        if (scene.empreinte(i) !== reference[i]) {
+          return resoudre({ ok: false, raison: 'erreurs de calcul détectées (artefacts)', images_s: 0 });
+        }
+        images++;
+      } while (performance.now() - maintenant < 12);
+      progression?.(Math.min(1, (maintenant - debut) / duree));
+      requestAnimationFrame(image);
+    };
+    requestAnimationFrame(image);
+  });
+}
+
+/** Empreintes de référence : à calculer aux fréquences d'origine */
+export function references(scene, n = 12) {
+  return Array.from({ length: n }, (_, i) => scene.empreinte(i));
+}
