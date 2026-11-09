@@ -1,6 +1,7 @@
 // FPS Cagoule : analyse, optimisation et boost par jeu pour Windows 11.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod benchmark;
 mod config;
 mod demarrage;
 mod edition;
@@ -122,6 +123,31 @@ fn jeux_config_appliquer(app: AppHandle, id: String) -> Res<usize> {
 #[tauri::command(async)]
 fn jeux_config_restaurer(app: AppHandle, id: String) -> Res<()> {
     jeux_config::restaurer(&etat(&app).stock, &id)
+}
+
+#[tauri::command(async)]
+fn benchmark_cpu(duree: f64) -> benchmark::ResultatCpu {
+    benchmark::cpu(duree.clamp(1.0, 10.0))
+}
+
+#[tauri::command(async)]
+fn benchmark_ram() -> benchmark::ResultatRam {
+    benchmark::ram(3.0)
+}
+
+#[tauri::command(async)]
+fn benchmark_disque() -> Res<benchmark::ResultatDisque> {
+    benchmark::disque(512, 4.0)
+}
+
+#[tauri::command(async)]
+fn benchmark_enregistrer(app: AppHandle, resultat: benchmark::Resultat) -> Vec<benchmark::Resultat> {
+    benchmark::enregistrer(&etat(&app).stock, resultat)
+}
+
+#[tauri::command(async)]
+fn benchmarks(app: AppHandle) -> Vec<benchmark::Resultat> {
+    benchmark::historique(&etat(&app).stock)
 }
 
 #[tauri::command(async)]
@@ -411,6 +437,11 @@ fn main() {
             nettoyage_nettoyer,
             programmes_liste,
             optimiser_disques,
+            benchmark_cpu,
+            benchmark_ram,
+            benchmark_disque,
+            benchmark_enregistrer,
+            benchmarks,
             jeux_configs,
             jeux_config_appliquer,
             jeux_config_restaurer,
@@ -581,6 +612,17 @@ mod tests_windows {
         // Aucun jeu installé sur le PC de GitHub : la liste se fait sans erreur
         let stock = Stockage::ouvrir(std::env::temp_dir().join("fps-cagoule-test-jeux"));
         assert_eq!(jeux_config::liste(&stock).len(), 8);
+    }
+
+    #[test]
+    fn benchmark_court() {
+        // Valeurs brutes du PC de GitHub (référence des points), relues par la CI
+        let c = benchmark::cpu(2.0);
+        let r = benchmark::ram(2.0);
+        let d = benchmark::disque(256, 2.0).expect("benchmark disque");
+        assert!(c.un_coeur > 0.0 && c.tous >= c.un_coeur && r.debit > 0.0 && r.latence > 0.0 && d.lecture > 0.0);
+        let brut = serde_json::json!({ "cpu": c, "ram": r, "disque": d });
+        std::fs::write(concat!(env!("CARGO_MANIFEST_DIR"), "/target/benchmark.json"), brut.to_string()).unwrap();
     }
 
     #[test]

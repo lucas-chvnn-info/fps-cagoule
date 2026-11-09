@@ -26,6 +26,8 @@ jobs:
         run: cargo test --manifest-path src-tauri/Cargo.toml
       - name: Analyse du PC de GitHub passée dans l'évaluation
         run: node scripts/verifier-analyse.mjs src-tauri/target/analyse.json
+      - name: Benchmark du PC de GitHub (référence des points)
+        run: Get-Content src-tauri/target/benchmark.json
 
   version:
     if: startsWith(github.ref, 'refs/tags/v')
