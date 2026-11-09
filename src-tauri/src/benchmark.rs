@@ -69,9 +69,10 @@ fn mesurer_cpu(fils: usize, duree: Duration) -> f64 {
     compte.load(Ordering::Relaxed) as f64 / debut.elapsed().as_secs_f64()
 }
 
-/// Unités par seconde du PC de référence (mesurées sur GitHub Actions)
-const REF_CPU_1: f64 = 30_000.0;
-const REF_CPU_N: f64 = 100_000.0;
+/// Unités par seconde du PC de référence : mesurées sur GitHub Actions en compilation de test
+/// (5 110 et 14 530), multipliées par 2,7 = écart mesuré avec la compilation finale de l'app
+const REF_CPU_1: f64 = 13_800.0;
+const REF_CPU_N: f64 = 39_000.0;
 
 #[derive(Serialize)]
 pub struct ResultatCpu {
@@ -100,8 +101,9 @@ pub fn cpu(duree_s: f64) -> ResultatCpu {
 
 /* ---------- Mémoire ---------- */
 
-const REF_RAM_GO_S: f64 = 10.0;
-const REF_RAM_NS: f64 = 100.0;
+// Référence mesurée sur GitHub Actions : 15,7 Go/s et 138 ns
+const REF_RAM_GO_S: f64 = 15.0;
+const REF_RAM_NS: f64 = 130.0;
 
 #[derive(Serialize)]
 pub struct ResultatRam {
@@ -151,9 +153,10 @@ pub fn ram(duree_s: f64) -> ResultatRam {
 
 /* ---------- Disque ---------- */
 
+// Référence mesurée sur GitHub Actions : 518 Mo/s en lecture, 113 en écriture, 9,6 en 4 Ko
 const REF_LECTURE: f64 = 500.0;
-const REF_ECRITURE: f64 = 400.0;
-const REF_4K: f64 = 40.0;
+const REF_ECRITURE: f64 = 110.0;
+const REF_4K: f64 = 10.0;
 
 #[derive(Serialize)]
 pub struct ResultatDisque {
@@ -252,7 +255,8 @@ pub fn disque(taille_mo: u64, duree_aleatoire_s: f64) -> Result<ResultatDisque, 
     })();
     let _ = std::fs::remove_file(&chemin);
     let (lecture, ecriture, aleatoire_4k) = resultat?;
-    let points = (lecture / REF_LECTURE * 350.0 + ecriture / REF_ECRITURE * 300.0 + aleatoire_4k / REF_4K * 350.0).round() as u32;
+    // Racine carrée : un SSD NVMe écrit 20 fois plus vite que la référence, le score ne doit pas exploser
+    let points = (1000.0 * (0.35 * (lecture / REF_LECTURE).sqrt() + 0.3 * (ecriture / REF_ECRITURE).sqrt() + 0.35 * (aleatoire_4k / REF_4K).sqrt())).round() as u32;
     Ok(ResultatDisque { lecteur, lecture, ecriture, aleatoire_4k, points })
 }
 

@@ -24,6 +24,7 @@
     <nav>
       <button data-page="accueil" class="actif">Accueil</button>
       <button data-page="analyse">Analyse et tests</button>
+      <button data-page="benchmark">Benchmark</button>
       <button data-page="optimisations">Optimisations</button>
       <button data-page="nettoyage">Nettoyage</button>
       <button data-page="pilotes">Pilotes</button>
@@ -101,6 +102,31 @@
           <div><span id="souris-ms">–</span><small>ms entre deux positions</small></div>
         </div>
       </div>
+    </section>
+
+    <!-- Benchmark -->
+    <section id="page-benchmark" class="page">
+      <header><h1>Benchmark</h1><button id="btn-benchmark" class="principal">Lancer le benchmark</button></header>
+      <p class="discret">Environ 45 secondes : processeur, mémoire, disque et carte graphique. Ferme tes jeux et les programmes lourds ; sur un portable, branche le chargeur. Lance-le avant et après tes optimisations pour voir la différence.</p>
+      <div class="carte bench-total">
+        <div>
+          <div class="discret">Score FPS Cagoule</div>
+          <div class="gros-chiffre" id="bench-total">–</div>
+          <p id="bench-comparaison" class="discret">Pas encore de test.</p>
+        </div>
+        <button id="btn-bench-copier" class="petit" hidden>Copier le résultat</button>
+      </div>
+      <div id="bench-en-cours" class="carte" hidden>
+        <div class="bench-etape"><strong id="bench-etape-nom"></strong><span id="bench-etape-numero" class="discret"></span></div>
+        <div class="barre"><div id="bench-barre"></div></div>
+        <canvas id="bench-gpu" width="1920" height="1080" hidden></canvas>
+      </div>
+      <div id="bench-resultats" class="grille-bench"></div>
+      <p class="discret petit-texte">Points : 1000 = le PC de référence (processeur AMD EPYC 7763 à 4 cœurs, pour la carte graphique environ une RTX 3060). Les optimisations de Windows changent souvent peu ces scores bruts : leur effet se voit surtout en jeu, sur les « 1 % low » de la page Statistiques FPS.</p>
+      <table class="tableau" id="bench-historique">
+        <thead><tr><th>Date</th><th>Optimisations</th><th>Total</th><th>CPU 1 cœur</th><th>CPU multi</th><th>Mémoire</th><th>Disque</th><th>Carte graphique</th></tr></thead>
+        <tbody></tbody>
+      </table>
     </section>
 
     <!-- Optimisations -->

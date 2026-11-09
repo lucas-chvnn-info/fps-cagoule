@@ -1,4 +1,5 @@
 import { evaluer } from './evaluer.js';
+import { testerGpu } from './benchmark-gpu.js';
 
 const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
@@ -44,6 +45,7 @@ document.querySelectorAll('nav button').forEach((b) =>
       chargerDemarrage();
     }
     if (b.dataset.page === 'analyse') chargerCartes();
+    if (b.dataset.page === 'benchmark') chargerBenchmarks();
     if (b.dataset.page === 'nettoyage') {
       if (!nettoyage) analyserNettoyage();
       chargerProgrammes();
@@ -1369,6 +1371,147 @@ $('#wu-resultats').addEventListener('click', async (e) => {
   } catch {
     b.disabled = false;
     b.textContent = 'Installer la sélection';
+  }
+});
+
+/* ---------- Benchmark ---------- */
+
+let benchHistorique = [];
+let benchEnCours = false;
+const nf = (v, d = 0) => Number(v).toLocaleString('fr-CH', { maximumFractionDigits: d, minimumFractionDigits: d });
+const TESTS_BENCH = [
+  ['cpu_un', 'Processeur · 1 cœur'],
+  ['cpu_tous', 'Processeur · tous les cœurs'],
+  ['ram', 'Mémoire'],
+  ['disque', 'Disque'],
+  ['gpu', 'Carte graphique'],
+];
+
+function ecart(actuel, avant) {
+  if (!avant) return '';
+  const p = ((actuel - avant) / avant) * 100;
+  if (Math.abs(p) < 1) return '<span class="ecart">=</span>';
+  return `<span class="ecart ${p > 0 ? 'plus' : 'moins'}">${p > 0 ? '+' : ''}${nf(p)} %</span>`;
+}
+
+function afficherBenchmark() {
+  const dernier = benchHistorique.at(-1);
+  const avant = benchHistorique.at(-2);
+  $('#btn-bench-copier').hidden = !dernier;
+  if (!dernier) {
+    $('#bench-resultats').innerHTML = '';
+  } else {
+    $('#bench-total').innerHTML = `${nf(dernier.total)}${ecart(dernier.total, avant?.total)}`;
+    $('#bench-comparaison').textContent = avant
+      ? `Comparé au test du ${new Date(avant.date * 1000).toLocaleString('fr-CH', { dateStyle: 'short', timeStyle: 'short' })} (${avant.optimisations_actives} optimisations actives, contre ${dernier.optimisations_actives} maintenant).`
+      : 'Premier test : relance-le après tes optimisations pour comparer.';
+    const d = dernier.details || {};
+    const details = {
+      cpu_un: d.cpu ? `${nf(d.cpu.un_coeur)} calculs/s` : '',
+      cpu_tous: d.cpu ? `${d.cpu.coeurs} cœurs · ${nf(d.cpu.tous)} calculs/s` : '',
+      ram: d.ram ? `${nf(d.ram.debit, 1)} Go/s · ${nf(d.ram.latence, 0)} ns` : '',
+      disque: d.disque ? `Lecture ${nf(d.disque.lecture)} Mo/s · écriture ${nf(d.disque.ecriture)} Mo/s · 4 Ko ${nf(d.disque.aleatoire_4k, 1)} Mo/s` : (d.erreur_disque ? esc(d.erreur_disque) : ''),
+      gpu: d.gpu ? `${esc(d.gpu.nom || '')} · ${nf(d.gpu.images_s)} images/s en 1080p` : (d.erreur_gpu ? esc(d.erreur_gpu) : ''),
+    };
+    $('#bench-resultats').innerHTML = TESTS_BENCH.map(
+      ([cle, nom], i) => `<div class="carte" style="animation-delay:${i * 60}ms"><div class="discret">${nom}</div><div class="points">${nf(dernier[cle])}${ecart(dernier[cle], avant?.[cle])}</div><div class="detail">${details[cle]}</div></div>`
+    ).join('');
+  }
+  $('#bench-historique tbody').innerHTML = benchHistorique.length
+    ? [...benchHistorique]
+        .reverse()
+        .map(
+          (b) => `<tr><td>${new Date(b.date * 1000).toLocaleString('fr-CH', { dateStyle: 'short', timeStyle: 'short' })}</td><td>${b.optimisations_actives}</td><td><strong>${nf(b.total)}</strong></td>${TESTS_BENCH.map(([c]) => `<td>${nf(b[c])}</td>`).join('')}</tr>`
+        )
+        .join('')
+    : '<tr><td colspan="8" class="discret">Aucun test pour l\'instant.</td></tr>';
+}
+
+async function chargerBenchmarks() {
+  benchHistorique = await appel('benchmarks').catch(() => []);
+  afficherBenchmark();
+}
+
+async function lancerBenchmark() {
+  if (benchEnCours) return;
+  if (etat.jeu) return toast('Ferme ton jeu avant de lancer le benchmark.');
+  benchEnCours = true;
+  const bouton = $('#btn-benchmark');
+  bouton.classList.add('chargement');
+  bouton.textContent = 'Benchmark en cours…';
+  $('#bench-en-cours').hidden = false;
+  const barre = $('#bench-barre');
+  // Progression estimée pour les tests faits par l'app (sans retour pendant le calcul)
+  let minuteur;
+  const etape = (n, nom, dureeEstimee) => {
+    $('#bench-etape-nom').textContent = nom;
+    $('#bench-etape-numero').textContent = `Test ${n} sur 4`;
+    clearInterval(minuteur);
+    barre.style.width = '0%';
+    if (dureeEstimee) {
+      const debut = performance.now();
+      minuteur = setInterval(() => (barre.style.width = `${Math.min(97, ((performance.now() - debut) / dureeEstimee) * 100)}%`), 100);
+    }
+  };
+  const details = {};
+  try {
+    etape(1, 'Processeur…', 10500);
+    details.cpu = await invoke('benchmark_cpu', { duree: 5 });
+    etape(2, 'Mémoire…', 5000);
+    details.ram = await invoke('benchmark_ram');
+    etape(3, 'Disque…', 8000);
+    try {
+      details.disque = await invoke('benchmark_disque');
+    } catch (e) {
+      details.erreur_disque = `Test du disque impossible : ${e}`;
+    }
+    etape(4, 'Carte graphique…', 0);
+    const canvas = $('#bench-gpu');
+    canvas.hidden = false;
+    try {
+      const g = await testerGpu(canvas, 10000, (f) => (barre.style.width = `${f * 100}%`));
+      details.gpu = { nom: g.gpu, images_s: g.images_s, points: g.points };
+    } catch (e) {
+      details.erreur_gpu = `Test de la carte graphique impossible : ${e.message || e}`;
+    }
+    canvas.hidden = true;
+    const t = await invoke('tweaks_liste').catch(() => tweaks);
+    const r = {
+      date: 0,
+      optimisations_actives: t.filter((x) => x.actif).length,
+      cpu_un: details.cpu.points_un,
+      cpu_tous: details.cpu.points_tous,
+      ram: details.ram.points,
+      disque: details.disque?.points || 0,
+      gpu: details.gpu?.points || 0,
+    };
+    const valeurs = TESTS_BENCH.map(([c]) => r[c]).filter((v) => v > 0);
+    r.total = Math.round(valeurs.reduce((a, b) => a + b, 0) / valeurs.length);
+    r.details = details;
+    benchHistorique = await appel('benchmark_enregistrer', { resultat: r });
+    afficherBenchmark();
+    toast(`Benchmark terminé : ${nf(r.total)} points.`);
+  } catch (e) {
+    toast(`Benchmark interrompu : ${e}`, 7000);
+  } finally {
+    clearInterval(minuteur);
+    $('#bench-en-cours').hidden = true;
+    bouton.classList.remove('chargement');
+    bouton.textContent = 'Relancer le benchmark';
+    benchEnCours = false;
+  }
+}
+
+$('#btn-benchmark').addEventListener('click', lancerBenchmark);
+$('#btn-bench-copier').addEventListener('click', async () => {
+  const b = benchHistorique.at(-1);
+  if (!b) return;
+  const texte = `FPS Cagoule : ${b.total} points (CPU 1 cœur ${b.cpu_un} · CPU multi ${b.cpu_tous} · mémoire ${b.ram} · disque ${b.disque} · GPU ${b.gpu}${b.details?.gpu?.nom ? ` · ${b.details.gpu.nom}` : ''})`;
+  try {
+    await navigator.clipboard.writeText(texte);
+    toast('Résultat copié : colle-le à tes potes.');
+  } catch {
+    toast(texte, 10000);
   }
 });
 

@@ -388,6 +388,20 @@ button.chargement::before {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
 
+/* Benchmark */
+.bench-total { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.bench-total .gros-chiffre { font-size: 46px; }
+.bench-etape { display: flex; justify-content: space-between; gap: 12px; }
+#bench-gpu { width: 100%; max-width: 640px; aspect-ratio: 16 / 9; border-radius: 10px; margin-top: 12px; display: block; }
+#bench-gpu[hidden] { display: none; }
+.grille-bench { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; }
+.grille-bench .carte { animation: apparition .35s ease both; }
+.grille-bench .points { font-size: 30px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--accent-clair); }
+.grille-bench .detail { color: var(--discret); font-size: 13px; }
+.ecart { font-size: 12px; font-weight: 600; margin-left: 6px; }
+.ecart.plus { color: #4ade80; }
+.ecart.moins { color: var(--rouge); }
+
 /* Notification */
 #toast {
   position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
