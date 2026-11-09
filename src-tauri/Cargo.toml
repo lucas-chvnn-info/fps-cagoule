@@ -1,6 +1,6 @@
 [package]
 name = "fps-cagoule"
-version = "0.15.0"
+version = "0.16.0"
 description = "Analyse, optimisation et boost par jeu pour Windows 11"
 authors = ["Lucas Chavanne"]
 license = "MIT"

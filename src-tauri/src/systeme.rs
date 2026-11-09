@@ -367,3 +367,82 @@ pub fn vider_memoire_veille() -> Result<u64, String> {
     }
     Ok(memoire_libre().saturating_sub(avant))
 }
+
+/* ---------- Mémoire par programme ---------- */
+
+#[derive(serde::Serialize)]
+pub struct ProgrammeMemoire {
+    pub nom: String,
+    /// Mo (mémoire privée, toutes les fenêtres du programme additionnées)
+    pub mo: f64,
+    pub processus: u32,
+    /// Fait partie de Windows : ne pas proposer de le fermer
+    pub protege: bool,
+}
+
+#[derive(serde::Serialize)]
+pub struct EtatMemoire {
+    pub totale_mo: f64,
+    pub libre_mo: f64,
+    pub programmes: Vec<ProgrammeMemoire>,
+}
+
+/// Les programmes qui utilisent le plus de mémoire, regroupés par nom (Discord, Chrome… ont plusieurs processus).
+pub fn memoire_par_programme() -> EtatMemoire {
+    let mut par_nom: std::collections::HashMap<String, (f64, u32)> = std::collections::HashMap::new();
+    for p in processus() {
+        let mo = memoire(p.pid) as f64 / 1048576.0;
+        if mo <= 0.0 {
+            continue;
+        }
+        let e = par_nom.entry(p.nom).or_insert((0.0, 0));
+        e.0 += mo;
+        e.1 += 1;
+    }
+    let mut programmes: Vec<ProgrammeMemoire> = par_nom.into_iter().map(|(nom, (mo, n))| ProgrammeMemoire { protege: est_protege(&nom), nom, mo, processus: n }).collect();
+    programmes.sort_by(|a, b| b.mo.total_cmp(&a.mo));
+    programmes.truncate(20);
+    EtatMemoire { totale_mo: memoire_totale() as f64 / 1048576.0, libre_mo: memoire_libre() as f64 / 1048576.0, programmes }
+}
+
+/// Programmes de Windows à ne jamais fermer
+const PROTEGES: &[&str] = &[
+    "system", "registry", "memory compression", "secure system", "system idle process", "smss.exe", "csrss.exe", "wininit.exe", "winlogon.exe", "services.exe", "lsass.exe", "svchost.exe",
+    "dwm.exe", "explorer.exe", "fontdrvhost.exe", "memcompression", "lsaiso.exe", "audiodg.exe", "msmpeng.exe", "fps-cagoule.exe",
+    "msedgewebview2.exe", "searchhost.exe", "startmenuexperiencehost.exe", "shellexperiencehost.exe", "ctfmon.exe", "sihost.exe",
+];
+
+fn est_protege(nom: &str) -> bool {
+    PROTEGES.iter().any(|p| p.eq_ignore_ascii_case(nom))
+}
+
+/// Ferme toutes les fenêtres d'un programme. Renvoie le nombre de processus fermés.
+pub fn fermer_programme(nom: &str) -> Result<u32, String> {
+    if est_protege(nom) {
+        return Err(format!("{nom} fait partie de Windows : il ne faut pas le fermer"));
+    }
+    let moi = std::process::id();
+    Ok(processus().iter().filter(|p| p.nom.eq_ignore_ascii_case(nom) && p.pid != moi).filter(|p| terminer(p.pid)).count() as u32)
+}
+
+/// Processeur : nom commercial et logiciel du fabricant installé (Ryzen Master).
+#[derive(serde::Serialize)]
+pub struct InfoProcesseur {
+    pub nom: String,
+    pub ryzen_master: Option<String>,
+}
+
+pub fn info_processeur() -> InfoProcesseur {
+    let nom = winreg::RegKey::predef(winreg::enums::HKEY_LOCAL_MACHINE)
+        .open_subkey(r"HARDWARE\DESCRIPTION\System\CentralProcessor\0")
+        .and_then(|k| k.get_value::<String, _>("ProcessorNameString"))
+        .map(|n| n.trim().to_string())
+        .unwrap_or_default();
+    let programmes = std::env::var("ProgramFiles").unwrap_or_else(|_| r"C:\Program Files".into());
+    let ryzen_master = [r"AMD\RyzenMaster\bin\AMD Ryzen Master.exe", r"AMD\RyzenMaster\AMD Ryzen Master.exe"]
+        .iter()
+        .map(|c| std::path::Path::new(&programmes).join(c))
+        .find(|p| p.is_file())
+        .map(|p| p.to_string_lossy().to_string());
+    InfoProcesseur { nom, ryzen_master }
+}

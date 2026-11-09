@@ -206,6 +206,27 @@ fn oc_defaut(app: AppHandle) -> Res<()> {
 }
 
 #[tauri::command(async)]
+fn memoire_programmes() -> systeme::EtatMemoire {
+    systeme::memoire_par_programme()
+}
+
+#[tauri::command(async)]
+fn fermer_programme(nom: String) -> Res<u32> {
+    systeme::fermer_programme(&nom)
+}
+
+#[tauri::command(async)]
+fn processeur() -> systeme::InfoProcesseur {
+    systeme::info_processeur()
+}
+
+#[tauri::command]
+fn ouvrir_ryzen_master() -> Res<()> {
+    let chemin = systeme::info_processeur().ryzen_master.ok_or("AMD Ryzen Master n'est pas installé")?;
+    std::process::Command::new(chemin).spawn().map(|_| ()).map_err(|e| e.to_string())
+}
+
+#[tauri::command(async)]
 fn optimiser_disques() -> Res<serde_json::Value> {
     nettoyage::optimiser_disques()
 }
@@ -442,7 +463,9 @@ fn pilote_nvidia_installer() -> Res<()> {
 /// Pages officielles des fabricants (liste fermée : l'interface ne peut pas ouvrir n'importe quoi).
 #[tauri::command]
 fn ouvrir_lien(lien: String) -> Res<()> {
-    const AUTORISES: [&str; 3] = [
+    const AUTORISES: [&str; 5] = [
+        "https://www.amd.com/fr/products/software/ryzen-master.html",
+        "https://www.intel.com/content/www/us/en/download/17881/intel-extreme-tuning-utility-intel-xtu.html",
         "https://www.amd.com/fr/support/download/drivers.html",
         "https://www.intel.com/content/www/us/en/download-center/home.html",
         "https://www.nvidia.com/fr-fr/drivers/",
@@ -493,6 +516,10 @@ fn main() {
             nettoyage_nettoyer,
             programmes_liste,
             optimiser_disques,
+            memoire_programmes,
+            fermer_programme,
+            processeur,
+            ouvrir_ryzen_master,
             oc_etat,
             oc_essayer,
             oc_enregistrer,
@@ -617,6 +644,11 @@ mod tests_windows {
         // Le PC de GitHub tourne en administrateur, comme l'app
         systeme::vider_memoire_veille().expect("mémoire en veille");
         assert!(systeme::memoire_libre() > 0);
+        let m = systeme::memoire_par_programme();
+        assert!(!m.programmes.is_empty() && m.totale_mo > m.libre_mo);
+        assert!(systeme::fermer_programme("svchost.exe").is_err());
+        assert!(systeme::fermer_programme("Memory Compression").is_err());
+        assert!(!systeme::info_processeur().nom.is_empty());
     }
 
     #[test]

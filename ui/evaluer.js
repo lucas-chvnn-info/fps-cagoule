@@ -23,6 +23,16 @@ export function evaluer(info, { planPerso = null, maintenant = new Date(), extra
     ajoute('ram-canal', 'haute', 'Mémoire en simple canal',
       "Une seule barrette de RAM : la bande passante est divisée par deux, ce qui coûte souvent 10 à 25 % de FPS dans les jeux qui dépendent du processeur. Ajoute une deuxième barrette identique.");
   }
+  // Mémoire presque pleine au moment de l'analyse : Windows passe par le disque, d'où des saccades
+  const libreKo = Number(info.os?.ramLibreKo) || 0;
+  const totaleKo = Number(info.os?.ramTotaleKo) || totalRam / 1024;
+  if (libreKo && totaleKo) {
+    const occupe = Math.round((1 - libreKo / totaleKo) * 100);
+    if (occupe >= 85) {
+      ajoute('ram-pleine', occupe >= 92 ? 'haute' : 'moyenne', `Mémoire utilisée à ${occupe} %`,
+        'Quand la RAM est pleine, Windows déplace des données sur le disque et le jeu saccade. Regarde quels programmes la remplissent et ferme ceux dont tu n\'as pas besoin pendant tes parties.', 'memoire');
+    }
+  }
   if (totalRam && totalRam < 15 * GO) {
     ajoute('ram-quantite', 'moyenne', `Seulement ${Math.round(totalRam / GO)} Go de RAM`,
       'Les jeux récents en demandent 16 Go. En dessous, Windows utilise le disque et ça provoque des saccades.');

@@ -44,9 +44,15 @@ document.querySelectorAll('nav button').forEach((b) =>
       chargerTweaks();
       chargerDemarrage();
     }
-    if (b.dataset.page === 'analyse') chargerCartes();
+    if (b.dataset.page === 'analyse') {
+      chargerCartes();
+      chargerMemoire();
+    }
     if (b.dataset.page === 'benchmark') chargerBenchmarks();
-    if (b.dataset.page === 'oc') chargerOc();
+    if (b.dataset.page === 'oc') {
+      chargerOc();
+      chargerProcesseur();
+    }
     if (b.dataset.page === 'nettoyage') {
       if (!nettoyage) analyserNettoyage();
       chargerProgrammes();
@@ -121,6 +127,7 @@ const BOUTONS_CORRECTIF = {
   demarrage: ['Gérer', 'demarrage'],
   applis: ['Voir', 'applis'],
   jeux: ['Voir', 'jeux'],
+  memoire: ['Voir', 'memoire'],
 };
 
 function afficherScore() {
@@ -194,6 +201,10 @@ $('#problemes').addEventListener('click', async (e) => {
       return choisirCategorie('demarrage');
     } else if (action === 'applis') return allerA('nettoyage');
     else if (action === 'jeux') return allerA('jeux');
+    else if (action === 'memoire') {
+      allerA('analyse');
+      return setTimeout(() => $('#carte-memoire').scrollIntoView({ behavior: 'smooth' }), 150);
+    }
     else if (action === 'pilotes') return allerA('pilotes');
     else if (b.dataset.tweak) {
       await appliquerTweaks([b.dataset.tweak], b);
@@ -286,7 +297,7 @@ async function analyser() {
 }
 $('#btn-analyser').addEventListener('click', analyser);
 
-const ligne = (k, v) => (v === null || v === undefined || v === '' ? '' : `<div class="ligne-info"><span>${esc(k)}</span><span>${esc(v)}</span></div>`);
+const ligne = (k, v) => (v === null || v === undefined || v === '' || v === false ? '' : `<div class="ligne-info"><span>${esc(k)}</span><span>${esc(v)}</span></div>`);
 const taille = (o) => (o ? `${Math.round(Number(o) / Go)} Go` : '');
 
 function afficherMateriel() {
@@ -1514,6 +1525,104 @@ $('#btn-bench-copier').addEventListener('click', async () => {
   } catch {
     toast(texte, 10000);
   }
+});
+
+/* ---------- Mémoire par programme ---------- */
+
+const NOMS_CONNUS = {
+  'discord.exe': 'Discord', 'chrome.exe': 'Google Chrome', 'msedge.exe': 'Microsoft Edge', 'firefox.exe': 'Firefox',
+  'opera.exe': 'Opera', 'brave.exe': 'Brave', 'medal.exe': 'Medal', 'steam.exe': 'Steam', 'steamwebhelper.exe': 'Steam (pages web)',
+  'spotify.exe': 'Spotify', 'rainbowsix.exe': 'Rainbow Six Siege', 'rainbowsix_vulkan.exe': 'Rainbow Six Siege',
+  'ubisoftconnect.exe': 'Ubisoft Connect', 'upc.exe': 'Ubisoft Connect', 'epicgameslauncher.exe': 'Epic Games',
+  'memory compression': 'Compression mémoire de Windows', 'explorer.exe': 'Explorateur Windows', 'msmpeng.exe': 'Antivirus Defender',
+  'nvcontainer.exe': 'NVIDIA', 'obs64.exe': 'OBS', 'teams.exe': 'Teams', 'ms-teams.exe': 'Teams',
+};
+
+async function chargerMemoire() {
+  const m = await appel('memoire_programmes').catch(() => null);
+  if (!m) return;
+  const occupe = Math.round((1 - m.libre_mo / m.totale_mo) * 100);
+  const barre = $('#ram-barre');
+  barre.style.width = `${occupe}%`;
+  barre.style.background = occupe >= 90 ? 'var(--rouge)' : occupe >= 80 ? 'var(--orange)' : 'var(--accent)';
+  $('#ram-texte').textContent = `${nf((m.totale_mo - m.libre_mo) / 1024, 1)} Go utilisés sur ${nf(m.totale_mo / 1024, 1)} Go (${occupe} %)`;
+  const max = m.programmes[0]?.mo || 1;
+  $('#ram-liste').innerHTML = m.programmes
+    .map((p) => {
+      const nom = NOMS_CONNUS[p.nom.toLowerCase()] || p.nom.replace(/\.exe$/i, '');
+      return `<li><span>${esc(nom)}${p.processus > 1 ? ` <span class="discret">(${p.processus})</span>` : ''}</span>
+        <span class="mini-barre"><div style="width:${(p.mo / max) * 100}%"></div></span>
+        <span class="mo">${p.mo >= 1024 ? `${nf(p.mo / 1024, 1)} Go` : `${nf(p.mo)} Mo`}</span>
+        ${p.protege ? '<span class="discret petit-texte">Windows</span>' : `<button class="petit discret-btn" data-fermer="${esc(p.nom)}" title="Fermer ${esc(nom)}">Fermer</button>`}</li>`;
+    })
+    .join('');
+}
+
+$('#btn-memoire').addEventListener('click', chargerMemoire);
+$('#ram-liste').addEventListener('click', async (e) => {
+  const nom = e.target.closest('button')?.dataset.fermer;
+  if (!nom) return;
+  const lisible = NOMS_CONNUS[nom.toLowerCase()] || nom;
+  if (!(await confirmer(`Fermer ${lisible}`, `<p>Toutes les fenêtres de ${esc(lisible)} vont être fermées. Enregistre ce qui doit l'être avant.</p>`, 'Fermer'))) return;
+  try {
+    const n = await appel('fermer_programme', { nom }, e.target);
+    toast(`${lisible} fermé (${n} processus).`);
+  } catch {}
+  setTimeout(chargerMemoire, 800);
+});
+
+/* ---------- Processeur ---------- */
+
+const LIENS_CPU = {
+  amd: 'https://www.amd.com/fr/products/software/ryzen-master.html',
+  intel: 'https://www.intel.com/content/www/us/en/download/17881/intel-extreme-tuning-utility-intel-xtu.html',
+};
+
+async function chargerProcesseur() {
+  const p = await appel('processeur').catch(() => null);
+  if (!p) return;
+  const nom = p.nom || 'Processeur';
+  $('#cpu-nom').textContent = nom;
+  const amd = /ryzen/i.test(nom);
+  const x3d = /x3d/i.test(nom);
+  const serie9000x3d = /9\d{3}x3d/i.test(nom);
+  const intelK = /intel/i.test(nom) && /\d{4,5}K/i.test(nom);
+  const intel1314 = /intel/i.test(nom) && /i[579]-1[34]\d{3}/i.test(nom);
+  let badge = '';
+  let html = '';
+  let boutons = '';
+  if (amd) {
+    badge = x3d && !serie9000x3d ? 'Undervolt seulement' : 'Overclockable';
+    html = `<p>Le réglage qui marche le mieux sur un Ryzen, c'est le <strong>Curve Optimizer</strong> : il baisse la tension à chaque fréquence. Le processeur chauffe moins et monte plus haut tout seul, donc plus de FPS sans risque pour la puce.${
+      x3d && !serie9000x3d ? ' Ton processeur X3D ne se surcadence pas autrement (protection du cache 3D) : le Curve Optimizer est la bonne méthode.' : ''
+    }</p>
+      <ol>
+        <li>Ouvre <strong>AMD Ryzen Master</strong> (l'outil officiel d'AMD), mode <strong>Curve Optimizer</strong>, et lance son réglage automatique « Per Core ». Ou, dans le BIOS : PBO → Curve Optimizer → All Cores → Negative → 15.</li>
+        <li>Lance le <strong>Benchmark</strong> de FPS Cagoule avant et après pour voir le gain.</li>
+        <li>Joue une heure : si le PC plante ou redémarre, baisse la valeur (par exemple de 15 à 10).</li>
+      </ol>`;
+    boutons = p.ryzen_master ? '<button class="principal" data-cpu="ryzen">Ouvrir AMD Ryzen Master</button>' : '<button class="principal" data-cpu-lien="amd">Télécharger AMD Ryzen Master</button>';
+  } else if (intelK) {
+    badge = 'Overclockable';
+    html = `<p>Ton processeur Intel « K » peut être réglé avec <strong>Intel XTU</strong> (outil officiel) ou dans le BIOS. Le plus utile est souvent un léger <strong>undervolt</strong> : moins de chaleur, des fréquences plus stables en jeu.${
+      intel1314 ? ' Sur les 13e et 14e génération, mets d\'abord ton BIOS à jour (correctif Intel contre la dégradation) et n\'augmente jamais la tension.' : ''
+    }</p>`;
+    boutons = '<button class="principal" data-cpu-lien="intel">Télécharger Intel XTU</button>';
+  } else {
+    badge = 'Non overclockable';
+    html = `<p>Ce processeur n'est pas fait pour être surcadencé. Les optimisations de FPS Cagoule (alimentation, cœurs éveillés, priorité des jeux) sont le meilleur moyen de le garder à pleine vitesse.</p>`;
+  }
+  $('#cpu-badge').textContent = badge;
+  $('#cpu-conseils').innerHTML = html + '<p class="petit-texte">FPS Cagoule ne règle pas le processeur lui-même : il faudrait un pilote système que Windows bloque et que les anti-triches (Vanguard, FACEIT) détectent. Les outils officiels d\'AMD et Intel utilisent leur propre pilote signé.</p>';
+  $('#cpu-boutons').innerHTML = boutons + '<button data-cpu="benchmark">Ouvrir le benchmark</button>';
+}
+
+$('#cpu-boutons').addEventListener('click', (e) => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  if (b.dataset.cpu === 'ryzen') appel('ouvrir_ryzen_master', {}, b).catch(() => {});
+  else if (b.dataset.cpu === 'benchmark') allerA('benchmark');
+  else if (b.dataset.cpuLien) appel('ouvrir_lien', { lien: LIENS_CPU[b.dataset.cpuLien] });
 });
 
 /* ---------- Overclocking ---------- */

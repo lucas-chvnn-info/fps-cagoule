@@ -402,6 +402,18 @@ button.chargement::before {
 .ecart.plus { color: #4ade80; }
 .ecart.moins { color: var(--rouge); }
 
+/* Mémoire par programme */
+.barre-ram { height: 10px; background: #232733; border-radius: 5px; overflow: hidden; margin-bottom: 8px; }
+.barre-ram div { height: 100%; width: 0; background: var(--accent); transition: width .6s ease, background .3s; }
+.liste-ram { list-style: none; margin: 0; padding: 0; }
+.liste-ram li { display: grid; grid-template-columns: 1fr 140px 90px auto; gap: 12px; align-items: center; padding: 7px 0; border-top: 1px solid var(--bordure); font-size: 13px; }
+.liste-ram li:first-child { border-top: 0; }
+.liste-ram .mini-barre { height: 6px; background: #232733; border-radius: 3px; overflow: hidden; }
+.liste-ram .mini-barre div { height: 100%; background: var(--accent-clair); }
+.liste-ram .mo { text-align: right; font-variant-numeric: tabular-nums; }
+#cpu-conseils ol { margin: 8px 0; padding-left: 20px; }
+#cpu-conseils li { margin: 4px 0; }
+
 /* Overclocking */
 .avertissement-oc { border-color: rgba(255, 181, 71, .4); }
 .avertissement-oc p { margin: 6px 0 0; color: var(--discret); }

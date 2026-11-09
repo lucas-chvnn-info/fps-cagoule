@@ -78,3 +78,11 @@ test('analyse complète : msconfig, nettoyage, optimisations, jeux', () => {
   assert.equal(score, 100 - 15 - 8 - 8 - 8 - 2 - 2);
   assert.equal(evaluer(pcSain, { maintenant, extra: { nettoyable: 100 * 1024 ** 2 } }).score, 100);
 });
+
+test('mémoire presque pleine', () => {
+  const pc = { ...pcSain, os: { joursAllume: 1, ramTotaleKo: 16 * 1048576, ramLibreKo: 0.8 * 1048576 } };
+  const p = evaluer(pc, { maintenant }).problemes[0];
+  assert.equal(p.id, 'ram-pleine');
+  assert.equal(p.titre, 'Mémoire utilisée à 95 %');
+  assert.equal(p.gravite, 'haute');
+});

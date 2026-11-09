@@ -82,6 +82,13 @@
     <section id="page-analyse" class="page">
       <header><h1>Analyse et tests</h1><span id="date-analyse" class="discret"></span></header>
       <div id="materiel" class="grille-materiel"><p class="discret">Lance une analyse depuis l'accueil.</p></div>
+      <div class="carte" id="carte-memoire">
+        <div class="entete-diagnostic"><h2>Qui utilise ta mémoire</h2><button class="petit" id="btn-memoire">Actualiser</button></div>
+        <div class="barre-ram"><div id="ram-barre"></div></div>
+        <p id="ram-texte" class="discret"></p>
+        <ul id="ram-liste" class="liste-ram"></ul>
+        <p class="discret petit-texte">Fermer un programme ici ne le désinstalle pas. Avec 16 Go ou moins, R6 + Discord + un navigateur + un enregistreur (Medal) remplissent vite la mémoire : passer à 32 Go est la vraie solution.</p>
+      </div>
       <h2 class="section">Tests</h2>
       <div class="grille-2">
         <div class="carte">
@@ -307,8 +314,14 @@
       <header><h1>Overclocking</h1></header>
       <div class="carte avertissement-oc">
         <strong>À lire avant</strong>
-        <p>Overclocker fait tourner ta carte graphique plus vite que prévu par le fabricant : 3 à 8 % de FPS en plus en général. Trop haut, le jeu ou le pilote plante, mais la carte ne s'abîme pas (le pilote limite tension et température). Tout revient à la normale au redémarrage du PC. Le processeur n'est pas overclockable ici : ça se règle dans le BIOS (PBO chez AMD).</p>
+        <p>Overclocker fait tourner ta carte graphique plus vite que prévu par le fabricant : 3 à 8 % de FPS en plus en général. Trop haut, le jeu ou le pilote plante, mais la carte ne s'abîme pas (le pilote limite tension et température). Tout revient à la normale au redémarrage du PC. Pour le processeur, FPS Cagoule te guide vers l'outil officiel de son fabricant.</p>
       </div>
+      <div class="carte" id="carte-processeur">
+        <div class="entete-diagnostic"><h2 id="cpu-nom">Processeur</h2><span id="cpu-badge" class="badge"></span></div>
+        <div id="cpu-conseils" class="discret"></div>
+        <div class="boutons" id="cpu-boutons"></div>
+      </div>
+      <h2 class="section">Carte graphique</h2>
       <div id="oc-indisponible" class="carte" hidden><p id="oc-indisponible-texte" class="discret"></p></div>
       <div id="oc-contenu" hidden>
         <p id="oc-plantage" class="carte alerte" hidden>Ton PC s'est arrêté brutalement pendant une partie avec l'overclocking : FPS Cagoule l'a désactivé par sécurité. Choisis un réglage plus bas.</p>
