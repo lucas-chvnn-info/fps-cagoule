@@ -2049,7 +2049,8 @@ function etatsBios(b) {
 
   const ram = b.ram || [];
   const r0 = ram[0];
-  if (r0) {
+  // Certains PC (machines virtuelles, PC de marque) ne donnent pas la vitesse de la RAM
+  if (r0?.reelle) {
     const ddr4 = r0.type === 26;
     const ddr5 = r0.type === 34;
     const lente = (ddr4 && r0.reelle && r0.reelle <= 2666) || (ddr5 && r0.reelle && r0.reelle <= 4800);
