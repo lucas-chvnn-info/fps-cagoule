@@ -1316,5 +1316,65 @@
         "valeur": 4
       }
     ]
+  },
+  {
+    "id": "amd-antilag",
+    "categorie": "carte-graphique",
+    "titre": "AMD : Radeon Anti-Lag",
+    "description": "Réduit le délai entre ton clic et l'image affichée, comme le mode faible latence de NVIDIA. C'est la version classique, acceptée par les anti-triches.",
+    "gain": "moyen",
+    "redemarrage": false,
+    "niveau": "recommande",
+    "special": "amd",
+    "parametre": "antilag",
+    "index": 1
+  },
+  {
+    "id": "amd-chill",
+    "categorie": "carte-graphique",
+    "titre": "AMD : Radeon Chill désactivé",
+    "description": "Chill baisse les FPS quand tu bouges peu pour économiser l'énergie : en jeu compétitif, il fait varier la fluidité.",
+    "gain": "moyen",
+    "redemarrage": false,
+    "niveau": "recommande",
+    "special": "amd",
+    "parametre": "chill",
+    "index": 0
+  },
+  {
+    "id": "amd-boost",
+    "categorie": "carte-graphique",
+    "titre": "AMD : Radeon Boost désactivé",
+    "description": "Boost baisse la résolution pendant les mouvements rapides : plus de FPS mais une image floue au pire moment pour viser.",
+    "gain": "faible",
+    "redemarrage": false,
+    "niveau": "recommande",
+    "special": "amd",
+    "parametre": "boost",
+    "index": 0
+  },
+  {
+    "id": "amd-enhancedsync",
+    "categorie": "carte-graphique",
+    "titre": "AMD : Enhanced Sync désactivé",
+    "description": "Enhanced Sync provoque des saccades et des écrans noirs dans certains jeux. Mieux vaut FreeSync ou rien.",
+    "gain": "faible",
+    "redemarrage": false,
+    "niveau": "recommande",
+    "special": "amd",
+    "parametre": "enhancedsync",
+    "index": 0
+  },
+  {
+    "id": "amd-vsync",
+    "categorie": "carte-graphique",
+    "titre": "AMD : synchronisation verticale coupée sauf si le jeu la demande",
+    "description": "La V-Sync forcée par le pilote ajoute du délai. Le jeu garde le dernier mot avec son propre réglage.",
+    "gain": "faible",
+    "redemarrage": false,
+    "niveau": "recommande",
+    "special": "amd",
+    "parametre": "vsync",
+    "index": 1
   }
 ]

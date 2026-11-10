@@ -290,6 +290,7 @@ pub fn terminer(app: &AppHandle, etat: &Etat) {
     if etat.stock.donnees.lock().unwrap().oc_partie.take().is_some() {
         etat.stock.sauver();
     }
+    crate::amd::fin_de_partie();
     for &(pid, classe) in &s.abaisses {
         systeme::remettre_priorite(pid, classe);
     }
@@ -417,7 +418,7 @@ fn abaisser_fond(etat: &Etat, procs: &[systeme::Processus]) {
 
 /// Température de la carte graphique pendant la partie (NVIDIA, un appel NVAPI toutes les 3 s)
 fn suivre_temperature(app: &AppHandle, etat: &Etat) {
-    let Some(t) = crate::nvidia::temperature() else { return };
+    let Some(t) = crate::nvidia::temperature().or_else(crate::amd::temperature_en_jeu) else { return };
     let mut session = etat.session.lock().unwrap();
     let Some(s) = session.as_mut() else { return };
     s.temp = Some(t);

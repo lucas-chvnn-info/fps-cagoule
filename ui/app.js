@@ -13,6 +13,8 @@ let derniereAnalyse = null;
 let tweaks = [];
 let profils = [];
 let reglages = null;
+/** Carte graphique principale : { fabricant: nvidia | amd | intel, nom, dediee } */
+let carte = null;
 
 function toast(texte, duree = 4000) {
   const t = $('#toast');
@@ -429,7 +431,10 @@ async function chargerTweaks() {
   const actifs = dispo.filter((t) => t.actif).length;
   $('#resume-tweaks').textContent = `${actifs} optimisation${actifs > 1 ? 's' : ''} active${actifs > 1 ? 's' : ''} sur ${dispo.length} disponibles sur ton PC.`;
   $('#btn-tout-annuler').disabled = !tweaks.some((t) => t.annulable);
-  $('#btn-nvidia-reglages').hidden = !tweaks.some((t) => t.special === 'nvidia' && t.disponible);
+  const pilote = ['nvidia', 'amd'].find((f) => tweaks.some((t) => t.special === f && t.disponible));
+  $('#btn-nvidia-reglages').hidden = !pilote;
+  $('#btn-nvidia-reglages').dataset.fabricant = pilote || '';
+  $('#btn-nvidia-reglages').textContent = `Appliquer les réglages ${pilote === 'amd' ? 'AMD' : 'NVIDIA'}`;
   const enAttente = tweaks.filter((t) => t.attente).length;
   $('#banniere-redemarrage').hidden = !enAttente;
   $('#banniere-texte').textContent = `${enAttente} optimisation${enAttente > 1 ? 's attendent' : ' attend'} un redémarrage de ton PC pour prendre effet.`;
@@ -534,11 +539,17 @@ async function optimiserTout(max, bouton) {
 
 $('#btn-recommande').addEventListener('click', (e) => optimiserTout(false, e.target));
 $('#btn-nvidia-reglages').addEventListener('click', async (e) => {
-  const a = tweaks.filter((t) => t.special === 'nvidia' && t.disponible && !t.actif && t.niveau !== 'choix');
-  if (!a.length) return toast('Les réglages NVIDIA sont déjà appliqués.');
+  const fab = e.target.dataset.fabricant || 'nvidia';
+  const nom = fab === 'amd' ? 'AMD' : 'NVIDIA';
+  const a = tweaks.filter((t) => t.special === fab && t.disponible && !t.actif && t.niveau !== 'choix');
+  if (!a.length) return toast(`Les réglages ${nom} sont déjà appliqués.`);
   const ok = await confirmer(
-    'Réglages NVIDIA',
-    `<ul>${a.map((t) => `<li>${esc(t.titre.replace(/^NVIDIA : /, ''))}</li>`).join('')}</ul><p>Appliqués aux paramètres globaux du panneau NVIDIA. Les jeux qui ont leur propre réglage dans le panneau le gardent. La V-Sync reste à choisir selon ton écran.</p>`,
+    `Réglages ${nom}`,
+    `<ul>${a.map((t) => `<li>${esc(t.titre.replace(/^(NVIDIA|AMD) : /, ''))}</li>`).join('')}</ul><p>${
+      fab === 'amd'
+        ? "Appliqués aux réglages globaux d'AMD Adrenalin. Les profils de jeux que tu as réglés toi-même dans Adrenalin gardent leurs valeurs."
+        : 'Appliqués aux paramètres globaux du panneau NVIDIA. Les jeux qui ont leur propre réglage dans le panneau le gardent. La V-Sync reste à choisir selon ton écran.'
+    }</p>`,
     'Appliquer'
   );
   if (ok) appliquerTweaks(a.map((t) => t.id), e.target);
@@ -860,6 +871,58 @@ $('#ajout-jeu').addEventListener('submit', (e) => {
   e.target.reset();
   sauverProfils();
 });
+/** Jeux installés qui ne sont pas encore dans la liste */
+async function nouveauxJeux() {
+  const trouves = await invoke('jeux_installes');
+  const connus = new Set(profils.flatMap((p) => p.exes.map((e) => e.toLowerCase())));
+  const noms = new Set(profils.map((p) => p.nom.toLowerCase()));
+  return trouves.filter((j) => !j.exes.some((e) => connus.has(e.toLowerCase())) && !noms.has(j.nom.toLowerCase()));
+}
+
+function ajouterJeux(jeux) {
+  for (const j of jeux) profils.push({ nom: j.nom, exes: j.exes, actif: true, boost: true, priorite_haute: true, gpu_perf: true, resolution: null, oc: true });
+  try {
+    localStorage.setItem('jeuxDetectes', String(Date.now()));
+  } catch {}
+  return sauverProfils();
+}
+
+$('#btn-jeux-detecter').addEventListener('click', async (e) => {
+  let jeux;
+  try {
+    e.target.classList.add('chargement');
+    jeux = await nouveauxJeux();
+  } catch (err) {
+    return toast(`Recherche impossible : ${err}`, 7000);
+  } finally {
+    e.target.classList.remove('chargement');
+  }
+  if (!jeux.length) return toast('Aucun nouveau jeu trouvé : tous tes jeux sont déjà dans la liste.');
+  const ok = await confirmer(
+    `${jeux.length} jeu${jeux.length > 1 ? 'x' : ''} trouvé${jeux.length > 1 ? 's' : ''}`,
+    `<p>Coche ceux que FPS Cagoule doit booster :</p><ul class="liste-jeux-trouves">${jeux
+      .map((j, i) => `<li><label class="case"><input type="checkbox" data-jeu="${i}" checked> <span><strong>${esc(j.nom)}</strong> <span class="discret">· ${esc(j.source)} · ${esc(j.exes.join(', '))}</span></span></label></li>`)
+      .join('')}</ul>`,
+    'Ajouter'
+  );
+  if (!ok) return;
+  const choisis = jeux.filter((_, i) => document.querySelector(`[data-jeu="${i}"]`)?.checked);
+  await ajouterJeux(choisis);
+  toast(`${choisis.length} jeu${choisis.length > 1 ? 'x' : ''} ajouté${choisis.length > 1 ? 's' : ''} au boost automatique.`);
+});
+
+/** Une fois par semaine, à l'ouverture : les jeux installés depuis sont ajoutés tout seuls */
+async function detecterJeuxAuto() {
+  let derniere = 0;
+  try {
+    derniere = Number(localStorage.getItem('jeuxDetectes')) || 0;
+  } catch {}
+  if (Date.now() - derniere < 7 * 864e5) return;
+  const jeux = await nouveauxJeux().catch(() => []);
+  await ajouterJeux(jeux);
+  if (jeux.length) toast(`${jeux.length} nouveau${jeux.length > 1 ? 'x' : ''} jeu${jeux.length > 1 ? 'x' : ''} ajouté${jeux.length > 1 ? 's' : ''} au boost : ${jeux.map((j) => j.nom).slice(0, 4).join(', ')}${jeux.length > 4 ? '…' : ''}`, 8000);
+}
+
 $('#btn-profils-defaut').addEventListener('click', async () => {
   profils = await appel('profils_defaut');
   sauverProfils();
@@ -1684,12 +1747,23 @@ let oc = null;
 let ocOccupe = false;
 
 async function chargerOc() {
+  $('#oc-amd').hidden = true;
+  if (carte?.fabricant === 'amd') {
+    $('#oc-contenu').hidden = true;
+    $('#oc-indisponible').hidden = true;
+    return chargerAmd();
+  }
   try {
     oc = await invoke('oc_etat');
   } catch (e) {
     $('#oc-contenu').hidden = true;
     $('#oc-indisponible').hidden = false;
-    $('#oc-indisponible-texte').textContent = `${e}. L'overclocking n'est proposé que pour les cartes NVIDIA.`;
+    const intel = carte?.fabricant === 'intel';
+    $('#oc-indisponible-texte').textContent = intel
+      ? `Ta carte graphique est une ${carte.nom}. Intel ne permet pas de la régler depuis une autre appli : utilise Intel Graphics Software (ou Arc Control) pour la limite de puissance et les performances.`
+      : `${e}. L'overclocking est proposé pour les cartes NVIDIA et AMD.`;
+    $('#btn-oc-logiciel').hidden = !intel;
+    $('#btn-oc-logiciel').textContent = 'Ouvrir le logiciel Intel';
     return;
   }
   $('#oc-indisponible').hidden = true;
@@ -1844,16 +1918,69 @@ $('#oc-protection').addEventListener('change', (e) => {
 
 async function majTempOc() {
   const t = await invoke('temperature_gpu').catch(() => null);
-  const b = $('#oc-temp');
-  b.hidden = !t;
-  if (!t) return null;
-  b.textContent = `${t} °C`;
-  b.className = `badge ${t >= 85 ? 'rouge' : t >= 75 ? 'orange' : ''}`;
+  for (const b of [$('#oc-temp'), $('#amd-temp')]) {
+    b.hidden = !t;
+    if (!t) continue;
+    b.textContent = `${t} °C`;
+    b.className = `badge ${t >= 85 ? 'rouge' : t >= 75 ? 'orange' : ''}`;
+  }
   return t;
 }
 setInterval(() => {
-  if (!document.hidden && $('#page-oc').classList.contains('actif') && oc) majTempOc();
+  if (!document.hidden && $('#page-oc').classList.contains('actif') && (oc || amd)) majTempOc();
 }, 2000);
+
+/* Cartes AMD : préréglages officiels d'Adrenalin */
+let amd = null;
+const PREREGLAGES_AMD = [
+  ['Économie', 'Consomme et chauffe le moins possible, au prix de quelques FPS.'],
+  ['Silencieux', 'Ventilateurs plus calmes, fréquences un peu plus basses.'],
+  ['Équilibré', 'Le réglage d\'usine.'],
+  ['Turbo', 'Limite de puissance un peu relevée : quelques FPS en plus, un peu plus de bruit.'],
+  ['Rage', 'L\'overclocking officiel d\'AMD : limite de puissance au maximum autorisé. Le plus de FPS.'],
+];
+
+async function chargerAmd() {
+  try {
+    amd = await invoke('amd_etat');
+  } catch (e) {
+    $('#oc-indisponible').hidden = false;
+    $('#oc-indisponible-texte').textContent = `${e}. Les préréglages se trouvent aussi dans AMD Adrenalin → Performances → Réglage.`;
+    $('#btn-oc-logiciel').hidden = false;
+    $('#btn-oc-logiciel').textContent = 'Ouvrir AMD Adrenalin';
+    return;
+  }
+  $('#oc-amd').hidden = false;
+  $('#amd-nom').textContent = amd.nom;
+  $('#amd-resume').textContent = amd.actuel != null ? `Préréglage : ${PREREGLAGES_AMD[amd.actuel][0]}` : 'Réglage personnalisé';
+  $('#amd-resume').className = `badge ${amd.actuel >= 3 ? 'accent' : ''}`;
+  $('#btn-amd-adrenalin').hidden = !amd.logiciel;
+  $('#amd-prereglages').innerHTML = amd.prereglages.length
+    ? amd.prereglages
+        .map((i) => `<button class="choix-carte ${amd.actuel === i ? 'actif' : ''}" data-prereglage="${i}"><strong>${PREREGLAGES_AMD[i][0]}</strong><span>${PREREGLAGES_AMD[i][1]}</span></button>`)
+        .join('')
+    : '<p class="discret">Ta carte ne propose pas de préréglages : règle-la dans AMD Adrenalin → Performances → Réglage.</p>';
+  majTempOc();
+}
+
+$('#amd-prereglages').addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-prereglage]');
+  if (!b) return;
+  try {
+    await appel('amd_prereglage', { index: Number(b.dataset.prereglage) }, b);
+    toast(`Préréglage ${PREREGLAGES_AMD[b.dataset.prereglage][0]} appliqué.`);
+  } catch {}
+  chargerAmd();
+});
+$('#btn-amd-usine').addEventListener('click', async (e) => {
+  try {
+    await appel('amd_usine', {}, e.target);
+    toast("Réglages d'usine de la carte remis.");
+  } catch {}
+  chargerAmd();
+});
+$('#btn-amd-adrenalin').addEventListener('click', () => appel('ouvrir_logiciel_gpu', { fabricant: 'amd' }).catch(() => {}));
+$('#btn-oc-logiciel').addEventListener('click', () => appel('ouvrir_logiciel_gpu', { fabricant: carte?.fabricant || '' }).catch(() => {}));
 
 /** Mode automatique : monte par paliers tant que les images restent justes, puis garde une marge */
 $('#btn-oc-auto').addEventListener('click', async (e) => {
@@ -2458,6 +2585,11 @@ async function executerAssistant() {
     redemarrage = a.some((t) => t.redemarrage && resultats.some((r) => r.ok && r.id === t.id));
     return `${ok} réglage${ok > 1 ? 's' : ''} appliqué${ok > 1 ? 's' : ''}`;
   });
+  await etape('Recherche de tes jeux installés', async () => {
+    const jeux = await nouveauxJeux();
+    await ajouterJeux(jeux);
+    return jeux.length ? `${jeux.length} jeu${jeux.length > 1 ? 'x' : ''} ajouté${jeux.length > 1 ? 's' : ''}` : 'déjà tous dans la liste';
+  });
   await etape('Boost automatique de tes jeux', async () => {
     reglages.boost_auto = true;
     reglages.boost_max = assistant.niveau === 'max';
@@ -2518,6 +2650,7 @@ async function init() {
     appliquerMode();
     afficherAlertes();
     invoke('demarrage_auto_get').then((v) => ($('#demarrage-auto').checked = v));
+    invoke('carte_graphique').then((c) => (carte = c)).catch(() => {});
     try {
       derniereAnalyse = JSON.parse(localStorage.getItem('analyse'));
       // Déjà utilisé avant l'assistant : l'interface complète est proposée par défaut
@@ -2557,6 +2690,7 @@ async function init() {
   majConso();
   setInterval(majConso, 3000);
   if (!reglages?.assistant_fait) setTimeout(ouvrirAssistant, 1300);
+  else setTimeout(detecterJeuxAuto, 4000);
 }
 
 init();

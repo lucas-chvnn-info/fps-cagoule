@@ -34,7 +34,7 @@ pub struct Tweak {
     pub description: String,
     pub gain: String,
     pub redemarrage: bool,
-    /// Réglages qui ne sont pas de simples valeurs de registre : plan, adaptateur, nagle, powercfg, bcd, defender, nvidia, veille-prolongee, service
+    /// Réglages qui ne sont pas de simples valeurs de registre : plan, adaptateur, nagle, powercfg, bcd, defender, nvidia, veille-prolongee, service, amd
     #[serde(default)]
     pub special: Option<String>,
     #[serde(default)]
@@ -384,6 +384,17 @@ pub fn liste(stock: &Stockage) -> Vec<TweakEtat> {
     // Une seule lecture PowerShell pour toutes les optimisations de carte réseau
     let mots: Vec<String> = definitions().iter().flat_map(|t| t.mots_cles.clone()).collect();
     let cartes = lire_cartes(&mots);
+    // Réglages AMD : lus en une seule connexion au pilote, seulement si la carte principale est une AMD
+    let amd: Option<std::collections::HashMap<String, Option<i32>>> = crate::gpu::principale().filter(|c| c.fabricant == "amd").and_then(|_| {
+        crate::amd::avec(|s| {
+            Ok(definitions()
+                .iter()
+                .filter(|t| t.special.as_deref() == Some("amd"))
+                .map(|t| (t.parametre.clone(), s.lire(&t.parametre).ok().flatten()))
+                .collect())
+        })
+        .ok()
+    });
     definitions()
         .iter()
         .map(|t| {
@@ -407,6 +418,10 @@ pub fn liste(stock: &Stockage) -> Vec<TweakEtat> {
                     }
                 }
                 Some("veille-prolongee") => (!veille_prolongee_active(), true),
+                Some("amd") => match amd.as_ref().and_then(|m| m.get(&t.parametre).copied().flatten()) {
+                    Some(v) => (v == t.index as i32, true),
+                    None => (false, false),
+                },
                 // Service Windows : proposé seulement s'il existe sur ce PC (le fax n'existe pas partout)
                 Some("service") => {
                     let valeurs = valeurs_de(t);
@@ -477,6 +492,16 @@ fn appliquer_un(stock: &Stockage, t: &Tweak) -> Result<(), String> {
             }
             drop(d);
             reglages_nvidia(t).into_iter().try_for_each(|(id, v)| crate::nvidia::ecrire(id, Some(v)))
+        }
+        Some("amd") => {
+            drop(d);
+            let avant = crate::amd::avec(|s| s.lire(&t.parametre))?.ok_or("Ta carte AMD ne propose pas ce réglage")?;
+            crate::amd::avec(|s| s.ecrire(&t.parametre, t.index as i32))?;
+            let mut d = stock.donnees.lock().unwrap();
+            if !deja {
+                d.sauvegardes.insert(t.id.clone(), json!(avant));
+            }
+            Ok(())
         }
         Some("veille-prolongee") => {
             if !deja {
@@ -579,6 +604,11 @@ fn annuler_un(stock: &Stockage, t: &Tweak) -> Result<(), String> {
                 // Version 0.10 : un seul réglage, valeur ou null
                 autre => crate::nvidia::ecrire(t.id_nvidia, autre.as_u64().map(|v| v as u32))?,
             }
+            d = stock.donnees.lock().unwrap();
+        }
+        Some("amd") => {
+            drop(d);
+            crate::amd::avec(|s| s.ecrire(&t.parametre, origine.as_i64().unwrap_or(0) as i32))?;
             d = stock.donnees.lock().unwrap();
         }
         Some("veille-prolongee") => {

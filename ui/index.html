@@ -311,6 +311,7 @@
         <input id="ajout-nom" placeholder="Nom du jeu" required>
         <input id="ajout-exe" placeholder="Exécutable, par ex. jeu.exe" required>
         <button>Ajouter</button>
+        <button type="button" id="btn-jeux-detecter" class="principal">Détecter mes jeux installés</button>
         <button type="button" id="btn-profils-defaut" class="discret-btn">Remettre la liste d'origine</button>
       </form>
       <div class="carte">
@@ -356,7 +357,18 @@
         <div class="boutons" id="cpu-boutons"></div>
       </div>
       <h2 class="section">Carte graphique</h2>
-      <div id="oc-indisponible" class="carte" hidden><p id="oc-indisponible-texte" class="discret"></p></div>
+      <div id="oc-indisponible" class="carte" hidden><p id="oc-indisponible-texte" class="discret"></p><button id="btn-oc-logiciel" hidden></button></div>
+      <div id="oc-amd" hidden>
+        <div class="carte">
+          <div class="entete-diagnostic"><h2 id="amd-nom">Carte AMD</h2><span class="actions-entete"><span id="amd-temp" class="badge" hidden></span><span id="amd-resume" class="badge"></span></span></div>
+          <p class="discret">Les préréglages d'AMD règlent les fréquences, la puissance et la ventilation de ta carte, sans risque. « Rage » est l'overclocking officiel d'AMD : il augmente la limite de puissance. Pour aller plus loin (undervolt, réglage automatique du pilote), utilise Adrenalin → Performances → Réglage.</p>
+          <div id="amd-prereglages" class="choix-cartes amd-prereglages"></div>
+          <div class="boutons">
+            <button id="btn-amd-usine" class="discret-btn">Remettre d'usine</button>
+            <button id="btn-amd-adrenalin" hidden>Ouvrir AMD Adrenalin</button>
+          </div>
+        </div>
+      </div>
       <div id="oc-contenu" hidden>
         <p id="oc-plantage" class="carte alerte" hidden>Ton PC s'est arrêté brutalement pendant une partie avec l'overclocking : FPS Cagoule l'a désactivé par sécurité. Choisis un réglage plus bas.</p>
         <div class="carte">

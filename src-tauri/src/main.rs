@@ -1,7 +1,9 @@
 // FPS Cagoule : analyse, optimisation et boost par jeu pour Windows 11.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod amd;
 mod benchmark;
+mod bibliotheques;
 mod bios;
 mod config;
 mod demarrage;
@@ -10,6 +12,7 @@ mod edition;
 mod ecrans;
 mod fenetres;
 mod fps;
+mod gpu;
 mod jeux;
 mod jeux_config;
 mod nettoyage;
@@ -88,7 +91,52 @@ fn redemarrer_bios(app: AppHandle) -> Res<()> {
 
 #[tauri::command(async)]
 fn temperature_gpu() -> Option<i32> {
-    nvidia::temperature()
+    nvidia::temperature().or_else(|| amd::avec(|s| Ok(s.temperature())).ok().flatten())
+}
+
+#[tauri::command(async)]
+fn jeux_installes() -> Vec<bibliotheques::JeuTrouve> {
+    bibliotheques::chercher()
+}
+
+#[tauri::command(async)]
+fn carte_graphique() -> Option<gpu::Carte> {
+    gpu::principale()
+}
+
+#[derive(Serialize)]
+struct EtatAmd {
+    nom: String,
+    /// Indices des préréglages proposés (0 Économie, 1 Silencieux, 2 Équilibré, 3 Turbo, 4 Rage)
+    prereglages: Vec<usize>,
+    actuel: Option<usize>,
+    temperature: Option<i32>,
+    logiciel: bool,
+}
+
+#[tauri::command(async)]
+fn amd_etat() -> Res<EtatAmd> {
+    amd::avec(|s| {
+        let (prereglages, actuel) = s.prereglages().unwrap_or_default();
+        Ok(EtatAmd { nom: s.nom(), prereglages, actuel, temperature: s.temperature(), logiciel: gpu::logiciel("amd").is_some() })
+    })
+}
+
+#[tauri::command(async)]
+fn amd_prereglage(index: usize) -> Res<()> {
+    amd::avec(|s| s.choisir_prereglage(index))
+}
+
+#[tauri::command(async)]
+fn amd_usine() -> Res<()> {
+    amd::avec(|s| s.reglages_usine())
+}
+
+/// Ouvre Adrenalin ou le logiciel Intel, s'il est installé
+#[tauri::command]
+fn ouvrir_logiciel_gpu(fabricant: String) -> Res<()> {
+    let chemin = gpu::logiciel(&fabricant).ok_or("Logiciel de la carte graphique introuvable")?;
+    std::process::Command::new(chemin).spawn().map(|_| ()).map_err(|e| e.to_string())
 }
 
 #[tauri::command(async)]
@@ -566,6 +614,12 @@ fn main() {
             oc_enregistrer,
             oc_defaut,
             temperature_gpu,
+            carte_graphique,
+            jeux_installes,
+            amd_etat,
+            amd_prereglage,
+            amd_usine,
+            ouvrir_logiciel_gpu,
             bios_infos,
             redemarrer_bios,
             dns_etat,
@@ -799,6 +853,32 @@ mod tests_windows {
     }
 
     #[test]
+    fn jeux_installes() {
+        // Faux jeu : l'exe « Shipping » passe en premier, puis le plus gros ; installeurs et anti-triche écartés
+        let d = std::env::temp_dir().join("fps-cagoule-test-jeu");
+        let _ = std::fs::remove_dir_all(&d);
+        let gros = vec![0u8; 3 << 20];
+        let moyen = vec![0u8; 2 << 20];
+        for (f, contenu) in [
+            ("MonJeu.exe", &moyen),
+            ("unins000.exe", &gros),
+            (r"_CommonRedist\vc_redist.x64.exe", &gros),
+            (r"EasyAntiCheat\EasyAntiCheat_EOS_Setup.exe", &gros),
+            (r"MonJeu\Binaries\Win64\MonJeu-Win64-Shipping.exe", &moyen),
+            ("CrashReporter.exe", &gros),
+            ("petit.exe", &vec![0u8; 1000]),
+        ] {
+            let p = d.join(f);
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(p, contenu).unwrap();
+        }
+        assert_eq!(bibliotheques::exes_du_jeu(&d), vec!["MonJeu-Win64-Shipping.exe", "MonJeu.exe"]);
+        let _ = std::fs::remove_dir_all(&d);
+        // Aucun jeu sur le PC de GitHub : la recherche se fait sans erreur
+        let _ = bibliotheques::chercher();
+    }
+
+    #[test]
     fn bios() {
         let b = bios::infos().expect("infos du BIOS");
         assert!(b["biosVersion"].is_string() && b["ram"].is_array(), "{b}");
@@ -825,7 +905,16 @@ mod tests_windows {
         let dossier = std::env::temp_dir().join("fps-cagoule-test");
         let stock = Stockage::ouvrir(dossier);
         let liste = tweaks::liste(&stock);
-        assert_eq!(liste.len(), 67);
+        assert_eq!(liste.len(), 72);
+        // Pas de carte AMD sur le PC de GitHub : réglages AMD indisponibles, sans erreur
+        assert!(liste.iter().filter(|t| t.tweak.special.as_deref() == Some("amd")).all(|t| !t.disponible));
+        assert!(amd::avec(|s| Ok(s.nom())).is_err());
+        let _ = gpu::principale();
+        assert_eq!(gpu::decrire("NVIDIA GeForce RTX 3060", r"pci\ven_10de&dev_2503").fabricant, "nvidia");
+        let rx = gpu::decrire("AMD Radeon RX 7800 XT", r"pci\ven_1002&dev_747e");
+        assert!(rx.fabricant == "amd" && rx.dediee);
+        assert!(!gpu::decrire("AMD Radeon(TM) Graphics", r"pci\ven_1002&dev_1638").dediee);
+        assert!(gpu::decrire("Intel(R) Arc(TM) A770 Graphics", r"pci\ven_8086&dev_56a0").dediee);
         // Services : présents sur le PC de GitHub ou proprement indisponibles
         let services: Vec<_> = liste.iter().filter(|t| t.tweak.special.as_deref() == Some("service")).collect();
         assert_eq!(services.len(), 11);

@@ -594,3 +594,9 @@ body.entree main { animation: main-entree .7s cubic-bezier(.2, .8, .3, 1) both; 
 .bios-item p { margin: 4px 0 0; color: var(--discret); font-size: 13px; }
 .bios-item .chemin { color: var(--accent-clair); font-size: 12.5px; }
 .liste-bios > .petit-texte:last-child { margin-top: 10px; }
+
+/* Préréglages AMD et jeux trouvés */
+.amd-prereglages { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+.liste-jeux-trouves { list-style: none; padding: 0 !important; max-height: 46vh; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+.liste-jeux-trouves .case { align-items: flex-start; color: var(--texte); }
+.liste-jeux-trouves .case input { margin-top: 3px; flex-shrink: 0; }
