@@ -2375,12 +2375,16 @@ async function executerAssistant() {
 
 async function init() {
   const debutSplash = performance.now();
+  const etape = (f, t) => window.splashEtape?.(f, t);
+  etape(0.15, 'Connexion au moteur…');
   try {
     etat = await appel('etat_app');
+    etape(0.45, 'Chargement de tes jeux…');
     $('#version').textContent = `Version ${etat.version}`;
     $('#maj-texte').textContent = `Version installée : ${etat.version}.`;
     afficherJeu(etat.jeu);
     [profils, reglages] = await Promise.all([appel('profils_get'), appel('reglages_get')]);
+    etape(0.8, 'Préparation de ton PC…');
     afficherProfils();
     afficherReglages();
     appliquerMode();
@@ -2393,12 +2397,21 @@ async function init() {
       extraAnalyse = JSON.parse(localStorage.getItem('extra')) || {};
     } catch {}
   } finally {
-    // L'écran de démarrage reste au moins 1,2 s, le temps de son animation
-    const reste = 1200 - (performance.now() - debutSplash);
-    setTimeout(() => {
+    // L'intro reste au moins 2 s, le temps de son animation (un clic la passe)
+    etape(1, 'Prêt');
+    const calme = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const reste = (calme ? 600 : 2000) - (performance.now() - debutSplash);
+    let fini = false;
+    const finir = () => {
+      if (fini) return;
+      fini = true;
       $('#splash').classList.add('fini');
-      setTimeout(() => $('#splash').remove(), 600);
-    }, Math.max(0, reste));
+      document.body.classList.add('entree');
+      setTimeout(() => $('#splash')?.remove(), 750);
+      setTimeout(() => document.body.classList.remove('entree'), 1400);
+    };
+    $('#splash').addEventListener('click', finir);
+    setTimeout(finir, Math.max(0, reste));
   }
   // Analyse complète au premier lancement, puis une fois par jour
   const vieille = !derniereAnalyse?.date || Date.now() - new Date(derniereAnalyse.date) > 24 * 3600 * 1000;

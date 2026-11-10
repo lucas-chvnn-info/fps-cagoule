@@ -7,32 +7,38 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <!-- Écran de démarrage : affiché pendant le chargement, puis il s'efface -->
+  <!-- Écran de démarrage : intro 3D (CSS + un petit canvas), supprimée de la page dès qu'elle est finie -->
   <div id="splash" aria-hidden="true">
+    <canvas id="splash-fond"></canvas>
     <div class="splash-contenu">
-      <div class="splash-logo"><img src="logo.png" width="132" height="132" alt=""></div>
-      <div class="splash-titre">FPS <span>Cagoule</span></div>
-      <div class="splash-sous-titre">Préparation de ton PC…</div>
-      <div class="splash-barre"><div></div></div>
+      <div class="splash-scene">
+        <div class="splash-orbite o1"></div>
+        <div class="splash-orbite o2"></div>
+        <div class="splash-logo3d"><img src="logo.png" alt="" class="couche" style="--i:1"><img src="logo.png" alt="" class="couche" style="--i:2"><img src="logo.png" alt="" class="couche" style="--i:3"><img src="logo.png" alt="" class="couche" style="--i:4"><img src="logo.png" alt="" class="couche" style="--i:5"><img src="logo.png" alt="" class="couche" style="--i:6"><img src="logo.png" alt="" class="couche" style="--i:7"><img src="logo.png" alt="" class="couche" style="--i:8"><img src="logo.png" alt="" class="face"></div>
+      </div>
+      <div class="splash-titre"><span>F</span><span>P</span><span>S</span><span class="espace"></span><span class="b">C</span><span class="b">a</span><span class="b">g</span><span class="b">o</span><span class="b">u</span><span class="b">l</span><span class="b">e</span></div>
+      <div class="splash-sous-titre" id="splash-statut">Préparation de ton PC…</div>
+      <div class="splash-barre"><div id="splash-progression"></div></div>
     </div>
   </div>
+  <script src="splash.js"></script>
   <aside class="menu">
     <div class="marque">
       <img src="icone.png" alt="" width="36" height="36">
       <div><strong>FPS Cagoule</strong><span id="version"></span></div>
     </div>
     <nav>
-      <button data-page="accueil" class="actif">Accueil</button>
-      <button data-page="analyse" data-avance>Analyse et tests</button>
-      <button data-page="benchmark" data-avance>Benchmark</button>
-      <button data-page="optimisations">Optimisations</button>
-      <button data-page="nettoyage">Nettoyage</button>
-      <button data-page="pilotes" data-avance>Pilotes</button>
-      <button data-page="jeux">Boost par jeu</button>
-      <button data-page="ecrans" data-avance>Écrans</button>
-      <button data-page="oc" data-avance>Overclocking</button>
-      <button data-page="fps">Statistiques FPS</button>
-      <button data-page="reglages">Réglages</button>
+      <button data-page="accueil" class="actif"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/></svg><span>Accueil</span></button>
+      <button data-page="analyse" data-avance><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg><span>Analyse et tests</span></button>
+      <button data-page="benchmark" data-avance><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18a8 8 0 1 1 16 0"/><path d="M12 18l4-6"/><circle cx="12" cy="18" r="1.5"/></svg><span>Benchmark</span></button>
+      <button data-page="optimisations"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg><span>Optimisations</span></button>
+      <button data-page="nettoyage"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13h10l1-13"/><path d="M10 11v6M14 11v6"/></svg><span>Nettoyage</span></button>
+      <button data-page="pilotes" data-avance><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/><rect x="9.5" y="9.5" width="5" height="5" rx="1"/><path d="M9 3v3M15 3v3M9 18v3M15 18v3M3 9h3M3 15h3M18 9h3M18 15h3"/></svg><span>Pilotes</span></button>
+      <button data-page="jeux"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 9h10a4 4 0 0 1 4 4v1a3 3 0 0 1-5.4 1.8L14 14h-4l-1.6 1.8A3 3 0 0 1 3 14v-1a4 4 0 0 1 4-4z"/><path d="M8 11v3M6.5 12.5h3"/><circle cx="16" cy="12" r=".8"/></svg><span>Boost par jeu</span></button>
+      <button data-page="ecrans" data-avance><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg><span>Écrans</span></button>
+      <button data-page="oc" data-avance><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2L5 14h6l-1 8 8-12h-6z"/></svg><span>Overclocking</span></button>
+      <button data-page="fps"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg><span>Statistiques FPS</span></button>
+      <button data-page="reglages"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1L7 17M17 7l2.1-2.1"/></svg><span>Réglages</span></button>
     </nav>
     <button id="btn-mode" class="mode-interface" title="Changer d'interface"></button>
     <div class="conso" title="Ressources utilisées par FPS Cagoule elle-même">
