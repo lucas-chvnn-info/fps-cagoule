@@ -4,6 +4,7 @@
 mod benchmark;
 mod config;
 mod demarrage;
+mod dns;
 mod edition;
 mod ecrans;
 mod fenetres;
@@ -47,22 +48,50 @@ struct EtatApp {
     plan_perso: Option<String>,
     plan_max: Option<String>,
     presentmon: bool,
+    alimentation: systeme::Alimentation,
+    /// Message de baisse automatique de l'OC après un plantage (montré une fois)
+    oc_baisse_auto: Option<String>,
 }
 
 #[tauri::command]
 fn etat_app(app: AppHandle) -> EtatApp {
     let e = etat(&app);
-    let (plan_perso, plan_max) = {
-        let d = e.stock.donnees.lock().unwrap();
-        (d.plan_perso.clone(), d.plan_max.clone())
+    let (plan_perso, plan_max, oc_baisse_auto) = {
+        let mut d = e.stock.donnees.lock().unwrap();
+        (d.plan_perso.clone(), d.plan_max.clone(), d.oc_baisse_auto.take())
     };
+    if oc_baisse_auto.is_some() {
+        e.stock.sauver();
+    }
     EtatApp {
         version: app.package_info().version.to_string(),
         jeu: e.info_jeu(),
         plan_perso,
         plan_max,
         presentmon: e.presentmon.exists(),
+        alimentation: systeme::alimentation(),
+        oc_baisse_auto,
     }
+}
+
+#[tauri::command(async)]
+fn temperature_gpu() -> Option<i32> {
+    nvidia::temperature()
+}
+
+#[tauri::command(async)]
+fn dns_etat(app: AppHandle) -> Res<dns::EtatDns> {
+    dns::etat(&etat(&app).stock)
+}
+
+#[tauri::command(async)]
+fn dns_appliquer(app: AppHandle, id: String) -> Res<()> {
+    dns::appliquer(&etat(&app).stock, &id)
+}
+
+#[tauri::command(async)]
+fn dns_restaurer(app: AppHandle) -> Res<()> {
+    dns::restaurer(&etat(&app).stock)
 }
 
 #[tauri::command(async)]
@@ -524,6 +553,10 @@ fn main() {
             oc_essayer,
             oc_enregistrer,
             oc_defaut,
+            temperature_gpu,
+            dns_etat,
+            dns_appliquer,
+            dns_restaurer,
             benchmark_cpu,
             benchmark_ram,
             benchmark_disque,
@@ -649,6 +682,26 @@ mod tests_windows {
         assert!(systeme::fermer_programme("svchost.exe").is_err());
         assert!(systeme::fermer_programme("Memory Compression").is_err());
         assert!(!systeme::info_processeur().nom.is_empty());
+        let a = systeme::alimentation();
+        assert!(!a.sur_batterie || a.portable);
+        // Requêtes du journal d'événements valides (une requête mal formée renverrait faux aussi : on vérifie
+        // donc qu'une requête large trouve bien quelque chose)
+        let _ = systeme::plantage_depuis(3600, "RainbowSix.exe");
+        assert!(systeme::plantage_depuis_test());
+        assert_eq!(jeux::baisser(100, 25), 75);
+        assert_eq!(jeux::baisser(10, 25), 0);
+        assert_eq!(jeux::baisser(-50, 25), -50);
+    }
+
+    #[test]
+    fn dns() {
+        let ip: std::net::Ipv4Addr = "1.1.1.1".parse().unwrap();
+        assert!(dns::mesurer(ip).is_some_and(|ms| ms > 0.0 && ms < 1500.0));
+        let cartes = dns::cartes().expect("cartes réseau");
+        assert!(!cartes.is_empty());
+        let stock = Stockage::ouvrir(std::env::temp_dir().join("fps-cagoule-test-dns"));
+        let e = dns::etat(&stock).expect("mesure des DNS");
+        assert!(e.mesures.iter().any(|m| m.ms.is_some()));
     }
 
     #[test]

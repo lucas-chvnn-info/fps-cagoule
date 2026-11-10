@@ -1,6 +1,6 @@
 [package]
 name = "fps-cagoule"
-version = "0.17.0"
+version = "0.18.0"
 description = "Analyse, optimisation et boost par jeu pour Windows 11"
 authors = ["Lucas Chavanne"]
 license = "MIT"
@@ -32,6 +32,7 @@ windows-sys = { version = "0.61", features = [
   "Win32_Security",
   "Win32_System_SystemInformation",
   "Win32_System_Power",
+  "Win32_System_EventLog",
   "Win32_UI_Shell",
 ] }
 

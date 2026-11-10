@@ -86,3 +86,10 @@ test('mémoire presque pleine', () => {
   assert.equal(p.titre, 'Mémoire utilisée à 95 %');
   assert.equal(p.gravite, 'haute');
 });
+
+test('un portable sur batterie est signalé en premier', () => {
+  const { problemes } = evaluer(pcSain, { maintenant, extra: { surBatterie: true } });
+  assert.equal(problemes[0].id, 'batterie');
+  assert.equal(problemes[0].gravite, 'haute');
+  assert.equal(evaluer(pcSain, { maintenant, extra: { economiseur: true } }).problemes[0].id, 'economiseur');
+});

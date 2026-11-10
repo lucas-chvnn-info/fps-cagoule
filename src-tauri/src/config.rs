@@ -21,11 +21,17 @@ pub struct Reglages {
     pub couleurs_en_jeu: bool,
     /// Programmes fermés au lancement d'un jeu (noms d'exe)
     pub fermer_applis: Vec<String>,
+    /// Assistant de premier lancement terminé ou passé
+    pub assistant_fait: bool,
+    /// Interface simple : seulement l'essentiel dans le menu
+    pub mode_simple: bool,
+    /// Baisser l'overclocking d'un cran tout seul si le pilote ou le jeu plante
+    pub oc_protection: bool,
 }
 
 impl Default for Reglages {
     fn default() -> Self {
-        Self { boost_auto: true, boost_max: false, mesure_fps: true, overlay: false, maj_auto: true, couleurs_en_jeu: false, fermer_applis: vec![] }
+        Self { boost_auto: true, boost_max: false, mesure_fps: true, overlay: false, maj_auto: true, couleurs_en_jeu: false, fermer_applis: vec![], assistant_fait: false, mode_simple: false, oc_protection: true }
     }
 }
 
@@ -41,6 +47,8 @@ pub struct Profil {
     pub gpu_perf: bool,
     /// Résolution de l'écran principal pendant ce jeu (ex. 4:3 étiré), None = celle du bureau
     pub resolution: Option<ResolutionJeu>,
+    /// Garder l'overclocking de la carte graphique pendant ce jeu
+    pub oc: bool,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -52,7 +60,7 @@ pub struct ResolutionJeu {
 
 impl Default for Profil {
     fn default() -> Self {
-        Self { nom: String::new(), exes: vec![], actif: true, boost: true, priorite_haute: true, gpu_perf: true, resolution: None }
+        Self { nom: String::new(), exes: vec![], actif: true, boost: true, priorite_haute: true, gpu_perf: true, resolution: None, oc: true }
     }
 }
 
@@ -111,6 +119,18 @@ pub struct Donnees {
     pub oc_partie: Option<u64>,
     /// L'OC a été coupé après un arrêt brutal (message à montrer une fois)
     pub oc_coupe_apres_plantage: bool,
+    /// L'OC a été baissé tout seul après un plantage en jeu (message à montrer une fois)
+    pub oc_baisse_auto: Option<String>,
+    /// Serveurs DNS d'origine des cartes réseau changées par l'app
+    pub dns_avant: Vec<DnsAvant>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct DnsAvant {
+    pub index: u32,
+    pub nom: String,
+    /// Vide = DNS donnés automatiquement par la box (DHCP)
+    pub serveurs: Vec<String>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -147,6 +167,8 @@ impl Default for Donnees {
             oc: None,
             oc_partie: None,
             oc_coupe_apres_plantage: false,
+            oc_baisse_auto: None,
+            dns_avant: Vec::new(),
         }
     }
 }
@@ -168,6 +190,9 @@ pub struct Session {
     pub moyenne: f64,
     pub low1: f64,
     pub low01: f64,
+    /// Température maximale de la carte graphique pendant la partie (°C, NVIDIA)
+    #[serde(default)]
+    pub temp_gpu: Option<i32>,
 }
 
 const MAX_SESSIONS: usize = 500;

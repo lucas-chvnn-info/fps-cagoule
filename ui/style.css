@@ -437,3 +437,45 @@ button.chargement::before {
 @media (max-width: 1000px) {
   .grille-accueil, .grille-2, .boost-global { grid-template-columns: 1fr; }
 }
+
+/* Mode simple : seulement l'essentiel */
+body.simple nav [data-avance],
+body.simple .categorie[data-categorie="risque"],
+body.simple #filtres-categories [data-cat="risque"] { display: none; }
+.mode-interface { margin: 14px 0 10px; background: none; border: 1px dashed var(--bordure); color: var(--discret); font-size: 12px; padding: 8px 10px; border-radius: 10px; }
+.mode-interface:hover:not(:disabled) { color: var(--texte); border-color: var(--accent); }
+
+/* Alertes de l'accueil */
+.alertes { display: flex; flex-direction: column; gap: 10px; }
+.alertes:empty { display: none; }
+.alertes .boutons { margin-top: 0; flex-wrap: nowrap; }
+
+/* Assistant de premier lancement */
+.assistant .boite { width: min(620px, 92vw); max-width: none; padding: 26px 28px; animation: monte-assistant .3s ease; }
+@keyframes monte-assistant { from { transform: translateY(12px); opacity: 0; } }
+.assistant-points { display: flex; gap: 6px; margin-bottom: 18px; }
+.assistant-points span { flex: 1; height: 4px; border-radius: 4px; background: var(--bordure); transition: background .3s; }
+.assistant-points span.actif { background: var(--accent); }
+#assistant-etape { min-height: 210px; }
+#assistant-etape h2 { font-size: 20px; margin-bottom: 14px; }
+#assistant-etape .bascule { align-items: flex-start; }
+#assistant-etape .bascule > span { flex-shrink: 0; margin-top: 2px; }
+.choix-cartes { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+.choix-carte { display: flex; flex-direction: column; gap: 6px; text-align: left; padding: 16px; border-radius: 12px; background: var(--fond); border: 2px solid var(--bordure); }
+.choix-carte span { color: var(--discret); font-size: 13px; }
+.choix-carte.actif { border-color: var(--accent); background: var(--accent-fond); }
+.assistant-progression { font-size: 14px; gap: 10px; margin-bottom: 16px; }
+.assistant-progression li { flex-wrap: wrap; }
+
+/* DNS */
+.liste-dns { list-style: none; margin: 0 0 10px; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.liste-dns li { display: grid; grid-template-columns: 130px 120px 1fr 90px 90px; gap: 12px; align-items: center; }
+.liste-dns .ms { text-align: right; font-variant-numeric: tabular-nums; }
+.barre-dns { height: 8px; border-radius: 8px; background: var(--fond); overflow: hidden; }
+.barre-dns div { height: 100%; background: #3a4052; border-radius: 8px; }
+.barre-dns div.meilleur { background: var(--accent); }
+
+/* Code de réglages à partager */
+textarea.code { width: 100%; resize: vertical; background: var(--fond); color: var(--texte); border: 1px solid var(--bordure); border-radius: 10px; padding: 10px; font: 12px/1.4 Consolas, monospace; word-break: break-all; user-select: text; }
+.liste-dns .badge { justify-self: center; align-self: center; }
+#dns-resultats > .petit-texte { margin: 0 0 10px; }

@@ -153,6 +153,14 @@ export function evaluer(info, { planPerso = null, maintenant = new Date(), extra
 
   // Analyse complète
   const Go2 = 1024 ** 3;
+  // PC portable : sur batterie, Windows bride le processeur et la carte graphique
+  if (extra.surBatterie) {
+    ajoute('batterie', 'haute', 'PC portable sur batterie',
+      'Sur batterie, Windows et la carte graphique baissent leurs fréquences : souvent 30 à 50 % de FPS en moins. Branche le chargeur pour jouer.');
+  } else if (extra.economiseur) {
+    ajoute('economiseur', 'moyenne', "Économiseur de batterie activé",
+      "Il bride le processeur et coupe des tâches de fond. Désactive-le dans Paramètres → Système → Alimentation et batterie.");
+  }
   if (extra.attente > 0) {
     ajoute('redemarrage', 'moyenne', `${extra.attente} optimisation${extra.attente > 1 ? 's attendent' : ' attend'} un redémarrage`,
       `Redémarre ton PC pour qu'${extra.attente > 1 ? 'elles prennent' : 'elle prenne'} effet.`, 'redemarrer');

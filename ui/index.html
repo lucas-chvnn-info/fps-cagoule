@@ -23,17 +23,18 @@
     </div>
     <nav>
       <button data-page="accueil" class="actif">Accueil</button>
-      <button data-page="analyse">Analyse et tests</button>
-      <button data-page="benchmark">Benchmark</button>
+      <button data-page="analyse" data-avance>Analyse et tests</button>
+      <button data-page="benchmark" data-avance>Benchmark</button>
       <button data-page="optimisations">Optimisations</button>
       <button data-page="nettoyage">Nettoyage</button>
-      <button data-page="pilotes">Pilotes</button>
+      <button data-page="pilotes" data-avance>Pilotes</button>
       <button data-page="jeux">Boost par jeu</button>
-      <button data-page="ecrans">Écrans</button>
-      <button data-page="oc">Overclocking</button>
+      <button data-page="ecrans" data-avance>Écrans</button>
+      <button data-page="oc" data-avance>Overclocking</button>
       <button data-page="fps">Statistiques FPS</button>
       <button data-page="reglages">Réglages</button>
     </nav>
+    <button id="btn-mode" class="mode-interface" title="Changer d'interface"></button>
     <div class="conso" title="Ressources utilisées par FPS Cagoule elle-même">
       <span class="etiquette">FPS Cagoule utilise</span>
       <span id="conso">…</span>
@@ -45,6 +46,7 @@
     <!-- Accueil -->
     <section id="page-accueil" class="page actif">
       <header><h1>Accueil</h1><button id="btn-analyser" class="principal">Analyser mon PC</button></header>
+      <div id="alertes" class="alertes"></div>
       <div class="grille-accueil">
         <div class="carte score-carte" id="carte-score">
           <div class="anneau-zone">
@@ -57,6 +59,7 @@
           </div>
           <p id="score-texte" class="discret">Lance une analyse pour obtenir ton score.</p>
           <ul id="etapes-analyse" class="etapes" hidden></ul>
+          <p id="score-depart" class="petit-texte" hidden></p>
           <p id="date-derniere" class="discret petit-texte"></p>
         </div>
         <div class="carte" id="carte-jeu">
@@ -65,6 +68,7 @@
           <div id="jeu-actif" hidden>
             <div class="jeu-ligne"><strong id="jeu-nom"></strong><span id="jeu-badge" class="badge accent">Boosté</span></div>
             <div class="fps-geant"><span id="jeu-fps">–</span><small>FPS</small></div>
+            <p id="jeu-temp" class="discret" hidden></p>
             <ul id="jeu-actions" class="liste-actions"></ul>
           </div>
         </div>
@@ -101,6 +105,11 @@
           <button id="btn-ping" class="principal">Lancer le test</button>
           <div id="ping-resultats" class="ping-resultats"></div>
         </div>
+      </div>
+      <div class="carte" id="carte-dns">
+        <div class="entete-diagnostic"><h2>Serveur DNS</h2><button class="petit principal" id="btn-dns">Trouver le plus rapide</button></div>
+        <p class="discret">Le DNS traduit les noms (discord.com, les serveurs des jeux…) en adresses. Il ne change pas ton ping en partie, mais un DNS rapide accélère les connexions : lancement des jeux, matchmaking, pages web. Le test dure quelques secondes.</p>
+        <div id="dns-resultats"></div>
       </div>
       <div class="carte">
         <h2>Test de ta souris</h2>
@@ -279,7 +288,7 @@
         <ul id="jeux-configs" class="liste-jeux-configs"><li class="discret">Recherche des jeux installés…</li></ul>
       </div>
       <table class="tableau" id="profils">
-        <thead><tr><th>Jeu</th><th>Détecté</th><th>Boost</th><th>Priorité haute</th><th>GPU puissant</th><th>Résolution</th><th></th></tr></thead>
+        <thead><tr><th>Jeu</th><th>Détecté</th><th>Boost</th><th>Priorité haute</th><th>GPU puissant</th><th title="Garder l'overclocking de la carte graphique pendant ce jeu (décoche si ce jeu plante avec)">OC</th><th>Résolution</th><th></th></tr></thead>
         <tbody></tbody>
       </table>
       <form id="ajout-jeu" class="ligne-form">
@@ -326,7 +335,7 @@
       <div id="oc-contenu" hidden>
         <p id="oc-plantage" class="carte alerte" hidden>Ton PC s'est arrêté brutalement pendant une partie avec l'overclocking : FPS Cagoule l'a désactivé par sécurité. Choisis un réglage plus bas.</p>
         <div class="carte">
-          <div class="entete-diagnostic"><h2 id="oc-gpu">Carte graphique</h2><span id="oc-resume" class="badge"></span></div>
+          <div class="entete-diagnostic"><h2 id="oc-gpu">Carte graphique</h2><span class="actions-entete"><span id="oc-temp" class="badge" hidden></span><span id="oc-resume" class="badge"></span></span></div>
           <div class="grille-2">
             <div>
               <h2>Automatique</h2>
@@ -340,6 +349,7 @@
               <label class="curseur"><span>Mémoire</span><input type="range" id="oc-memoire" step="25"><output id="oc-memoire-v"></output></label>
               <label class="curseur" id="oc-puissance-ligne"><span>Puissance</span><input type="range" id="oc-puissance" step="1"><output id="oc-puissance-v"></output></label>
               <label class="case"><input type="checkbox" id="oc-demarrage"> Réappliquer au démarrage de Windows</label>
+              <label class="case"><input type="checkbox" id="oc-protection"> Baisser d'un cran tout seul si un jeu ou le pilote plante</label>
               <div class="boutons">
                 <button id="btn-oc-tester">Tester 30 s</button>
                 <button class="principal" id="btn-oc-appliquer">Appliquer</button>
@@ -360,7 +370,7 @@
       <p class="discret">Le « 1 % low » est le FPS des pires moments : c'est lui qui donne la sensation de saccades. Pour mesurer l'effet du boost, joue une partie avec et une sans (désactive le boost du jeu dans « Boost par jeu »).</p>
       <div id="comparaisons" class="grille-2"></div>
       <table class="tableau" id="sessions">
-        <thead><tr><th>Date</th><th>Jeu</th><th>Durée</th><th>Boost</th><th>FPS moyen</th><th>1 % low</th><th>0,1 % low</th></tr></thead>
+        <thead><tr><th>Date</th><th>Jeu</th><th>Durée</th><th>Boost</th><th>FPS moyen</th><th>1 % low</th><th>0,1 % low</th><th title="Température maximale de la carte graphique (NVIDIA)">GPU max</th></tr></thead>
         <tbody></tbody>
       </table>
     </section>
@@ -375,6 +385,27 @@
         <label class="bascule"><input type="checkbox" id="maj-auto"><span></span> Installer les mises à jour automatiquement (jamais pendant une partie)</label>
       </div>
       <div class="carte">
+        <h2>Interface</h2>
+        <p class="discret">Le mode simple ne garde que l'essentiel : accueil, optimisations, nettoyage, boost par jeu et statistiques. Le mode complet ajoute les tests, le benchmark, les pilotes, les écrans et l'overclocking.</p>
+        <div class="boutons">
+          <button id="btn-mode-reglages"></button>
+          <button id="btn-assistant">Relancer l'assistant</button>
+        </div>
+      </div>
+      <div class="carte">
+        <h2>Partager mes réglages</h2>
+        <p class="discret">Copie un code avec tes optimisations, tes jeux et ton boost, et envoie-le à un pote : il le colle dans son FPS Cagoule et retrouve les mêmes réglages. L'overclocking et la zone risquée ne sont jamais partagés (chaque carte est différente).</p>
+        <div class="boutons">
+          <button class="principal" id="btn-exporter">Copier mon code</button>
+          <button id="btn-importer">Coller un code</button>
+        </div>
+      </div>
+      <div class="carte">
+        <h2>Tout remettre comme avant</h2>
+        <p class="discret">Annule toutes les optimisations, l'overclocking, le changement de DNS et les réglages modifiés dans les jeux. Les fichiers nettoyés et les applis supprimées ne reviennent pas.</p>
+        <button id="btn-tout-remettre">Tout remettre comme avant</button>
+      </div>
+      <div class="carte">
         <h2>Mises à jour</h2>
         <p id="maj-texte" class="discret"></p>
         <button id="btn-maj">Rechercher une mise à jour</button>
@@ -383,6 +414,17 @@
     </section>
   </main>
 
+  <div id="assistant" class="fenetre assistant" hidden>
+    <div class="boite" role="dialog" aria-modal="true" aria-labelledby="assistant-titre">
+      <div class="assistant-points" aria-hidden="true"></div>
+      <div id="assistant-etape"></div>
+      <div class="boutons">
+        <button id="assistant-passer" class="discret-btn">Passer</button>
+        <button id="assistant-retour">Retour</button>
+        <button id="assistant-suivant" class="principal">Suivant</button>
+      </div>
+    </div>
+  </div>
   <div id="toast" role="status" hidden></div>
   <div id="fenetre" class="fenetre" hidden>
     <div class="boite" role="dialog" aria-modal="true" aria-labelledby="fenetre-titre">

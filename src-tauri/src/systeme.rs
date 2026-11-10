@@ -446,3 +446,79 @@ pub fn info_processeur() -> InfoProcesseur {
         .map(|p| p.to_string_lossy().to_string());
     InfoProcesseur { nom, ryzen_master }
 }
+
+#[derive(serde::Serialize, Clone, Copy)]
+pub struct Alimentation {
+    /// PC avec une batterie (portable)
+    pub portable: bool,
+    pub sur_batterie: bool,
+    /// Économiseur de batterie de Windows activé
+    pub economiseur: bool,
+}
+
+pub fn alimentation() -> Alimentation {
+    use windows_sys::Win32::System::Power::{GetSystemPowerStatus, SYSTEM_POWER_STATUS};
+    let mut s: SYSTEM_POWER_STATUS = unsafe { std::mem::zeroed() };
+    if unsafe { GetSystemPowerStatus(&mut s) } == 0 {
+        return Alimentation { portable: false, sur_batterie: false, economiseur: false };
+    }
+    // BatteryFlag 128 = pas de batterie, 255 = inconnu
+    let portable = s.BatteryFlag != 128 && s.BatteryFlag != 255;
+    Alimentation { portable, sur_batterie: portable && s.ACLineStatus == 0, economiseur: s.SystemStatusFlag == 1 }
+}
+
+/// Plantage du pilote graphique (événement 4101 « Display », ou erreur nvlddmkm / amdkmdag)
+/// ou du jeu lui-même (« Application Error » 1000) depuis `secondes`. Lecture du journal Système,
+/// seulement à la fin des parties jouées avec un overclocking.
+pub fn plantage_depuis(secondes: u64, exe: &str) -> Option<&'static str> {
+    let ms = secondes.saturating_mul(1000).max(1000);
+    if evenement_present("System", &requete_pilote(ms)) {
+        return Some("pilote");
+    }
+    evenement_present("Application", &requete_jeu(ms, exe)).then_some("jeu")
+}
+
+fn requete_pilote(ms: u64) -> String {
+    format!("*[System[(Provider[@Name='Display'] or Provider[@Name='nvlddmkm'] or Provider[@Name='amdkmdag']) and TimeCreated[timediff(@SystemTime) <= {ms}]]]")
+}
+
+fn requete_jeu(ms: u64, exe: &str) -> String {
+    // Le nom de l'exe vient de la liste des jeux : on retire les apostrophes pour ne pas casser la requête
+    let exe = exe.replace('\'', "");
+    format!("*[System[Provider[@Name='Application Error'] and (EventID=1000) and TimeCreated[timediff(@SystemTime) <= {ms}]] and EventData[Data[@Name='AppName']='{exe}']]")
+}
+
+fn evenement_present(journal: &str, requete: &str) -> bool {
+    use windows_sys::Win32::System::EventLog::{EvtClose, EvtNext, EvtQuery, EvtQueryChannelPath, EvtQueryReverseDirection};
+    let j: Vec<u16> = journal.encode_utf16().chain([0]).collect();
+    let r: Vec<u16> = requete.encode_utf16().chain([0]).collect();
+    unsafe {
+        let h = EvtQuery(0, j.as_ptr(), r.as_ptr(), EvtQueryChannelPath | EvtQueryReverseDirection);
+        if h == 0 {
+            return false;
+        }
+        let mut ev = [0isize; 1];
+        let mut n = 0u32;
+        let trouve = EvtNext(h, 1, ev.as_mut_ptr(), 1000, 0, &mut n) != 0 && n > 0;
+        if trouve {
+            EvtClose(ev[0]);
+        }
+        EvtClose(h);
+        trouve
+    }
+}
+
+/// Pour les tests : les requêtes sont acceptées par Windows, et la lecture trouve bien des événements qui existent
+#[cfg(test)]
+pub fn plantage_depuis_test() -> bool {
+    use windows_sys::Win32::System::EventLog::{EvtClose, EvtQuery, EvtQueryChannelPath};
+    let valide = |journal: &str, requete: &str| {
+        let j: Vec<u16> = journal.encode_utf16().chain([0]).collect();
+        let r: Vec<u16> = requete.encode_utf16().chain([0]).collect();
+        let h = unsafe { EvtQuery(0, j.as_ptr(), r.as_ptr(), EvtQueryChannelPath) };
+        h != 0 && unsafe { EvtClose(h) } != 0
+    };
+    valide("System", &requete_pilote(3_600_000))
+        && valide("Application", &requete_jeu(3_600_000, "RainbowSix.exe"))
+        && evenement_present("System", "*[System[Provider[@Name='EventLog']]]")
+}

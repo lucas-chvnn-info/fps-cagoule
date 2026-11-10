@@ -211,6 +211,7 @@ const _: () = assert!(std::mem::size_of::<Horloge>() == 44);
 const _: () = assert!(std::mem::size_of::<Pstate>() == 456);
 const _: () = assert!(std::mem::size_of::<Pstates20V1>() == 0x1C94);
 const _: () = assert!(std::mem::size_of::<Pstates20V2>() == 0x1CF8);
+const _: () = assert!(std::mem::size_of::<Thermique>() == 68);
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -273,6 +274,15 @@ struct ApiOc {
     info_puissance: unsafe extern "C" fn(Poignee, *mut InfoPuissance) -> i32,
     lire_puissance: unsafe extern "C" fn(Poignee, *mut EtatPuissance) -> i32,
     ecrire_puissance: unsafe extern "C" fn(Poignee, *const EtatPuissance) -> i32,
+    temperature: Option<unsafe extern "C" fn(Poignee, u32, *mut Thermique) -> i32>,
+}
+
+/// NV_GPU_THERMAL_SETTINGS_V2 : jusqu'à 3 capteurs, en °C
+#[repr(C)]
+struct Thermique {
+    version: u32,
+    nombre: u32,
+    capteurs: [[i32; 5]; 3],
 }
 
 unsafe impl Send for ApiOc {}
@@ -297,6 +307,7 @@ fn api_oc() -> Option<&'static ApiOc> {
             info_puissance: std::mem::transmute(f(0x3420_6D86)?),
             lire_puissance: std::mem::transmute(f(0x7091_6171)?),
             ecrire_puissance: std::mem::transmute(f(0xAD95_F5ED)?),
+            temperature: f(0xE364_0A56).map(|p| std::mem::transmute(p)),
         })
     })
     .as_ref()
@@ -428,6 +439,23 @@ pub fn appliquer_puissance(pourcent: f64) -> Result<(), String> {
             code => Err(format!("Le pilote NVIDIA refuse cette limite de puissance (code {code})")),
         }
     }
+}
+
+/// Température de la puce graphique (°C). Un appel NVAPI très léger, utilisé pendant les parties.
+pub fn temperature() -> Option<i32> {
+    let a = api_oc()?;
+    let lire = a.temperature?;
+    let gpu = premier_gpu(a).ok()?;
+    let mut t: Thermique = unsafe { std::mem::zeroed() };
+    t.version = std::mem::size_of::<Thermique>() as u32 | (2 << 16);
+    // 15 = tous les capteurs ; le premier est celui de la puce
+    (unsafe { lire(gpu, 15, &mut t) } == NVAPI_OK && t.nombre > 0).then(|| t.capteurs[0][3]).filter(|c| (1..130).contains(c))
+}
+
+/// Décalages actuellement appliqués par le pilote (MHz), (0, 0) aux fréquences d'origine.
+pub fn oc_actuel() -> Option<(i32, i32)> {
+    let e = lire_oc().ok()?;
+    Some((e.coeur.map_or(0, |p| p.actuel), e.memoire.map_or(0, |p| p.actuel)))
 }
 
 /// Fréquences et puissance d'origine.

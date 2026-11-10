@@ -22,6 +22,13 @@ pub struct EnCours {
     /// Vidages de la mémoire en veille pendant la partie
     derniere_purge: Option<Instant>,
     purges: u32,
+    /// Température maximale de la carte graphique (°C) et dernière lecture
+    temp_max: Option<i32>,
+    temp: Option<i32>,
+    /// Overclocking mis de côté pour ce jeu (décalages à remettre à la fin)
+    oc_suspendu: Option<(i32, i32)>,
+    /// Partie jouée avec un overclocking actif
+    oc_actif: bool,
 }
 
 pub struct Etat {
@@ -39,6 +46,7 @@ pub struct InfoJeu {
     pub boost: bool,
     pub actions: Vec<String>,
     pub fps: Option<f64>,
+    pub temp_gpu: Option<i32>,
 }
 
 impl Etat {
@@ -51,6 +59,7 @@ impl Etat {
             boost: s.boost,
             actions: s.actions.clone(),
             fps: *self.fps_live.lock().unwrap(),
+            temp_gpu: s.temp,
         })
     }
 }
@@ -77,6 +86,7 @@ fn verifier(app: &AppHandle) -> bool {
                 return false;
             }
             entretenir_memoire(&etat);
+            suivre_temperature(app, &etat);
             true
         }
         None => {
@@ -102,6 +112,22 @@ fn demarrer(app: &AppHandle, etat: &Etat, profil: &crate::config::Profil, pid: u
     let reglages = etat.stock.donnees.lock().unwrap().reglages.clone();
     let boost = reglages.boost_auto && profil.boost;
     let mut actions = Vec::new();
+
+    let alim = systeme::alimentation();
+    if alim.sur_batterie {
+        actions.push("Sur batterie : branche le chargeur, Windows bride le processeur et la carte graphique".into());
+    }
+    // Overclocking : mis de côté pour les jeux où il est désactivé, sinon suivi pour détecter les plantages
+    let mut oc_suspendu = None;
+    let mut oc_actif = false;
+    if let Some(actuel) = crate::nvidia::oc_actuel().filter(|&(c, m)| c != 0 || m != 0) {
+        if profil.oc {
+            oc_actif = true;
+        } else if crate::nvidia::appliquer_oc(0, 0).is_ok() {
+            oc_suspendu = Some(actuel);
+            actions.push("Overclocking mis en pause pour ce jeu".into());
+        }
+    }
 
     if boost {
         // Plan d'alimentation (ou, sur les PC en veille moderne, mode d'alimentation de Windows 11) :
@@ -200,9 +226,13 @@ fn demarrer(app: &AppHandle, etat: &Etat, profil: &crate::config::Profil, pid: u
         capture,
         derniere_purge: None,
         purges: 0,
+        temp_max: None,
+        temp: None,
+        oc_suspendu,
+        oc_actif,
     });
     // Partie jouée avec l'overclocking : marque effacée à la fin de la partie (voir oc_au_demarrage)
-    if etat.stock.donnees.lock().unwrap().oc.as_ref().is_some_and(|o| o.coeur_mhz != 0 || o.memoire_mhz != 0) {
+    if oc_actif {
         etat.stock.donnees.lock().unwrap().oc_partie = Some(SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs()));
         etat.stock.sauver();
     }
@@ -252,6 +282,12 @@ pub fn terminer(app: &AppHandle, etat: &Etat) {
     if etat.stock.donnees.lock().unwrap().oc_partie.take().is_some() {
         etat.stock.sauver();
     }
+    if let Some((c, m)) = s.oc_suspendu {
+        let _ = crate::nvidia::appliquer_oc(c, m);
+    }
+    if s.oc_actif {
+        verifier_plantage_oc(app, etat, s.debut.elapsed().as_secs() + 30, &s.exe);
+    }
     *etat.fps_live.lock().unwrap() = None;
     crate::fenetres::fermer_overlay(app);
     crate::fenetres::infobulle(app, "FPS Cagoule");
@@ -268,6 +304,7 @@ pub fn terminer(app: &AppHandle, etat: &Etat) {
                 moyenne: st.moyenne,
                 low1: st.low1,
                 low01: st.low01,
+                temp_gpu: s.temp_max,
             });
         }
     }
@@ -331,6 +368,50 @@ fn entretenir_memoire(etat: &Etat) {
             None => s.actions.push(texte),
         }
     }
+}
+
+/// Température de la carte graphique pendant la partie (NVIDIA, un appel NVAPI toutes les 3 s)
+fn suivre_temperature(app: &AppHandle, etat: &Etat) {
+    let Some(t) = crate::nvidia::temperature() else { return };
+    let mut session = etat.session.lock().unwrap();
+    let Some(s) = session.as_mut() else { return };
+    s.temp = Some(t);
+    s.temp_max = Some(s.temp_max.map_or(t, |m| m.max(t)));
+    drop(session);
+    let _ = app.emit("temp_gpu", t);
+}
+
+/// Après une partie avec overclocking : si le pilote graphique ou le jeu a planté, l'OC baisse d'un cran
+/// (-25 MHz GPU, -100 MHz mémoire), comme le bouton « Baisser d'un cran ».
+fn verifier_plantage_oc(app: &AppHandle, etat: &Etat, secondes: u64, exe: &str) {
+    let (protection, oc) = {
+        let d = etat.stock.donnees.lock().unwrap();
+        (d.reglages.oc_protection, d.oc.clone())
+    };
+    let Some(mut oc) = oc.filter(|_| protection) else { return };
+    let Some(quoi) = systeme::plantage_depuis(secondes, exe) else { return };
+    oc.coeur_mhz = baisser(oc.coeur_mhz, 25);
+    oc.memoire_mhz = baisser(oc.memoire_mhz, 100);
+    if crate::nvidia::appliquer_oc(oc.coeur_mhz, oc.memoire_mhz).is_err() {
+        return;
+    }
+    let cause = if quoi == "pilote" { "Le pilote graphique a planté" } else { "Le jeu a planté" };
+    let texte = format!(
+        "{cause} pendant ta partie avec l'overclocking : il a été baissé d'un cran (GPU {:+} MHz, mémoire {:+} MHz).",
+        oc.coeur_mhz, oc.memoire_mhz
+    );
+    let mut d = etat.stock.donnees.lock().unwrap();
+    d.oc = Some(oc);
+    d.oc_baisse_auto = Some(texte);
+    drop(d);
+    etat.stock.sauver();
+    // Interface ouverte : message tout de suite (sinon il est montré à la prochaine ouverture)
+    let _ = app.emit("oc_baisse", ());
+}
+
+/// Retire `pas` à un décalage positif, sans passer sous zéro
+pub fn baisser(v: i32, pas: i32) -> i32 {
+    if v > 0 { (v - pas).max(0) } else { v }
 }
 
 const IFEO: &str = r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options";

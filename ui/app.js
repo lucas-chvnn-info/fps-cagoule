@@ -89,6 +89,8 @@ let jeuxAnalyse = null;
 /** Ce que l'analyse complète ajoute au score (voir evaluer.js) */
 function calculerExtra() {
   const ex = { ...extraAnalyse };
+  ex.surBatterie = !!etat.alimentation?.sur_batterie;
+  ex.economiseur = !!etat.alimentation?.economiseur;
   if (tweaks.length) {
     ex.recommandeesInactives = tweaks.filter((t) => t.disponible && !t.actif && !t.attente && t.niveau === 'recommande').length;
     ex.attente = tweaks.filter((t) => t.attente).length;
@@ -138,6 +140,13 @@ function afficherScore() {
   const anneau = $('#anneau');
   anneau.style.strokeDashoffset = 326.7 * (1 - score / 100);
   anneau.style.stroke = score >= 80 ? 'var(--accent-clair)' : score >= 55 ? 'var(--orange)' : 'var(--rouge)';
+  let depart = null;
+  try {
+    depart = JSON.parse(localStorage.getItem('scoreDepart'));
+    if (!depart) localStorage.setItem('scoreDepart', JSON.stringify({ score, date: new Date().toISOString() }));
+  } catch {}
+  $('#score-depart').hidden = !(depart && score > depart.score);
+  if (depart && score > depart.score) $('#score-depart').innerHTML = `Avant FPS Cagoule : ${depart.score} → <span class="gain">${score} aujourd'hui (+${score - depart.score})</span>`;
   $('#score-texte').textContent =
     score >= 90 ? 'Ton PC est au top pour jouer.' : score >= 70 ? 'Quelques réglages peuvent encore te faire gagner des FPS.' : 'Plusieurs points freinent ton PC en jeu.';
   if (derniereAnalyse.date) {
@@ -252,8 +261,15 @@ const ETAPES = [
   ['jeux_configs', 'Réglages des jeux'],
 ];
 
+let promesseAnalyse = null;
+/** Analyse complète, partagée si elle tourne déjà */
+function analyser() {
+  promesseAnalyse ??= analyserTout().finally(() => (promesseAnalyse = null));
+  return promesseAnalyse;
+}
+
 /** Analyse complète : toutes les vérifications en parallèle, chacune cochée quand elle finit */
-async function analyser() {
+async function analyserTout() {
   if (analyseEnCours) return;
   analyseEnCours = true;
   const b = $('#btn-analyser');
@@ -295,7 +311,7 @@ async function analyser() {
   }
   afficherScore();
 }
-$('#btn-analyser').addEventListener('click', analyser);
+$('#btn-analyser').addEventListener('click', () => analyser());
 
 const ligne = (k, v) => (v === null || v === undefined || v === '' || v === false ? '' : `<div class="ligne-info"><span>${esc(k)}</span><span>${esc(v)}</span></div>`);
 const taille = (o) => (o ? `${Math.round(Number(o) / Go)} Go` : '');
@@ -797,7 +813,7 @@ function afficherProfils() {
     .map(
       (p, i) => `<tr>
         <td>${esc(p.nom)}<small>${esc(p.exes.join(', '))}</small></td>
-        ${caseP(i, 'actif', 'Détection')}${caseP(i, 'boost', 'Boost')}${caseP(i, 'priorite_haute', 'Priorité haute')}${caseP(i, 'gpu_perf', 'GPU puissant')}
+        ${caseP(i, 'actif', 'Détection')}${caseP(i, 'boost', 'Boost')}${caseP(i, 'priorite_haute', 'Priorité haute')}${caseP(i, 'gpu_perf', 'GPU puissant')}${caseP(i, 'oc', 'Overclocking')}
         <td><select data-i="${i}" data-resolution aria-label="Résolution pendant ${esc(p.nom)}">${optionsResolution(p)}</select></td>
         <td><button class="petit discret-btn" data-suppr="${i}" title="Retirer">✕</button></td>
       </tr>`
@@ -833,7 +849,7 @@ $('#ajout-jeu').addEventListener('submit', (e) => {
   e.preventDefault();
   let exe = $('#ajout-exe').value.trim();
   if (!exe.toLowerCase().endsWith('.exe')) exe += '.exe';
-  profils.push({ nom: $('#ajout-nom').value.trim(), exes: [exe], actif: true, boost: true, priorite_haute: true, gpu_perf: true, resolution: null });
+  profils.push({ nom: $('#ajout-nom').value.trim(), exes: [exe], actif: true, boost: true, priorite_haute: true, gpu_perf: true, resolution: null, oc: true });
   e.target.reset();
   sauverProfils();
 });
@@ -900,7 +916,17 @@ function afficherJeu(jeu) {
   $('#jeu-badge').hidden = !jeu.boost;
   $('#jeu-fps').textContent = jeu.fps ? Math.round(jeu.fps) : '–';
   $('#jeu-actions').innerHTML = jeu.actions.map((a) => `<li>${esc(a)}</li>`).join('');
+  afficherTempJeu(jeu.temp_gpu);
 }
+
+function afficherTempJeu(t) {
+  const p = $('#jeu-temp');
+  p.hidden = !t;
+  if (!t) return;
+  p.textContent = `Carte graphique : ${t} °C${t >= 85 ? ' — elle chauffe beaucoup : vérifie la ventilation du boîtier' : ''}`;
+  p.className = t >= 85 ? 'alerte' : 'discret';
+}
+listen('temp_gpu', (e) => afficherTempJeu(e.payload));
 
 listen('jeu', (e) => afficherJeu(e.payload));
 listen('fps', (e) => ($('#jeu-fps').textContent = Math.round(e.payload)));
@@ -1662,7 +1688,9 @@ async function chargerOc() {
     p.value = Math.round(e?.puissance_pct ?? oc.puissance.actuel);
   }
   $('#oc-demarrage').checked = !!e?.au_demarrage;
+  $('#oc-protection').checked = reglages?.oc_protection !== false;
   majCurseursOc();
+  majTempOc();
   const actif = (oc.coeur?.actuel || 0) !== 0 || (oc.memoire?.actuel || 0) !== 0;
   $('#oc-resume').textContent = actif ? `Actif : GPU ${signe(oc.coeur?.actuel)} MHz, mémoire ${signe(oc.memoire?.actuel)} MHz` : 'Fréquences d\'origine';
   $('#oc-resume').className = `badge ${actif ? 'accent' : ''}`;
@@ -1782,6 +1810,24 @@ $('#oc-demarrage').addEventListener('change', async (e) => {
   await appel('oc_enregistrer', { reglage: { ...oc.enregistre, au_demarrage: e.target.checked } }).catch(() => {});
 });
 
+$('#oc-protection').addEventListener('change', (e) => {
+  reglages.oc_protection = e.target.checked;
+  sauverReglages();
+});
+
+async function majTempOc() {
+  const t = await invoke('temperature_gpu').catch(() => null);
+  const b = $('#oc-temp');
+  b.hidden = !t;
+  if (!t) return null;
+  b.textContent = `${t} °C`;
+  b.className = `badge ${t >= 85 ? 'rouge' : t >= 75 ? 'orange' : ''}`;
+  return t;
+}
+setInterval(() => {
+  if (!document.hidden && $('#page-oc').classList.contains('actif') && oc) majTempOc();
+}, 2000);
+
 /** Mode automatique : monte par paliers tant que les images restent justes, puis garde une marge */
 $('#btn-oc-auto').addEventListener('click', async (e) => {
   const ok = await confirmer(
@@ -1816,8 +1862,13 @@ $('#btn-oc-auto').addEventListener('click', async (e) => {
           journal(`GPU +${c} MHz : ${r.raison}`, 'ko');
           break;
         }
-        journal(`GPU +${c} MHz : stable (${Math.round(r.images_s)} images/s)`, 'ok');
+        const t = await majTempOc();
+        journal(`GPU +${c} MHz : stable (${Math.round(r.images_s)} images/s${t ? `, ${t} °C` : ''})`, 'ok');
         coeur = c;
+        if (t >= 87) {
+          journal(`Carte à ${t} °C : je m'arrête là pour ne pas la faire chauffer plus`, 'ko');
+          break;
+        }
       }
       // Les jeux poussent la carte autrement que ce test (pics de boost, tension) : grosse marge
       if (coeur > 0) {
@@ -1877,10 +1928,10 @@ async function chargerSessions() {
   $('#sessions tbody').innerHTML = sessions.length
     ? sessions
         .map(
-          (s) => `<tr><td>${new Date(s.debut * 1000).toLocaleString('fr-CH', { dateStyle: 'short', timeStyle: 'short' })}</td><td>${esc(s.jeu)}</td><td>${duree(s.duree_s)}</td><td>${s.boost ? '<span class="badge accent">Oui</span>' : '<span class="badge">Non</span>'}</td><td>${Math.round(s.moyenne)}</td><td>${Math.round(s.low1)}</td><td>${Math.round(s.low01)}</td></tr>`
+          (s) => `<tr><td>${new Date(s.debut * 1000).toLocaleString('fr-CH', { dateStyle: 'short', timeStyle: 'short' })}</td><td>${esc(s.jeu)}</td><td>${duree(s.duree_s)}</td><td>${s.boost ? '<span class="badge accent">Oui</span>' : '<span class="badge">Non</span>'}</td><td>${Math.round(s.moyenne)}</td><td>${Math.round(s.low1)}</td><td>${Math.round(s.low01)}</td><td>${s.temp_gpu ? `<span class="${s.temp_gpu >= 85 ? 'perte' : ''}">${s.temp_gpu} °C</span>` : '–'}</td></tr>`
         )
         .join('')
-    : '<tr><td colspan="7" class="discret">Aucune partie mesurée pour l\'instant.</td></tr>';
+    : '<tr><td colspan="8" class="discret">Aucune partie mesurée pour l\'instant.</td></tr>';
 
   // Comparaison avec / sans boost, par jeu (parties de plus de 2 minutes)
   const parJeu = {};
@@ -1947,6 +1998,379 @@ async function majConso() {
   } catch {}
 }
 
+/* ---------- Mode simple ---------- */
+
+function appliquerMode() {
+  const simple = !!reglages?.mode_simple;
+  document.body.classList.toggle('simple', simple);
+  $('#btn-mode').textContent = simple ? 'Afficher tous les outils' : 'Simplifier le menu';
+  $('#btn-mode-reglages').textContent = simple ? 'Passer en mode complet' : 'Passer en mode simple';
+  if (simple && document.querySelector('nav button.actif')?.hasAttribute('data-avance')) allerA('accueil');
+  if (simple && categorieChoisie === 'risque') choisirCategorie('');
+}
+
+async function changerMode() {
+  reglages.mode_simple = !reglages.mode_simple;
+  await sauverReglages();
+  appliquerMode();
+  toast(reglages.mode_simple ? 'Mode simple : seulement l\'essentiel dans le menu.' : 'Mode complet : tous les outils sont affichés.');
+}
+$('#btn-mode').addEventListener('click', changerMode);
+$('#btn-mode-reglages').addEventListener('click', changerMode);
+
+/* ---------- Alertes de l'accueil ---------- */
+
+function afficherAlertes() {
+  const alertes = [];
+  if (etat.oc_baisse_auto) {
+    alertes.push(`<div class="carte banniere"><p>${esc(etat.oc_baisse_auto)}</p><div class="boutons"><button class="petit" data-alerte-oc>Voir l'overclocking</button><button class="petit discret-btn" data-alerte-fermer>OK</button></div></div>`);
+    toast(etat.oc_baisse_auto, 10000);
+  }
+  $('#alertes').innerHTML = alertes.join('');
+}
+
+$('#alertes').addEventListener('click', (e) => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  if (b.hasAttribute('data-alerte-oc')) allerA('oc');
+  b.closest('.banniere').remove();
+});
+
+// OC baissé tout seul à la fin d'une partie, pendant que l'interface est ouverte
+listen('oc_baisse', async () => {
+  etat = await invoke('etat_app');
+  afficherAlertes();
+  if ($('#page-oc').classList.contains('actif')) chargerOc();
+});
+
+/* ---------- DNS ---------- */
+
+let dns = null;
+
+function afficherDns() {
+  if (!dns) return;
+  const mesures = dns.mesures.filter((m) => m.ms);
+  const max = Math.max(...mesures.map((m) => m.ms), 1);
+  const meilleur = mesures.reduce((a, m) => (!a || m.ms < a.ms ? m : a), null);
+  const actuels = dns.cartes.map((c) => `${c.serveurs.filter((a) => a.includes('.')).join(', ') || '?'} (${esc(c.nom)})`).join(' · ');
+  $('#dns-resultats').innerHTML = `
+    <p class="discret petit-texte">Actuellement : ${actuels || 'aucune carte réseau connectée'}</p>
+    <ul class="liste-dns">${dns.mesures
+      .map((m) => {
+        const utilise = dns.cartes.some((c) => c.serveurs.includes(m.adresse));
+        const droite = utilise
+          ? '<span class="badge accent">Utilisé</span>'
+          : m.id !== 'actuel' && m.ms
+            ? `<button class="petit ${m === meilleur ? 'principal' : ''}" data-dns="${m.id}">Utiliser</button>`
+            : '';
+        return `<li><strong>${esc(m.nom)}</strong><span class="discret">${esc(m.adresse)}</span>
+          <div class="barre-dns"><div style="width:${m.ms ? Math.max(4, (m.ms / max) * 100) : 0}%" class="${m === meilleur ? 'meilleur' : ''}"></div></div>
+          <span class="ms">${m.ms ? `${m.ms.toFixed(0)} ms` : 'pas de réponse'}</span>${droite}</li>`;
+      })
+      .join('')}</ul>
+    ${dns.modifie ? '<button class="petit" data-dns-restaurer>Remettre mon DNS d\'origine</button>' : ''}`;
+}
+
+async function testerDns(bouton) {
+  dns = await appel('dns_etat', {}, bouton);
+  afficherDns();
+}
+$('#btn-dns').addEventListener('click', (e) => testerDns(e.target).catch(() => {}));
+
+$('#dns-resultats').addEventListener('click', async (e) => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  try {
+    if (b.dataset.dns) {
+      const m = dns.mesures.find((x) => x.id === b.dataset.dns);
+      const ok = await confirmer(`DNS ${m.nom}`, `<p>Ta connexion va utiliser le DNS ${esc(m.nom)} (${esc(m.adresse)}). Internet peut se couper une seconde. Tu pourras revenir à ton DNS d'origine ici.</p>`, 'Utiliser');
+      if (!ok) return;
+      await appel('dns_appliquer', { id: m.id }, b);
+      toast(`DNS ${m.nom} activé.`);
+    } else if (b.hasAttribute('data-dns-restaurer')) {
+      await appel('dns_restaurer', {}, b);
+      toast("DNS d'origine remis.");
+    }
+    await testerDns();
+  } catch {}
+});
+
+/* ---------- Partager mes réglages ---------- */
+
+const PREFIXE_CODE = 'FPSC1-';
+
+async function codeReglages() {
+  if (!tweaks.length) tweaks = await appel('tweaks_liste');
+  const donnees = {
+    tweaks: tweaks.filter((t) => t.actif && t.niveau !== 'risque').map((t) => t.id),
+    reglages: { boost_auto: reglages.boost_auto, boost_max: reglages.boost_max, mesure_fps: reglages.mesure_fps, fermer_applis: reglages.fermer_applis },
+    profils: profils.map(({ nom, exes, boost, priorite_haute, gpu_perf, resolution }) => ({ nom, exes, boost, priorite_haute, gpu_perf, resolution })),
+  };
+  return PREFIXE_CODE + btoa(unescape(encodeURIComponent(JSON.stringify(donnees))));
+}
+
+function lireCode(texte) {
+  const code = texte.trim().replace(/\s+/g, '');
+  if (!code.startsWith(PREFIXE_CODE)) throw new Error('Ce code ne vient pas de FPS Cagoule.');
+  const d = JSON.parse(decodeURIComponent(escape(atob(code.slice(PREFIXE_CODE.length)))));
+  if (!Array.isArray(d.tweaks) || !Array.isArray(d.profils) || typeof d.reglages !== 'object') throw new Error('Code incomplet.');
+  return d;
+}
+
+$('#btn-exporter').addEventListener('click', async (e) => {
+  const code = await codeReglages();
+  let copie = false;
+  try {
+    await navigator.clipboard.writeText(code);
+    copie = true;
+  } catch {}
+  await confirmer(
+    'Mon code de réglages',
+    `<p>${copie ? 'Code copié : colle-le à ton pote (Discord, message…).' : 'Copie ce code et envoie-le à ton pote.'} Il l'ouvre dans Réglages → « Coller un code ».</p><textarea class="code" readonly rows="5">${esc(code)}</textarea>`,
+    'Fermer',
+    { non: 'Retour' }
+  );
+});
+
+$('#btn-importer').addEventListener('click', async () => {
+  const ok = await confirmer('Coller un code', '<p>Colle ici le code reçu :</p><textarea class="code" id="code-import" rows="5" placeholder="FPSC1-…"></textarea>', 'Continuer');
+  if (!ok) return;
+  let d;
+  try {
+    d = lireCode($('#code-import').value);
+  } catch (err) {
+    return toast(`Code illisible : ${err.message}`, 7000);
+  }
+  if (!tweaks.length) tweaks = await appel('tweaks_liste');
+  const ids = d.tweaks.filter((id) => tweaks.some((t) => t.id === id && t.disponible && !t.actif && t.niveau !== 'risque'));
+  const nouveaux = d.profils.filter((p) => !profils.some((x) => x.nom === p.nom));
+  const confirme = await confirmer(
+    'Appliquer ces réglages',
+    `<ul><li>${ids.length} optimisation${ids.length > 1 ? 's' : ''} à activer sur ton PC</li><li>Réglages de ${d.profils.length} jeu${d.profils.length > 1 ? 'x' : ''}${nouveaux.length ? ` (dont ${nouveaux.length} nouveau${nouveaux.length > 1 ? 'x' : ''})` : ''}</li><li>Boost pendant les parties : ${d.reglages.boost_auto ? (d.reglages.boost_max ? 'maximum' : 'activé') : 'désactivé'}</li></ul><p>Tout reste annulable.</p>`,
+    'Appliquer'
+  );
+  if (!confirme) return;
+  for (const p of d.profils) {
+    if (typeof p.nom !== 'string' || !Array.isArray(p.exes)) continue;
+    const exes = p.exes.filter((x) => typeof x === 'string' && /^[^\\/:*?"<>|]+\.exe$/i.test(x));
+    if (!exes.length) continue;
+    const reglage = { exes, boost: !!p.boost, priorite_haute: !!p.priorite_haute, gpu_perf: !!p.gpu_perf, resolution: p.resolution || null };
+    const existant = profils.find((x) => x.nom === p.nom);
+    if (existant) Object.assign(existant, reglage);
+    else profils.push({ nom: p.nom, actif: true, oc: true, ...reglage });
+  }
+  await sauverProfils();
+  reglages.boost_auto = !!d.reglages.boost_auto;
+  reglages.boost_max = !!d.reglages.boost_max;
+  reglages.mesure_fps = d.reglages.mesure_fps !== false;
+  for (const a of d.reglages.fermer_applis || []) {
+    if (typeof a === 'string' && !reglages.fermer_applis.some((x) => x.toLowerCase() === a.toLowerCase())) reglages.fermer_applis.push(a);
+  }
+  await sauverReglages();
+  afficherReglages();
+  if (ids.length) await appliquerTweaks(ids);
+  else toast('Réglages importés.');
+});
+
+/* ---------- Tout remettre comme avant ---------- */
+
+$('#btn-tout-remettre').addEventListener('click', async (e) => {
+  const ok = await confirmer(
+    'Tout remettre comme avant',
+    "<p>Toutes les optimisations, l'overclocking, le DNS et les réglages des jeux vont reprendre leur valeur d'origine. Le boost pendant les parties reste actif (tu peux le couper dans « Boost par jeu »).</p>",
+    'Tout remettre'
+  );
+  if (!ok) return;
+  const b = e.target;
+  b.classList.add('chargement');
+  const erreurs = [];
+  try {
+    tweaks = await invoke('tweaks_liste');
+    const a = tweaks.filter((t) => t.annulable).map((t) => t.id);
+    if (a.length) (await invoke('tweaks_annuler', { ids: a })).filter((r) => !r.ok).forEach((r) => erreurs.push(r.erreur));
+    const oc = await invoke('oc_etat').catch(() => null);
+    if (oc?.enregistre || oc?.coeur?.actuel || oc?.memoire?.actuel) await invoke('oc_defaut').catch((err) => erreurs.push(String(err)));
+    await invoke('dns_restaurer').catch((err) => erreurs.push(String(err)));
+    for (const j of await invoke('jeux_configs').catch(() => [])) {
+      if (j.sauvegarde && !j.en_cours) await invoke('jeux_config_restaurer', { id: j.id }).catch((err) => erreurs.push(`${j.nom} : ${err}`));
+    }
+  } finally {
+    b.classList.remove('chargement');
+  }
+  toast(erreurs.length ? `Presque tout est remis, sauf : ${erreurs.join(' ; ')}` : 'Ton PC est revenu comme avant FPS Cagoule. Redémarre-le pour terminer.', 9000);
+  chargerTweaks();
+});
+
+/* ---------- Assistant de premier lancement ---------- */
+
+const assistant = { ancien: false, etape: 0, niveau: 'sur', jeux: true, nettoyer: true, demarrage: true, simple: true, jeuxTrouves: null, fini: false };
+
+const ETAPES_ASSISTANT = [
+  {
+    html: () => `<h2 id="assistant-titre">Bienvenue dans FPS Cagoule</h2>
+      <p>En 4 questions, FPS Cagoule règle ton PC pour jouer : optimisations de Windows, boost automatique de tes jeux, nettoyage.</p>
+      <p class="discret">Tout est réversible : FPS Cagoule garde les réglages d'origine, crée un point de restauration Windows avant de toucher quoi que ce soit, et « Tout remettre comme avant » (dans Réglages) annule tout.</p>`,
+  },
+  {
+    html: () => `<h2 id="assistant-titre">Jusqu'où on va ?</h2>
+      <div class="choix-cartes">
+        ${choix('niveau', 'sur', 'Optimisé (conseillé)', 'Les réglages qui font gagner des FPS sans aucun inconvénient. Parfait pour la plupart des PC.')}
+        ${choix('niveau', 'max', 'Maximum', 'En plus : réglages agressifs et mode Boost max pendant les parties. Le PC chauffe et consomme un peu plus.')}
+      </div>
+      ${etat.alimentation?.portable ? '<p class="discret petit-texte">PC portable détecté : branche le chargeur pour jouer, sur batterie Windows bride les performances.</p>' : ''}`,
+  },
+  {
+    html: () => {
+      const jeux = (assistant.jeuxTrouves || []).filter((j) => j.fichiers && j.reglages.length && !j.optimise);
+      return `<h2 id="assistant-titre">Tes jeux et ton PC</h2>
+        <p class="discret">FPS Cagoule repère tout seul tes jeux quand tu les lances et les boost (priorité, carte graphique, alimentation). Tout revient à la normale après la partie.</p>
+        <div class="interrupteurs">
+          ${jeux.length ? bascule('jeux', `Optimiser les réglages dans ${jeux.map((j) => esc(j.nom)).join(', ')}`, 'V-Sync, flou et effets lourds coupés, distance d\'affichage gardée. Ferme ces jeux avant.') : ''}
+          ${bascule('nettoyer', 'Nettoyer les fichiers inutiles', 'Fichiers temporaires, caches et rapports d\'erreurs.')}
+          ${bascule('demarrage', 'Lancer FPS Cagoule avec Windows', 'Indispensable pour le boost automatique. Il reste discret : quelques Mo de mémoire.')}
+        </div>`;
+    },
+  },
+  {
+    html: () => `<h2 id="assistant-titre">Quelle interface ?</h2>
+      <div class="choix-cartes">
+        ${choix('simple', true, 'Simple (conseillé)', 'Juste l\'essentiel : accueil, optimisations, nettoyage, boost par jeu et statistiques.')}
+        ${choix('simple', false, 'Complète', 'Tous les outils : tests, benchmark, pilotes, écrans et overclocking.')}
+      </div>
+      <p class="discret petit-texte">Tu pourras changer à tout moment en bas du menu.</p>`,
+  },
+  { html: () => `<h2 id="assistant-titre">On y va</h2><ul id="assistant-progression" class="etapes assistant-progression"></ul><p id="assistant-fin" class="discret"></p>` },
+];
+
+const choix = (champ, valeur, titre, texte) =>
+  `<button class="choix-carte ${assistant[champ] === valeur ? 'actif' : ''}" data-champ="${champ}" data-valeur="${valeur}"><strong>${titre}</strong><span>${texte}</span></button>`;
+const bascule = (champ, titre, texte) =>
+  `<label class="bascule"><input type="checkbox" data-champ="${champ}" ${assistant[champ] ? 'checked' : ''}><span></span><div>${titre}<div class="discret petit-texte">${texte}</div></div></label>`;
+
+function afficherAssistant() {
+  const n = ETAPES_ASSISTANT.length;
+  $('#assistant-etape').innerHTML = ETAPES_ASSISTANT[assistant.etape].html();
+  $('.assistant-points').innerHTML = ETAPES_ASSISTANT.map((_, i) => `<span class="${i <= assistant.etape ? 'actif' : ''}"></span>`).join('');
+  const derniere = assistant.etape === n - 1;
+  $('#assistant-passer').hidden = derniere;
+  $('#assistant-retour').hidden = assistant.etape === 0 || derniere;
+  $('#assistant-suivant').textContent = assistant.etape === n - 2 ? 'Optimiser mon PC' : derniere ? 'Terminer' : assistant.etape === 0 ? 'Commencer' : 'Suivant';
+  $('#assistant-suivant').disabled = derniere && !assistant.fini;
+}
+
+function ouvrirAssistant() {
+  Object.assign(assistant, { etape: 0, fini: false, simple: reglages.assistant_fait || assistant.ancien ? !!reglages.mode_simple : true });
+  invoke('jeux_configs')
+    .then((j) => {
+      assistant.jeuxTrouves = j;
+      assistant.jeux = j.some((x) => x.fichiers && x.reglages.length && !x.optimise);
+      if (assistant.etape === 2) afficherAssistant();
+    })
+    .catch(() => {});
+  $('#assistant').hidden = false;
+  afficherAssistant();
+}
+$('#btn-assistant').addEventListener('click', ouvrirAssistant);
+
+$('#assistant-etape').addEventListener('click', (e) => {
+  const b = e.target.closest('.choix-carte');
+  if (!b) return;
+  const v = b.dataset.valeur;
+  assistant[b.dataset.champ] = v === 'true' ? true : v === 'false' ? false : v;
+  afficherAssistant();
+});
+$('#assistant-etape').addEventListener('change', (e) => {
+  if (e.target.dataset.champ) assistant[e.target.dataset.champ] = e.target.checked;
+});
+
+async function terminerAssistant() {
+  reglages.assistant_fait = true;
+  await sauverReglages().catch(() => {});
+  $('#assistant').hidden = true;
+}
+$('#assistant-passer').addEventListener('click', terminerAssistant);
+$('#assistant-retour').addEventListener('click', () => {
+  assistant.etape--;
+  afficherAssistant();
+});
+$('#assistant-suivant').addEventListener('click', () => {
+  if (assistant.etape === ETAPES_ASSISTANT.length - 1) return terminerAssistant();
+  assistant.etape++;
+  afficherAssistant();
+  if (assistant.etape === ETAPES_ASSISTANT.length - 1) executerAssistant();
+});
+
+async function executerAssistant() {
+  const liste = $('#assistant-progression');
+  const etape = async (nom, f) => {
+    const li = document.createElement('li');
+    li.innerHTML = `<span class="icone"></span>${esc(nom)}`;
+    liste.append(li);
+    try {
+      const detail = await f();
+      li.classList.add('fait');
+      if (detail) li.insertAdjacentHTML('beforeend', ` <span class="discret">— ${esc(detail)}</span>`);
+    } catch (err) {
+      li.classList.add('echec');
+      li.insertAdjacentHTML('beforeend', ` <span class="discret">— ${esc(String(err))}</span>`);
+    }
+  };
+  let redemarrage = false;
+  // Le score de départ est pris avant de changer quoi que ce soit
+  await etape('Analyse de ton PC', async () => {
+    if (!derniereAnalyse) await analyser();
+  });
+  await etape('Point de restauration et optimisations', async () => {
+    tweaks = await invoke('tweaks_liste');
+    const max = assistant.niveau === 'max';
+    const a = tweaks.filter((t) => t.disponible && !t.actif && (max ? !['risque', 'choix'].includes(t.niveau) : t.niveau === 'recommande'));
+    if (!a.length) return 'déjà fait';
+    const [, resultats] = await invoke('tweaks_appliquer', { ids: a.map((t) => t.id), restauration: true });
+    const ok = resultats.filter((r) => r.ok).length;
+    redemarrage = a.some((t) => t.redemarrage && resultats.some((r) => r.ok && r.id === t.id));
+    return `${ok} réglage${ok > 1 ? 's' : ''} appliqué${ok > 1 ? 's' : ''}`;
+  });
+  await etape('Boost automatique de tes jeux', async () => {
+    reglages.boost_auto = true;
+    reglages.boost_max = assistant.niveau === 'max';
+    reglages.mode_simple = assistant.simple;
+    await sauverReglages();
+    afficherReglages();
+    appliquerMode();
+    return reglages.boost_max ? 'mode Boost max' : '';
+  });
+  const jeux = (assistant.jeuxTrouves || []).filter((j) => j.fichiers && j.reglages.length && !j.optimise && !j.en_cours);
+  if (assistant.jeux && jeux.length) {
+    await etape('Réglages dans tes jeux', async () => {
+      let n = 0;
+      for (const j of jeux) n += await invoke('jeux_config_appliquer', { id: j.id }).catch(() => 0);
+      return `${n} réglage${n > 1 ? 's' : ''} changé${n > 1 ? 's' : ''}`;
+    });
+  }
+  if (assistant.nettoyer) {
+    await etape('Nettoyage', async () => {
+      nettoyageAnalyse = await invoke('nettoyage_analyser');
+      return `${formatOctets(await nettoyerRapide())} libérés`;
+    });
+  }
+  if (assistant.demarrage) {
+    await etape('Lancement avec Windows', async () => {
+      await invoke('demarrage_auto_set', { actif: true });
+      $('#demarrage-auto').checked = true;
+    });
+  }
+  assistant.fini = true;
+  reglages.assistant_fait = true;
+  await sauverReglages().catch(() => {});
+  $('#assistant-fin').innerHTML = redemarrage
+    ? 'C\'est fait ! <strong>Redémarre ton PC</strong> pour que tout prenne effet. Ensuite, lance simplement tes jeux : FPS Cagoule s\'occupe du reste.'
+    : 'C\'est fait ! Lance simplement tes jeux : FPS Cagoule les repère et les boost tout seul.';
+  if (redemarrage) $('#assistant-fin').insertAdjacentHTML('beforeend', '<div class="boutons"><button class="principal petit" id="assistant-redemarrer">Redémarrer maintenant</button></div>');
+  $('#assistant-redemarrer')?.addEventListener('click', () => $('#btn-redemarrer').click());
+  afficherAssistant();
+  analyser();
+}
+
 /* ---------- Démarrage ---------- */
 
 async function init() {
@@ -1959,9 +2383,13 @@ async function init() {
     [profils, reglages] = await Promise.all([appel('profils_get'), appel('reglages_get')]);
     afficherProfils();
     afficherReglages();
+    appliquerMode();
+    afficherAlertes();
     invoke('demarrage_auto_get').then((v) => ($('#demarrage-auto').checked = v));
     try {
       derniereAnalyse = JSON.parse(localStorage.getItem('analyse'));
+      // Déjà utilisé avant l'assistant : l'interface complète est proposée par défaut
+      assistant.ancien = !!derniereAnalyse;
       extraAnalyse = JSON.parse(localStorage.getItem('extra')) || {};
     } catch {}
   } finally {
@@ -1987,6 +2415,7 @@ async function init() {
   }
   majConso();
   setInterval(majConso, 3000);
+  if (!reglages?.assistant_fait) setTimeout(ouvrirAssistant, 1300);
 }
 
 init();
