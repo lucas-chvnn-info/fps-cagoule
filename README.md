@@ -12,6 +12,8 @@ Analyse, optimisation et boost par jeu pour Windows 11. Gratuit, pour moi et mes
 - **Pilotes** : tous les périphériques du PC avec leur pilote et leur état, mises à jour Windows Update associées à chaque appareil, recherche web par identifiant matériel, dernier pilote NVIDIA téléchargé directement (sans NVIDIA App).
 - **Réglages dans les jeux** : Fortnite, Valorant, Rainbow Six Siege, CS2, Apex Legends, Rocket League, Marvel Rivals et The Finals. Seules les clés déjà présentes dans leurs fichiers sont changées (V-Sync, flou, ombres lourdes, effets), distance d'affichage et textures gardées, copie d'origine et bouton « Restaurer ».
 - **Benchmark** : processeur (1 cœur, tous les cœurs), mémoire (débit, latence), disque (lecture, écriture, 4 Ko au hasard) et carte graphique (scène 3D en 1080p, WebGL), historique et comparaison avant/après optimisations.
+- **Jeux détectés tout seuls** : Steam, Epic, GOG, Ubisoft Connect, Battle.net, EA, Rockstar et Riot.
+- **Selon ta carte graphique** : NVIDIA (réglages du pilote, overclocking), AMD Radeon (Anti-Lag, Chill, Boost, Enhanced Sync, préréglages Économie à Rage, via ADLX) ou Intel (renvoi vers son logiciel).
 - **Overclocking NVIDIA** : décalage de fréquence du GPU et de la mémoire, limite de puissance ; mode automatique qui monte par paliers en vérifiant pixel par pixel que la carte calcule juste, garde une marge, et coupe l'OC après un arrêt brutal pendant une partie. Pas d'OC processeur (BIOS).
 - **Compteur FPS** : FPS moyen, 1 % low et 0,1 % low de chaque partie (avec [PresentMon](https://github.com/GameTechDev/PresentMon), Intel, licence MIT), comparaison avec et sans boost.
 
@@ -22,6 +24,10 @@ L'app est écrite avec [Tauri](https://tauri.app) (Rust) : en arrière-plan, il 
 ## Installer
 
 Télécharge `FPS Cagoule_x.y.z_x64-setup.exe` dans la [dernière version](https://github.com/lucas-chvnn-info/fps-cagoule/releases/latest). Windows SmartScreen prévient que l'éditeur est inconnu (l'app n'est pas signée) : « Informations complémentaires » → « Exécuter quand même ». Les mises à jour s'installent ensuite toutes seules.
+
+## Signature du code
+
+Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org) (demande en cours). Voir la [politique de signature et de confidentialité](CODE_SIGNING_POLICY.md) : l'app n'envoie aucune donnée personnelle.
 
 ## Développement
 
