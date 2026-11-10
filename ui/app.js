@@ -1756,6 +1756,27 @@ $('#btn-oc-defaut').addEventListener('click', (e) =>
   })
 );
 
+/** Après un plantage en jeu : -25 MHz GPU et -100 MHz mémoire sur le réglage gardé */
+$('#btn-oc-baisser').addEventListener('click', (e) =>
+  avecOccupation(e.target, async () => {
+    const r = oc?.enregistre;
+    const coeur = r ? r.coeur_mhz : Number($('#oc-coeur').value);
+    const memoire = r ? r.memoire_mhz : Number($('#oc-memoire').value);
+    if (coeur <= 0 && memoire <= 0) {
+      toast("Aucun overclocking à baisser : la carte est déjà aux fréquences d'origine.");
+      return;
+    }
+    const reglage = {
+      coeur_mhz: coeur > 0 ? Math.max(0, coeur - 25) : coeur,
+      memoire_mhz: memoire > 0 ? Math.max(0, memoire - 100) : memoire,
+      puissance_pct: r ? r.puissance_pct : valeursOc().puissance,
+      au_demarrage: $('#oc-demarrage').checked,
+    };
+    await appel('oc_enregistrer', { reglage });
+    toast(`Baissé : GPU ${signe(reglage.coeur_mhz)} MHz, mémoire ${signe(reglage.memoire_mhz)} MHz. Relance ton jeu ; si ça plante encore, rebaisse.`, 9000);
+  })
+);
+
 $('#oc-demarrage').addEventListener('change', async (e) => {
   if (!oc?.enregistre) return;
   await appel('oc_enregistrer', { reglage: { ...oc.enregistre, au_demarrage: e.target.checked } }).catch(() => {});
@@ -1798,7 +1819,11 @@ $('#btn-oc-auto').addEventListener('click', async (e) => {
         journal(`GPU +${c} MHz : stable (${Math.round(r.images_s)} images/s)`, 'ok');
         coeur = c;
       }
-      coeur = Math.max(0, coeur - 25);
+      // Les jeux poussent la carte autrement que ce test (pics de boost, tension) : grosse marge
+      if (coeur > 0) {
+        coeur = Math.max(0, Math.min(coeur - 50, Math.floor((coeur * 0.75) / 5) * 5));
+        journal(`Marge de sécurité pour les jeux : GPU +${coeur} MHz`);
+      }
     }
 
     // 2. Mémoire : les erreurs y sont corrigées en ralentissant, on s'arrête quand les performances baissent
@@ -1815,7 +1840,10 @@ $('#btn-oc-auto').addEventListener('click', async (e) => {
         meilleur = Math.max(meilleur, r.images_s);
         memoire = m;
       }
-      memoire = Math.max(0, memoire - 100);
+      if (memoire > 0) {
+        memoire = Math.max(0, Math.min(memoire - 300, Math.floor((memoire * 0.75) / 25) * 25));
+        journal(`Marge de sécurité pour les jeux : mémoire +${memoire} MHz`);
+      }
     }
 
     // 3. Vérification finale plus longue, avec la marge de sécurité
@@ -1834,7 +1862,8 @@ $('#btn-oc-auto').addEventListener('click', async (e) => {
     const gain = ((final.images_s / base.images_s - 1) * 100).toFixed(1).replace('.', ',');
     journal(`Résultat : GPU +${coeur} MHz, mémoire +${memoire} MHz, ${gain} % d'images en plus sur ce test`, 'ok');
     await appel('oc_enregistrer', { reglage: { coeur_mhz: coeur, memoire_mhz: memoire, puissance_pct: puissance, au_demarrage: $('#oc-demarrage').checked } });
-    toast(`Overclocking trouvé et appliqué : GPU +${coeur} MHz, mémoire +${memoire} MHz.`, 8000);
+    journal('Si un jeu plante ou affiche des artefacts, clique sur « Baisser d\'un cran ».');
+    toast(`Overclocking trouvé et appliqué : GPU +${coeur} MHz, mémoire +${memoire} MHz. Si un jeu plante, clique sur « Baisser d'un cran ».`, 10000);
   });
 });
 
