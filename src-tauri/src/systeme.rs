@@ -71,6 +71,19 @@ pub fn priorite_haute(pid: u32) -> bool {
     Poignee::ouvrir(PROCESS_SET_INFORMATION, pid).map_or(false, |h| unsafe { SetPriorityClass(h.0, HIGH_PRIORITY_CLASS) != 0 })
 }
 
+/// Passe un programme en priorité « inférieure à la normale ». Renvoie sa priorité d'avant
+/// (seulement s'il était en priorité normale : on ne touche pas à ce que l'utilisateur a réglé lui-même).
+pub fn priorite_basse(pid: u32) -> Option<u32> {
+    use windows_sys::Win32::System::Threading::{GetPriorityClass, BELOW_NORMAL_PRIORITY_CLASS, NORMAL_PRIORITY_CLASS};
+    let h = Poignee::ouvrir(PROCESS_SET_INFORMATION | PROCESS_QUERY_LIMITED_INFORMATION, pid)?;
+    let avant = unsafe { GetPriorityClass(h.0) };
+    (avant == NORMAL_PRIORITY_CLASS && unsafe { SetPriorityClass(h.0, BELOW_NORMAL_PRIORITY_CLASS) } != 0).then_some(avant)
+}
+
+pub fn remettre_priorite(pid: u32, classe: u32) -> bool {
+    Poignee::ouvrir(PROCESS_SET_INFORMATION, pid).map_or(false, |h| unsafe { SetPriorityClass(h.0, classe) != 0 })
+}
+
 pub fn terminer(pid: u32) -> bool {
     Poignee::ouvrir(PROCESS_TERMINATE, pid).map_or(false, |h| unsafe { TerminateProcess(h.0, 0) != 0 })
 }

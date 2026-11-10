@@ -2,6 +2,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod benchmark;
+mod bios;
 mod config;
 mod demarrage;
 mod dns;
@@ -72,6 +73,17 @@ fn etat_app(app: AppHandle) -> EtatApp {
         alimentation: systeme::alimentation(),
         oc_baisse_auto,
     }
+}
+
+#[tauri::command(async)]
+fn bios_infos() -> Res<serde_json::Value> {
+    bios::infos()
+}
+
+#[tauri::command]
+fn redemarrer_bios(app: AppHandle) -> Res<()> {
+    jeux::terminer(&app, &etat(&app));
+    bios::redemarrer_dans_le_bios()
 }
 
 #[tauri::command(async)]
@@ -554,6 +566,8 @@ fn main() {
             oc_enregistrer,
             oc_defaut,
             temperature_gpu,
+            bios_infos,
+            redemarrer_bios,
             dns_etat,
             dns_appliquer,
             dns_restaurer,
@@ -682,6 +696,12 @@ mod tests_windows {
         assert!(systeme::fermer_programme("svchost.exe").is_err());
         assert!(systeme::fermer_programme("Memory Compression").is_err());
         assert!(!systeme::info_processeur().nom.is_empty());
+        // Priorité basse d'un programme de fond, puis remise comme avant
+        let mut enfant = std::process::Command::new("ping").args(["-n", "6", "127.0.0.1"]).stdout(std::process::Stdio::null()).spawn().unwrap();
+        let avant = systeme::priorite_basse(enfant.id()).expect("priorité basse");
+        assert!(systeme::priorite_basse(enfant.id()).is_none(), "déjà en priorité basse : pas touché deux fois");
+        assert!(systeme::remettre_priorite(enfant.id(), avant));
+        let _ = enfant.kill();
         let a = systeme::alimentation();
         assert!(!a.sur_batterie || a.portable);
         // Requêtes du journal d'événements valides (une requête mal formée renverrait faux aussi : on vérifie
@@ -772,6 +792,13 @@ mod tests_windows {
     }
 
     #[test]
+    fn bios() {
+        let b = bios::infos().expect("infos du BIOS");
+        assert!(b["biosVersion"].is_string() && b["ram"].is_array(), "{b}");
+        std::fs::write(concat!(env!("CARGO_MANIFEST_DIR"), "/target/bios.json"), b.to_string()).unwrap();
+    }
+
+    #[test]
     fn disques() {
         let r = nettoyage::optimiser_disques().expect("optimisation des disques");
         assert!(r.as_array().is_some_and(|l| !l.is_empty()), "{r}");
@@ -791,7 +818,11 @@ mod tests_windows {
         let dossier = std::env::temp_dir().join("fps-cagoule-test");
         let stock = Stockage::ouvrir(dossier);
         let liste = tweaks::liste(&stock);
-        assert_eq!(liste.len(), 56);
+        assert_eq!(liste.len(), 67);
+        // Services : présents sur le PC de GitHub ou proprement indisponibles
+        let services: Vec<_> = liste.iter().filter(|t| t.tweak.special.as_deref() == Some("service")).collect();
+        assert_eq!(services.len(), 11);
+        assert!(services.iter().any(|t| t.disponible), "aucun service trouvé");
         assert!(liste.iter().any(|t| t.tweak.categorie == "reseau"));
     }
 }

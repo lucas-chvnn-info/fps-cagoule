@@ -46,7 +46,7 @@ export function evaluer(info, { planPerso = null, maintenant = new Date(), extra
     const lente = (ddr4 && reelle > 0 && reelle <= 2666) || (ddr5 && reelle > 0 && reelle <= 4800);
     if ((nominale && reelle && reelle < nominale * 0.9) || lente) {
       ajoute('ram-xmp', 'moyenne', `RAM à ${reelle} MHz : XMP/EXPO probablement désactivé`,
-        "Ta mémoire tourne sans doute en dessous de sa vitesse prévue. Active le profil XMP (Intel) ou EXPO (AMD) dans le BIOS. Ça ne se règle pas depuis Windows.");
+        "Ta mémoire tourne sans doute en dessous de sa vitesse prévue. Active le profil XMP (Intel) ou EXPO (AMD) dans le BIOS. Ça ne se règle pas depuis Windows.", 'bios');
     }
   }
 

@@ -1107,5 +1107,214 @@
     "gain": "faible",
     "redemarrage": false,
     "special": "veille-prolongee"
+  },
+  {
+    "id": "service-fax",
+    "categorie": "services",
+    "titre": "Service de fax",
+    "description": "Envoi et réception de fax depuis le PC : plus personne ne s'en sert. Prend effet au redémarrage.",
+    "gain": "faible",
+    "redemarrage": true,
+    "niveau": "recommande",
+    "special": "service",
+    "valeurs": [
+      {
+        "ruche": "HKLM",
+        "chemin": "SYSTEM\\CurrentControlSet\\Services\\Fax",
+        "nom": "Start",
+        "type": "dword",
+        "valeur": 4
+      }
+    ]
+  },
+  {
+    "id": "service-demo",
+    "categorie": "services",
+    "titre": "Mode démo des magasins",
+    "description": "Sert uniquement aux PC exposés en magasin. Prend effet au redémarrage.",
+    "gain": "faible",
+    "redemarrage": true,
+    "niveau": "recommande",
+    "special": "service",
+    "valeurs": [
+      {
+        "ruche": "HKLM",
+        "chemin": "SYSTEM\\CurrentControlSet\\Services\\RetailDemo",
+        "nom": "Start",
+        "type": "dword",
+        "valeur": 4
+      }
+    ]
+  },
+  {
+    "id": "service-registre-distance",
+    "categorie": "services",
+    "titre": "Registre à distance",
+    "description": "Permet à un autre PC du réseau de modifier ton registre. Inutile chez soi, et plus sûr coupé. Prend effet au redémarrage.",
+    "gain": "faible",
+    "redemarrage": true,
+    "niveau": "recommande",
+    "special": "service",
+    "valeurs": [
+      {
+        "ruche": "HKLM",
+        "chemin": "SYSTEM\\CurrentControlSet\\Services\\RemoteRegistry",
+        "nom": "Start",
+        "type": "dword",
+        "valeur": 4
+      }
+    ]
+  },
+  {
+    "id": "service-cartes",
+    "categorie": "services",
+    "titre": "Cartes hors connexion",
+    "description": "Télécharge et met à jour les cartes de l'appli Cartes de Windows en arrière-plan. Prend effet au redémarrage.",
+    "gain": "faible",
+    "redemarrage": true,
+    "niveau": "recommande",
+    "special": "service",
+    "valeurs": [
+      {
+        "ruche": "HKLM",
+        "chemin": "SYSTEM\\CurrentControlSet\\Services\\MapsBroker",
+        "nom": "Start",
+        "type": "dword",
+        "valeur": 4
+      }
+    ]
+  },
+  {
+    "id": "service-insider",
+    "categorie": "services",
+    "titre": "Programme Windows Insider",
+    "description": "Sert seulement aux versions de test de Windows. Prend effet au redémarrage.",
+    "gain": "faible",
+    "redemarrage": true,
+    "niveau": "recommande",
+    "special": "service",
+    "valeurs": [
+      {
+        "ruche": "HKLM",
+        "chemin": "SYSTEM\\CurrentControlSet\\Services\\wisvc",
+        "nom": "Start",
+        "type": "dword",
+        "valeur": 4
+      }
+    ]
+  },
+  {
+    "id": "service-wap",
+    "categorie": "services",
+    "titre": "Messages WAP (télémétrie)",
+    "description": "Transmet des messages de gestion et de télémétrie de Windows. Prend effet au redémarrage.",
+    "gain": "faible",
+    "redemarrage": true,
+    "niveau": "recommande",
+    "special": "service",
+    "valeurs": [
+      {
+        "ruche": "HKLM",
+        "chemin": "SYSTEM\\CurrentControlSet\\Services\\dmwappushservice",
+        "nom": "Start",
+        "type": "dword",
+        "valeur": 4
+      }
+    ]
+  },
+  {
+    "id": "service-liens",
+    "categorie": "services",
+    "titre": "Suivi des liens distribués",
+    "description": "Suit les raccourcis vers des fichiers déplacés sur d'autres disques du réseau. Inutile sur un PC de jeu. Prend effet au redémarrage.",
+    "gain": "faible",
+    "redemarrage": true,
+    "niveau": "max",
+    "special": "service",
+    "valeurs": [
+      {
+        "ruche": "HKLM",
+        "chemin": "SYSTEM\\CurrentControlSet\\Services\\TrkWks",
+        "nom": "Start",
+        "type": "dword",
+        "valeur": 4
+      }
+    ]
+  },
+  {
+    "id": "service-compatibilite",
+    "categorie": "services",
+    "titre": "Assistant de compatibilité des programmes",
+    "description": "Surveille les programmes que tu lances pour proposer des réglages de compatibilité. Il analyse chaque lancement de jeu. Prend effet au redémarrage.",
+    "gain": "faible",
+    "redemarrage": true,
+    "niveau": "max",
+    "special": "service",
+    "valeurs": [
+      {
+        "ruche": "HKLM",
+        "chemin": "SYSTEM\\CurrentControlSet\\Services\\PcaSvc",
+        "nom": "Start",
+        "type": "dword",
+        "valeur": 4
+      }
+    ]
+  },
+  {
+    "id": "service-parental",
+    "categorie": "services",
+    "titre": "Contrôle parental",
+    "description": "Surveille l'activité pour le contrôle parental Microsoft Family. Ne le coupe pas si ton compte est géré par un parent. Prend effet au redémarrage.",
+    "gain": "faible",
+    "redemarrage": true,
+    "niveau": "max",
+    "special": "service",
+    "valeurs": [
+      {
+        "ruche": "HKLM",
+        "chemin": "SYSTEM\\CurrentControlSet\\Services\\WpcMonSvc",
+        "nom": "Start",
+        "type": "dword",
+        "valeur": 4
+      }
+    ]
+  },
+  {
+    "id": "service-localisation",
+    "categorie": "services",
+    "titre": "Localisation",
+    "description": "Donne ta position aux applis. Coupé, la météo et « Localiser mon appareil » ne savent plus où tu es. Prend effet au redémarrage.",
+    "gain": "faible",
+    "redemarrage": true,
+    "niveau": "max",
+    "special": "service",
+    "valeurs": [
+      {
+        "ruche": "HKLM",
+        "chemin": "SYSTEM\\CurrentControlSet\\Services\\lfsvc",
+        "nom": "Start",
+        "type": "dword",
+        "valeur": 4
+      }
+    ]
+  },
+  {
+    "id": "service-impression",
+    "categorie": "services",
+    "titre": "Impression",
+    "description": "Seulement si tu n'as pas d'imprimante : sans ce service, plus rien ne peut s'imprimer (même en PDF). Prend effet au redémarrage.",
+    "gain": "faible",
+    "redemarrage": true,
+    "niveau": "choix",
+    "special": "service",
+    "valeurs": [
+      {
+        "ruche": "HKLM",
+        "chemin": "SYSTEM\\CurrentControlSet\\Services\\Spooler",
+        "nom": "Start",
+        "type": "dword",
+        "valeur": 4
+      }
+    ]
   }
 ]

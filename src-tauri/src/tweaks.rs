@@ -34,7 +34,7 @@ pub struct Tweak {
     pub description: String,
     pub gain: String,
     pub redemarrage: bool,
-    /// Réglages qui ne sont pas de simples valeurs de registre : plan, adaptateur, nagle, powercfg, bcd, defender, nvidia, veille-prolongee
+    /// Réglages qui ne sont pas de simples valeurs de registre : plan, adaptateur, nagle, powercfg, bcd, defender, nvidia, veille-prolongee, service
     #[serde(default)]
     pub special: Option<String>,
     #[serde(default)]
@@ -407,6 +407,12 @@ pub fn liste(stock: &Stockage) -> Vec<TweakEtat> {
                     }
                 }
                 Some("veille-prolongee") => (!veille_prolongee_active(), true),
+                // Service Windows : proposé seulement s'il existe sur ce PC (le fax n'existe pas partout)
+                Some("service") => {
+                    let valeurs = valeurs_de(t);
+                    let existe = service_existe(t);
+                    (existe && valeurs.iter().all(|v| identique(&lire(v), &v.valeur)), existe)
+                }
                 Some("defender") => match lire_defender() {
                     Ok(d) => (!d.dossiers.is_empty() && d.dossiers.len() == d.exclus.len(), !d.dossiers.is_empty()),
                     Err(_) => (false, false),
@@ -430,7 +436,15 @@ pub fn liste(stock: &Stockage) -> Vec<TweakEtat> {
         .collect()
 }
 
+fn service_existe(t: &Tweak) -> bool {
+    !t.valeurs.is_empty() && t.valeurs.iter().all(|v| ruche(v).open_subkey_with_flags(&v.chemin, KEY_READ).is_ok())
+}
+
 fn appliquer_un(stock: &Stockage, t: &Tweak) -> Result<(), String> {
+    // Ne jamais créer la clé d'un service absent : on change seulement son démarrage
+    if t.special.as_deref() == Some("service") && !service_existe(t) {
+        return Err("Ce service n'existe pas sur ton PC".into());
+    }
     let mut d = stock.donnees.lock().unwrap();
     // On ne sauvegarde qu'à la première application : c'est la vraie valeur d'origine
     let deja = d.sauvegardes.contains_key(&t.id);

@@ -47,6 +47,7 @@ document.querySelectorAll('nav button').forEach((b) =>
     if (b.dataset.page === 'analyse') {
       chargerCartes();
       chargerMemoire();
+      chargerBios();
     }
     if (b.dataset.page === 'benchmark') chargerBenchmarks();
     if (b.dataset.page === 'oc') {
@@ -130,6 +131,7 @@ const BOUTONS_CORRECTIF = {
   applis: ['Voir', 'applis'],
   jeux: ['Voir', 'jeux'],
   memoire: ['Voir', 'memoire'],
+  bios: ['Voir le guide', 'bios'],
 };
 
 function afficherScore() {
@@ -215,6 +217,10 @@ $('#problemes').addEventListener('click', async (e) => {
       return setTimeout(() => $('#carte-memoire').scrollIntoView({ behavior: 'smooth' }), 150);
     }
     else if (action === 'pilotes') return allerA('pilotes');
+    else if (action === 'bios') {
+      allerA('analyse');
+      return setTimeout(() => $('#carte-bios').scrollIntoView({ behavior: 'smooth' }), 150);
+    }
     else if (b.dataset.tweak) {
       await appliquerTweaks([b.dataset.tweak], b);
       memoriserAnalyse(await invoke('analyser'));
@@ -369,6 +375,7 @@ const CATEGORIES_OPTI = [
   ['reseau', 'Réseau'],
   ['peripheriques', 'Souris et clavier'],
   ['confort', 'Confort et vie privée'],
+  ['services', 'Services'],
   ['demarrage', 'Démarrage'],
   ['risque', 'Zone risquée'],
 ];
@@ -869,12 +876,16 @@ function afficherReglages() {
   $('#overlay').checked = reglages.overlay;
   $('#maj-auto').checked = reglages.maj_auto;
   $('#couleurs-en-jeu').checked = reglages.couleurs_en_jeu;
+  $('#priorite-basse').checked = reglages.priorite_basse;
+  $('#fond-liste').innerHTML = reglages.priorite_basse_applis.length
+    ? reglages.priorite_basse_applis.map((a, i) => `<span class="puce">${esc(a)}<button data-retirer="${i}" title="Retirer">✕</button></span>`).join('')
+    : '<span class="discret">Aucun programme.</span>';
   $('#fermer-liste').innerHTML = reglages.fermer_applis.length
     ? reglages.fermer_applis.map((a, i) => `<span class="puce">${esc(a)}<button data-retirer="${i}" title="Retirer">✕</button></span>`).join('')
     : '<span class="discret">Aucun programme.</span>';
 }
 
-for (const [id, champ] of [['#boost-auto', 'boost_auto'], ['#boost-max', 'boost_max'], ['#mesure-fps', 'mesure_fps'], ['#overlay', 'overlay'], ['#maj-auto', 'maj_auto'], ['#couleurs-en-jeu', 'couleurs_en_jeu']]) {
+for (const [id, champ] of [['#boost-auto', 'boost_auto'], ['#boost-max', 'boost_max'], ['#mesure-fps', 'mesure_fps'], ['#overlay', 'overlay'], ['#maj-auto', 'maj_auto'], ['#couleurs-en-jeu', 'couleurs_en_jeu'], ['#priorite-basse', 'priorite_basse']]) {
   $(id).addEventListener('change', (e) => {
     reglages[champ] = e.target.checked;
     sauverReglages();
@@ -893,10 +904,26 @@ async function chargerChoixFermer() {
   const noms = await appel('processus_liste');
   // On évite de proposer Windows lui-même : le fermer planterait la session
   const systeme = /^(system|registry|smss|csrss|wininit|winlogon|services|lsass|svchost|dwm|explorer|fontdrvhost|sihost|ctfmon|conhost|runtimebroker|searchhost|startmenuexperiencehost|textinputhost|shellexperiencehost|securityhealth.*|msmpeng|nissrv|spoolsv|audiodg|wudfhost|dllhost|taskhostw|lsaiso|memcompression|fps-cagoule|msedgewebview2|presentmon)(\.exe)?$/i;
-  $('#fermer-choix').innerHTML =
-    '<option value="">Choisir un programme ouvert…</option>' +
-    noms.filter((n) => !systeme.test(n)).map((n) => `<option>${esc(n)}</option>`).join('');
+  const options = '<option value="">Choisir un programme ouvert…</option>' + noms.filter((n) => !systeme.test(n)).map((n) => `<option>${esc(n)}</option>`).join('');
+  $('#fermer-choix').innerHTML = options;
+  $('#fond-choix').innerHTML = options;
 }
+
+$('#fond-liste').addEventListener('click', (e) => {
+  const i = e.target.dataset.retirer;
+  if (i === undefined) return;
+  reglages.priorite_basse_applis.splice(Number(i), 1);
+  sauverReglages();
+  afficherReglages();
+});
+
+$('#btn-fond-ajout').addEventListener('click', () => {
+  const n = $('#fond-choix').value;
+  if (!n || reglages.priorite_basse_applis.some((a) => a.toLowerCase() === n.toLowerCase())) return;
+  reglages.priorite_basse_applis.push(n);
+  sauverReglages();
+  afficherReglages();
+});
 
 $('#btn-fermer-ajout').addEventListener('click', () => {
   const n = $('#fermer-choix').value;
@@ -1997,6 +2024,106 @@ async function majConso() {
     $('#conso').title = `Moteur : ${c.app_mo.toFixed(1)} Mo · Interface : ${c.interface_mo.toFixed(0)} Mo${c.presentmon_mo ? ` · Compteur FPS : ${c.presentmon_mo.toFixed(1)} Mo` : ''}`;
   } catch {}
 }
+
+/* ---------- Checklist BIOS ---------- */
+
+// Chemins habituels des menus ; ils bougent un peu selon les versions du BIOS
+const GUIDES_BIOS = [
+  { re: /asus/i, nom: 'ASUS', touche: 'Suppr (ou F2)', xmp: 'Ai Tweaker → Ai Overclock Tuner → XMP I (ou EXPO)', rebar: 'Advanced → PCI Subsystem Settings → Above 4G Decoding, puis Re-Size BAR Support', pbo: 'Ai Tweaker → Precision Boost Overdrive' },
+  { re: /micro-star|\bmsi\b/i, nom: 'MSI', touche: 'Suppr', xmp: 'OC → A-XMP / EXPO (ou le bouton XMP en haut du mode EZ)', rebar: 'Settings → Advanced → PCI Subsystem Settings → Re-Size BAR Support', pbo: 'OC → Advanced CPU Configuration → AMD Overclocking → Precision Boost Overdrive' },
+  { re: /gigabyte/i, nom: 'Gigabyte', touche: 'Suppr', xmp: 'Tweaker → Extreme Memory Profile (X.M.P.)', rebar: 'Settings → IO Ports → Above 4G Decoding et Re-Size BAR Support', pbo: 'Tweaker → Advanced CPU Settings → Precision Boost Overdrive' },
+  { re: /asrock/i, nom: 'ASRock', touche: 'F2 ou Suppr', xmp: 'OC Tweaker → DRAM Configuration → Load XMP (ou EXPO) Setting', rebar: 'Advanced → Chipset Configuration → Above 4G Decoding et Re-Size BAR (C.A.M.)', pbo: 'OC Tweaker → CPU Configuration → Precision Boost Overdrive' },
+];
+
+let bios = null;
+
+async function chargerBios() {
+  if (!bios) bios = await invoke('bios_infos').catch(() => null);
+  afficherBios();
+}
+
+function etatsBios(b) {
+  const guide = GUIDES_BIOS.find((g) => g.re.test(b.fabricant));
+  const ou = (cle) => (guide ? `Dans ton BIOS ${guide.nom} : ${guide[cle]}.` : 'Cherche ce réglage dans les menus « Overclocking », « Advanced » ou « Tweaker » de ton BIOS.');
+  const items = [];
+
+  const ram = b.ram || [];
+  const r0 = ram[0];
+  if (r0) {
+    const ddr4 = r0.type === 26;
+    const ddr5 = r0.type === 34;
+    const lente = (ddr4 && r0.reelle && r0.reelle <= 2666) || (ddr5 && r0.reelle && r0.reelle <= 4800);
+    if ((r0.vitesse && r0.reelle && r0.reelle < r0.vitesse * 0.9) || lente) {
+      items.push({ statut: 'a-faire', titre: 'Profil XMP / EXPO de la RAM', texte: `Ta RAM tourne à ${r0.reelle} MHz${r0.vitesse > r0.reelle ? ` alors qu'elle est prévue pour ${r0.vitesse} MHz` : ', la vitesse de base'}. Activer le profil XMP (Intel) ou EXPO (AMD) donne souvent 5 à 15 % de FPS en plus, surtout sur le 1 % low.`, chemin: ou('xmp') });
+    } else {
+      items.push({ statut: 'ok', titre: 'Profil XMP / EXPO de la RAM', texte: `Ta RAM tourne à ${r0.reelle} MHz : le profil semble actif.` });
+    }
+    if (ram.length === 1) items.push({ statut: 'a-faire', titre: 'Double canal', texte: 'Une seule barrette de RAM : la bande passante est divisée par deux. Ajoute une deuxième barrette identique (ce n\'est pas un réglage du BIOS).' });
+  }
+
+  const gpu = b.gpu || '';
+  const compatible = /RTX\s*[345]0\d\d|RX\s*[6-9]\d\d\d|Arc/i.test(gpu);
+  if (b.barMo >= 1000) items.push({ statut: 'ok', titre: 'Resizable BAR', texte: `Actif : le processeur voit ${(b.barMo / 1024).toFixed(0)} Go de la mémoire de ta carte graphique d'un coup.` });
+  else if (b.barMo >= 200 && b.barMo <= 300 && compatible)
+    items.push({ statut: 'a-faire', titre: 'Resizable BAR', texte: `Désactivé alors que ta ${gpu} le prend en charge : 0 à 10 % de FPS selon les jeux. Il faut activer « Above 4G Decoding » puis « Re-Size BAR » (et que Windows démarre en mode UEFI).`, chemin: ou('rebar') });
+  else if (b.barMo >= 200 && b.barMo <= 300) items.push({ statut: 'info', titre: 'Resizable BAR', texte: `Désactivé, mais ta carte graphique (${gpu || 'inconnue'}) ne le prend sans doute pas en charge : rien à faire.` });
+  else items.push({ statut: 'inconnu', titre: 'Resizable BAR', texte: 'Impossible à lire depuis Windows sur ton PC. Pour vérifier : panneau de configuration NVIDIA → Informations système → « Resizable BAR », ou AMD Adrenalin → Performances → Smart Access Memory.', chemin: compatible ? ou('rebar') : '' });
+
+  if (b.uefi === false) items.push({ statut: 'info', titre: 'Mode de démarrage ancien (CSM / Legacy)', texte: "Windows démarre en mode BIOS ancien : le Resizable BAR a besoin du mode UEFI. Le passage demande de convertir le disque système (outil mbr2gpt de Microsoft) : ne le fais que si tu es à l'aise, ou fais-toi aider." });
+
+  const cpu = b.cpu || '';
+  if (/Ryzen/i.test(cpu)) {
+    const x3d = /X3D/i.test(cpu);
+    items.push({
+      statut: 'info',
+      titre: x3d ? 'Curve Optimizer (Ryzen X3D)' : 'PBO et Curve Optimizer (Ryzen)',
+      texte: x3d
+        ? "Sur un X3D, l'overclocking classique est limité, mais un Curve Optimizer négatif (-10 à -20) fait monter un peu les fréquences et baisser la température. À tester par petits pas, avec un test de stabilité."
+        : "Precision Boost Overdrive + Curve Optimizer négatif (-10 à -20) : 3 à 8 % de performances en plus et souvent moins de chauffe. À tester par petits pas : si le PC plante, reviens d'un cran.",
+      chemin: ou('pbo'),
+    });
+  }
+  const intel1314 = /i[3579]-1[34]\d{3}/i.test(cpu);
+  if (intel1314 && b.biosDate && b.biosDate < '2024-09-01')
+    items.push({ statut: 'a-faire', titre: 'Mise à jour du BIOS (Intel 13e / 14e génération)', texte: `Ton BIOS date du ${new Date(b.biosDate).toLocaleDateString('fr-CH')}. Ces processeurs ont besoin du microcode Intel 0x12B ou plus récent (BIOS de fin 2024) : sans lui, ils peuvent s'abîmer avec le temps et devenir instables. Télécharge le dernier BIOS sur le site de ta carte mère.` });
+  else if (b.biosDate) {
+    const ans = (Date.now() - new Date(b.biosDate)) / (365.25 * 864e5);
+    if (ans >= 2) items.push({ statut: 'info', titre: 'BIOS ancien', texte: `Ton BIOS date de ${new Date(b.biosDate).getFullYear()} (version ${b.biosVersion}). Une mise à jour améliore souvent la stabilité de la RAM et la compatibilité : à faire depuis le site de ${b.fabricant || 'ta carte mère'}, jamais pendant un orage ni sur batterie.` });
+  }
+  return { items, guide };
+}
+
+function afficherBios() {
+  if (!bios) {
+    $('#bios-liste').innerHTML = '<li class="discret">Lecture des infos du BIOS impossible.</li>';
+    return;
+  }
+  const { items, guide } = etatsBios(bios);
+  const badge = { ok: '<span class="badge accent">OK</span>', 'a-faire': '<span class="badge orange">À activer</span>', info: '<span class="badge bleu">Conseil</span>', inconnu: '<span class="badge">À vérifier</span>' };
+  const marque = bios.fabricant ? `${esc(bios.fabricant)} ${esc(bios.modele)}` : 'Carte mère inconnue';
+  const oem = !guide && /dell|hp|hewlett|lenovo|acer|medion|fujitsu|alienware|microsoft/i.test(`${bios.fabricant}`);
+  $('#bios-liste').innerHTML =
+    `<li class="bios-entete discret petit-texte">${marque} · BIOS ${esc(bios.biosVersion)}${bios.biosDate ? ` du ${new Date(bios.biosDate).toLocaleDateString('fr-CH')}` : ''}${guide ? ` · Touche pour entrer dans le BIOS : ${guide.touche}` : ''}</li>` +
+    (oem ? '<li class="discret petit-texte">PC de marque : son BIOS propose rarement ces réglages. Ce qui reste possible est indiqué ci-dessous.</li>' : '') +
+    items
+      .map((i) => `<li class="bios-item"><div><strong>${esc(i.titre)}</strong>${badge[i.statut]}<p>${esc(i.texte)}</p>${i.chemin ? `<p class="chemin">${esc(i.chemin)}</p>` : ''}</div></li>`)
+      .join('') +
+    '<li class="discret petit-texte">Les noms des menus changent un peu selon les versions : si tu ne trouves pas, cherche les mots en gras. En cas de souci au démarrage, « Load Optimized Defaults » (souvent F5 ou F9) remet le BIOS d\'origine.</li>';
+}
+
+$('#btn-bios-redemarrer').addEventListener('click', async (e) => {
+  const touche = GUIDES_BIOS.find((g) => g.re.test(bios?.fabricant || ''))?.touche;
+  const ok = await confirmer(
+    'Redémarrer dans le BIOS',
+    `<p>Ton PC va redémarrer dans 5 secondes et s'ouvrir directement sur les réglages du BIOS. Enregistre ton travail avant.</p><p class="discret">Pour revenir à Windows sans rien changer : « Exit » puis « Discard Changes and Exit ».${touche ? ` Si ça ne marche pas, redémarre et appuie sur ${touche} au démarrage.` : ''}</p>`,
+    'Redémarrer'
+  );
+  if (!ok) return;
+  try {
+    await appel('redemarrer_bios', {}, e.target);
+    toast('Redémarrage dans le BIOS dans 5 secondes…', 6000);
+  } catch {}
+});
 
 /* ---------- Mode simple ---------- */
 

@@ -585,3 +585,12 @@ body.entree main { animation: main-entree .7s cubic-bezier(.2, .8, .3, 1) both; 
 @keyframes menu-entree { from { transform: translateX(-24px); opacity: 0; } }
 @keyframes nav-entree { from { transform: translateX(-12px); opacity: 0; } }
 @keyframes main-entree { from { transform: scale(.98) translateY(10px); opacity: 0; } }
+
+/* Checklist BIOS */
+.liste-bios { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.liste-bios .bios-entete { margin: 0 0 8px; }
+.bios-item { padding: 12px 0; border-top: 1px solid var(--bordure); }
+.bios-item strong { margin-right: 8px; }
+.bios-item p { margin: 4px 0 0; color: var(--discret); font-size: 13px; }
+.bios-item .chemin { color: var(--accent-clair); font-size: 12.5px; }
+.liste-bios > .petit-texte:last-child { margin-top: 10px; }

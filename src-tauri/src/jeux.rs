@@ -29,6 +29,10 @@ pub struct EnCours {
     oc_suspendu: Option<(i32, i32)>,
     /// Partie jouée avec un overclocking actif
     oc_actif: bool,
+    /// Programmes de fond passés en priorité basse : (pid, priorité d'avant)
+    abaisses: Vec<(u32, u32)>,
+    /// Pids déjà vus (abaissés ou laissés tels quels), pour ne pas les retraiter toutes les 3 s
+    vus: Vec<u32>,
 }
 
 pub struct Etat {
@@ -87,6 +91,7 @@ fn verifier(app: &AppHandle) -> bool {
             }
             entretenir_memoire(&etat);
             suivre_temperature(app, &etat);
+            abaisser_fond(&etat, &procs);
             true
         }
         None => {
@@ -230,7 +235,10 @@ fn demarrer(app: &AppHandle, etat: &Etat, profil: &crate::config::Profil, pid: u
         temp: None,
         oc_suspendu,
         oc_actif,
+        abaisses: Vec::new(),
+        vus: Vec::new(),
     });
+    abaisser_fond(etat, procs);
     // Partie jouée avec l'overclocking : marque effacée à la fin de la partie (voir oc_au_demarrage)
     if oc_actif {
         etat.stock.donnees.lock().unwrap().oc_partie = Some(SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs()));
@@ -281,6 +289,9 @@ pub fn terminer(app: &AppHandle, etat: &Etat) {
     systeme::minuteur_precis(false);
     if etat.stock.donnees.lock().unwrap().oc_partie.take().is_some() {
         etat.stock.sauver();
+    }
+    for &(pid, classe) in &s.abaisses {
+        systeme::remettre_priorite(pid, classe);
     }
     if let Some((c, m)) = s.oc_suspendu {
         let _ = crate::nvidia::appliquer_oc(c, m);
@@ -364,6 +375,40 @@ fn entretenir_memoire(etat: &Etat) {
         s.purges += 1;
         let texte = format!("Mémoire en veille vidée pendant la partie ({} fois)", s.purges);
         match s.actions.iter_mut().find(|a| a.starts_with("Mémoire en veille vidée pendant")) {
+            Some(a) => *a = texte,
+            None => s.actions.push(texte),
+        }
+    }
+}
+
+/// Pendant une partie boostée : les programmes de fond de la liste passent après le jeu.
+/// Les nouveaux processus (onglets du navigateur…) sont pris au passage, toutes les 3 s.
+fn abaisser_fond(etat: &Etat, procs: &[systeme::Processus]) {
+    let (actif, liste) = {
+        let d = etat.stock.donnees.lock().unwrap();
+        (d.reglages.priorite_basse, d.reglages.priorite_basse_applis.clone())
+    };
+    let mut session = etat.session.lock().unwrap();
+    let Some(s) = session.as_mut() else { return };
+    if !actif || !s.boost || liste.is_empty() {
+        return;
+    }
+    let avant = s.abaisses.len();
+    for p in procs {
+        if p.pid == s.pid || s.vus.contains(&p.pid) || !liste.iter().any(|a| a.eq_ignore_ascii_case(&p.nom)) {
+            continue;
+        }
+        s.vus.push(p.pid);
+        if let Some(classe) = systeme::priorite_basse(p.pid) {
+            s.abaisses.push((p.pid, classe));
+        }
+    }
+    if s.abaisses.len() != avant {
+        let mut noms: Vec<&str> = s.abaisses.iter().filter_map(|(pid, _)| procs.iter().find(|p| p.pid == *pid).map(|p| p.nom.as_str())).collect();
+        noms.sort_unstable_by_key(|n| n.to_lowercase());
+        noms.dedup_by(|a, b| a.eq_ignore_ascii_case(b));
+        let texte = format!("Passent après le jeu : {}", noms.join(", "));
+        match s.actions.iter_mut().find(|a| a.starts_with("Passent après le jeu")) {
             Some(a) => *a = texte,
             None => s.actions.push(texte),
         }

@@ -27,11 +27,25 @@ pub struct Reglages {
     pub mode_simple: bool,
     /// Baisser l'overclocking d'un cran tout seul si le pilote ou le jeu plante
     pub oc_protection: bool,
+    /// Pendant les parties : programmes de fond en priorité basse (comme Process Lasso)
+    pub priorite_basse: bool,
+    pub priorite_basse_applis: Vec<String>,
+}
+
+/// Programmes de fond courants : ils restent ouverts (vocal, musique) mais passent après le jeu
+pub fn applis_fond_par_defaut() -> Vec<String> {
+    [
+        "Discord.exe", "chrome.exe", "msedge.exe", "firefox.exe", "opera.exe", "brave.exe", "Spotify.exe",
+        "steamwebhelper.exe", "EpicGamesLauncher.exe", "EpicWebHelper.exe", "OneDrive.exe", "Overwolf.exe", "ms-teams.exe",
+    ]
+    .iter()
+    .map(|s| s.to_string())
+    .collect()
 }
 
 impl Default for Reglages {
     fn default() -> Self {
-        Self { boost_auto: true, boost_max: false, mesure_fps: true, overlay: false, maj_auto: true, couleurs_en_jeu: false, fermer_applis: vec![], assistant_fait: false, mode_simple: false, oc_protection: true }
+        Self { boost_auto: true, boost_max: false, mesure_fps: true, overlay: false, maj_auto: true, couleurs_en_jeu: false, fermer_applis: vec![], assistant_fait: false, mode_simple: false, oc_protection: true, priorite_basse: true, priorite_basse_applis: applis_fond_par_defaut() }
     }
 }
 

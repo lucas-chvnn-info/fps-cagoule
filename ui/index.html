@@ -99,6 +99,11 @@
         <ul id="ram-liste" class="liste-ram"></ul>
         <p class="discret petit-texte">Fermer un programme ici ne le désinstalle pas. Avec 16 Go ou moins, R6 + Discord + un navigateur + un enregistreur (Medal) remplissent vite la mémoire : passer à 32 Go est la vraie solution.</p>
       </div>
+      <div class="carte" id="carte-bios">
+        <div class="entete-diagnostic"><h2>Réglages du BIOS</h2><button class="petit" id="btn-bios-redemarrer">Redémarrer dans le BIOS</button></div>
+        <p class="discret">Les plus gros gains qui restent se règlent dans le BIOS, pas dans Windows. FPS Cagoule vérifie ce qu'il peut voir depuis Windows et t'indique où cliquer selon ta carte mère.</p>
+        <ul id="bios-liste" class="liste-bios"><li class="discret">Chargement…</li></ul>
+      </div>
       <h2 class="section">Tests</h2>
       <div class="grille-2">
         <div class="carte">
@@ -203,6 +208,11 @@
         <div class="entete-categorie"><h2>Confort et vie privée</h2><span class="compte"></span></div>
         <ul class="tweaks" data-categorie="confort"></ul>
       </section>
+      <section class="categorie" data-categorie="services">
+        <div class="entete-categorie"><h2>Services Windows inutiles</h2><span class="compte"></span></div>
+        <p class="discret">Seulement des services qui ne servent à rien sur un PC de jeu. Rien qui touche au Wi-Fi, au Store, aux mises à jour, aux manettes Xbox ou aux anti-triches. Chaque service reste réactivable ici.</p>
+        <ul class="tweaks" data-categorie="services"></ul>
+      </section>
       <section class="categorie" data-categorie="demarrage" id="carte-demarrage">
         <div class="entete-categorie"><h2>Programmes au démarrage</h2><span class="compte"></span></div>
         <div class="carte">
@@ -303,6 +313,15 @@
         <button>Ajouter</button>
         <button type="button" id="btn-profils-defaut" class="discret-btn">Remettre la liste d'origine</button>
       </form>
+      <div class="carte">
+        <label class="bascule"><input type="checkbox" id="priorite-basse"><span></span> <strong>Programmes de fond après le jeu</strong></label>
+        <p class="discret petit-texte">Pendant une partie, ces programmes restent ouverts (vocal Discord, musique) mais passent en priorité basse : le processeur sert d'abord ton jeu, ce qui réduit les saccades. Tout revient à la normale à la fin de la partie.</p>
+        <div id="fond-liste" class="puces"></div>
+        <div class="ligne-form">
+          <select id="fond-choix"><option value="">Choisir un programme ouvert…</option></select>
+          <button id="btn-fond-ajout">Ajouter</button>
+        </div>
+      </div>
       <div class="carte">
         <h2>Programmes à fermer pendant les jeux</h2>
         <p class="discret">Ils sont fermés au lancement d'un jeu boosté et ne sont pas relancés ensuite.</p>
