@@ -697,7 +697,14 @@ mod tests_windows {
         assert!(systeme::fermer_programme("Memory Compression").is_err());
         assert!(!systeme::info_processeur().nom.is_empty());
         // Priorité basse d'un programme de fond, puis remise comme avant
-        let mut enfant = std::process::Command::new("ping").args(["-n", "6", "127.0.0.1"]).stdout(std::process::Stdio::null()).spawn().unwrap();
+        // Lancé en priorité normale explicitement : le test lui-même peut tourner en priorité basse sur la CI
+        use std::os::windows::process::CommandExt;
+        let mut enfant = std::process::Command::new("ping")
+            .args(["-n", "6", "127.0.0.1"])
+            .creation_flags(0x0000_0020)
+            .stdout(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
         let avant = systeme::priorite_basse(enfant.id()).expect("priorité basse");
         assert!(systeme::priorite_basse(enfant.id()).is_none(), "déjà en priorité basse : pas touché deux fois");
         assert!(systeme::remettre_priorite(enfant.id(), avant));
