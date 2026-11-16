@@ -13,6 +13,7 @@ mod ecrans;
 mod fenetres;
 mod fps;
 mod gpu;
+mod images;
 mod jeux;
 mod jeux_config;
 mod nettoyage;
@@ -97,6 +98,33 @@ fn temperature_gpu() -> Option<i32> {
 #[tauri::command(async)]
 fn jeux_installes() -> Vec<bibliotheques::JeuTrouve> {
     bibliotheques::chercher()
+}
+
+/// Jeux de la liste avec leur image (lecture du disque seulement)
+#[tauri::command(async)]
+fn jeux_cartes(app: AppHandle) -> Vec<images::Carte> {
+    let stock = &etat(&app).stock;
+    let profils = stock.donnees.lock().unwrap().profils.clone();
+    images::cartes(stock, &profils)
+}
+
+/// Cherche les images qui manquent (cache de Steam et d'Epic, puis Steam en ligne)
+#[tauri::command(async)]
+fn jeux_images_chercher(app: AppHandle, forcer: Option<String>) -> Vec<images::Carte> {
+    let stock = &etat(&app).stock;
+    let profils = stock.donnees.lock().unwrap().profils.clone();
+    images::chercher(stock, &profils, forcer.as_deref());
+    images::cartes(stock, &profils)
+}
+
+#[tauri::command(async)]
+fn jeu_image_choisir(app: AppHandle, nom: String, image: String) -> Res<()> {
+    images::choisir(&etat(&app).stock, &nom, &image)
+}
+
+#[tauri::command(async)]
+fn jeu_image_effacer(app: AppHandle, nom: String) {
+    images::effacer_perso(&etat(&app).stock, &nom)
 }
 
 #[tauri::command(async)]
@@ -616,6 +644,10 @@ fn main() {
             temperature_gpu,
             carte_graphique,
             jeux_installes,
+            jeux_cartes,
+            jeux_images_chercher,
+            jeu_image_choisir,
+            jeu_image_effacer,
             amd_etat,
             amd_prereglage,
             amd_usine,

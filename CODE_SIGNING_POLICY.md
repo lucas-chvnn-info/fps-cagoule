@@ -33,6 +33,9 @@ The app only connects to the network for these user-visible features:
 - **Ping test**: sends ICMP echo requests to the user's router and to `1.1.1.1` when the user starts the test.
 - **DNS test**: sends DNS queries for public domains to the current DNS server and to Cloudflare, Google and Quad9 when the user starts the test.
 - **Windows Update drivers**: uses the Windows Update API of the system when the user searches for driver updates.
+- **Game covers**: when the "My games" page is opened, covers missing from the local Steam/Epic caches are downloaded once per game from
+  Steam (`store.steampowered.com` search by game name, `shared.akamai.steamstatic.com` images) or from Epic's image CDN (`cdn1.epicgames.com`),
+  then kept in `%APPDATA%\FPS Cagoule\images`. Only the game name is sent.
 
 FPS Cagoule ne collecte ni n'envoie aucune donnée personnelle. Les seules connexions sont celles listées ci-dessus, toutes visibles et déclenchées par l'utilisateur (sauf la recherche de mise à jour, désactivable).
 

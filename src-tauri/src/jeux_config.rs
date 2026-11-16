@@ -256,6 +256,7 @@ pub struct EtatJeu {
     pub id: &'static str,
     pub nom: &'static str,
     pub note: &'static str,
+    pub exes: &'static [&'static str],
     /// Nombre de fichiers trouvés (0 = jeu pas installé ou jamais lancé)
     pub fichiers: usize,
     pub en_cours: bool,
@@ -300,6 +301,7 @@ pub fn liste(stock: &Stockage) -> Vec<EtatJeu> {
                 id: jeu.id,
                 nom: jeu.nom,
                 note: jeu.note,
+                exes: jeu.exes,
                 fichiers: f.len(),
                 en_cours: !f.is_empty() && jeu_lance(jeu),
                 optimise: optimise && !reglages.is_empty(),

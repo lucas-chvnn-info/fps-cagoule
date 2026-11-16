@@ -34,7 +34,7 @@
       <button data-page="optimisations"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg><span>Optimisations</span></button>
       <button data-page="nettoyage"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13h10l1-13"/><path d="M10 11v6M14 11v6"/></svg><span>Nettoyage</span></button>
       <button data-page="pilotes" data-avance><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/><rect x="9.5" y="9.5" width="5" height="5" rx="1"/><path d="M9 3v3M15 3v3M9 18v3M15 18v3M3 9h3M3 15h3M18 9h3M18 15h3"/></svg><span>Pilotes</span></button>
-      <button data-page="jeux"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 9h10a4 4 0 0 1 4 4v1a3 3 0 0 1-5.4 1.8L14 14h-4l-1.6 1.8A3 3 0 0 1 3 14v-1a4 4 0 0 1 4-4z"/><path d="M8 11v3M6.5 12.5h3"/><circle cx="16" cy="12" r=".8"/></svg><span>Boost par jeu</span></button>
+      <button data-page="jeux"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 9h10a4 4 0 0 1 4 4v1a3 3 0 0 1-5.4 1.8L14 14h-4l-1.6 1.8A3 3 0 0 1 3 14v-1a4 4 0 0 1 4-4z"/><path d="M8 11v3M6.5 12.5h3"/><circle cx="16" cy="12" r=".8"/></svg><span>Mes jeux</span></button>
       <button data-page="ecrans" data-avance><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg><span>Écrans</span></button>
       <button data-page="oc" data-avance><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2L5 14h6l-1 8 8-12h-6z"/></svg><span>Overclocking</span></button>
       <button data-page="fps"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg><span>Statistiques FPS</span></button>
@@ -288,32 +288,42 @@
 
     <!-- Jeux -->
     <section id="page-jeux" class="page">
-      <header><h1>Boost par jeu</h1></header>
+      <header>
+        <h1>Mes jeux</h1>
+        <div class="actions-entete">
+          <button id="btn-jeux-detecter">Détecter mes jeux</button>
+          <button id="btn-jeux-tout" class="principal"><svg class="icone-eclair" viewBox="0 0 24 24" aria-hidden="true"><path d="M13.5 2 4 13.5h6.5L9.5 22 20 9.5h-6.6z"/></svg>Tout optimiser</button>
+        </div>
+      </header>
+      <p class="discret aide-jeux">Passe la souris sur un jeu et clique sur l'<strong>éclair</strong> : boost pendant les parties, priorité haute, carte graphique la plus puissante et réglages du jeu optimisés. La roue dentée ouvre les réglages du jeu.</p>
+      <div id="grille-jeux" class="grille-jeux"></div>
+      <details id="jeux-absents" class="jeux-absents" hidden>
+        <summary></summary>
+        <div class="grille-jeux petite"></div>
+      </details>
       <div class="carte interrupteurs">
         <label class="bascule"><input type="checkbox" id="boost-auto"><span></span> Boost automatique au lancement d'un jeu</label>
         <label class="bascule"><input type="checkbox" id="boost-max"><span></span> Mode Boost max pendant les parties</label>
         <p class="discret retrait">En plus du boost : plan Performances optimales, minuteur système à 0,5 ms et mémoire en veille vidée au lancement. Le PC chauffe et consomme un peu plus pendant la partie ; tout revient à la normale à la fin.</p>
         <label class="bascule"><input type="checkbox" id="mesure-fps"><span></span> Mesurer les FPS pendant les parties</label>
       </div>
-      <p class="discret">Pendant une partie, le boost active le plan Performances élevées, donne la priorité haute au jeu, choisit la carte graphique la plus puissante et ferme les programmes de ta liste. Tout est remis comme avant à la fin.</p>
-      <p class="discret">La priorité haute est aussi enregistrée dans Windows, qui l'applique lui-même au lancement du jeu : l'anti-triche ne peut pas la refuser.</p>
-      <p class="discret">Colonne « Résolution » : l'écran principal passe dans cette résolution pendant la partie (par exemple 4:3 étiré), puis revient à celle du bureau. Dans le jeu, choisis la même résolution en plein écran. Une résolution comme 1440 × 1080 doit d'abord être créée dans le panneau de ta carte graphique (« Résolutions personnalisées ») pour apparaître ici.</p>
-      <div class="carte">
-        <h2>Réglages dans les jeux</h2>
-        <p class="discret">FPS Cagoule modifie les fichiers de réglages des jeux : V-Sync, flou de mouvement, ombres lourdes et effets coupés, mais distance d'affichage et textures gardées pour bien voir. Seuls les réglages déjà présents dans le fichier sont changés, après une copie de sauvegarde. Ferme le jeu avant.</p>
-        <ul id="jeux-configs" class="liste-jeux-configs"><li class="discret">Recherche des jeux installés…</li></ul>
-      </div>
-      <table class="tableau" id="profils">
-        <thead><tr><th>Jeu</th><th>Détecté</th><th>Boost</th><th>Priorité haute</th><th>GPU puissant</th><th title="Garder l'overclocking de la carte graphique pendant ce jeu (décoche si ce jeu plante avec)">OC</th><th>Résolution</th><th></th></tr></thead>
-        <tbody></tbody>
-      </table>
-      <form id="ajout-jeu" class="ligne-form">
-        <input id="ajout-nom" placeholder="Nom du jeu" required>
-        <input id="ajout-exe" placeholder="Exécutable, par ex. jeu.exe" required>
-        <button>Ajouter</button>
-        <button type="button" id="btn-jeux-detecter" class="principal">Détecter mes jeux installés</button>
-        <button type="button" id="btn-profils-defaut" class="discret-btn">Remettre la liste d'origine</button>
-      </form>
+      <details class="carte explications">
+        <summary>Comment marche l'optimisation d'un jeu</summary>
+        <p class="discret">Pendant une partie, le boost active le plan Performances élevées, donne la priorité haute au jeu, choisit la carte graphique la plus puissante et ferme les programmes de ta liste. Tout est remis comme avant à la fin.</p>
+        <p class="discret">La priorité haute est aussi enregistrée dans Windows, qui l'applique lui-même au lancement du jeu : l'anti-triche ne peut pas la refuser.</p>
+        <p class="discret">Pour Fortnite, Valorant, Rainbow Six Siege, CS2, Apex, Rocket League, Marvel Rivals et The Finals, FPS Cagoule modifie aussi leur fichier de réglages : V-Sync, flou de mouvement, ombres lourdes et effets coupés, mais distance d'affichage et textures gardées pour bien voir. Seuls les réglages déjà présents sont changés, après une copie de sauvegarde (bouton « Restaurer » dans les réglages du jeu). Ferme le jeu avant.</p>
+        <p class="discret">Résolution par jeu : l'écran principal passe dans cette résolution pendant la partie (par exemple 4:3 étiré), puis revient à celle du bureau. Dans le jeu, choisis la même résolution en plein écran. Une résolution comme 1440 × 1080 doit d'abord être créée dans le panneau de ta carte graphique (« Résolutions personnalisées ») pour apparaître.</p>
+        <p class="discret">Les images des jeux viennent du cache de Steam et du launcher Epic sur ton PC, sinon de la boutique Steam. Tu peux mettre la tienne dans les réglages du jeu.</p>
+      </details>
+      <details class="carte ajout-manuel">
+        <summary>Ajouter un jeu à la main</summary>
+        <form id="ajout-jeu" class="ligne-form">
+          <input id="ajout-nom" placeholder="Nom du jeu" required>
+          <input id="ajout-exe" placeholder="Exécutable, par ex. jeu.exe" required>
+          <button>Ajouter</button>
+          <button type="button" id="btn-profils-defaut" class="discret-btn">Remettre la liste d'origine</button>
+        </form>
+      </details>
       <div class="carte">
         <label class="bascule"><input type="checkbox" id="priorite-basse"><span></span> <strong>Programmes de fond après le jeu</strong></label>
         <p class="discret petit-texte">Pendant une partie, ces programmes restent ouverts (vocal Discord, musique) mais passent en priorité basse : le processeur sert d'abord ton jeu, ce qui réduit les saccades. Tout revient à la normale à la fin de la partie.</p>
@@ -404,7 +414,7 @@
     <!-- FPS -->
     <section id="page-fps" class="page">
       <header><h1>Statistiques FPS</h1></header>
-      <p class="discret">Le « 1 % low » est le FPS des pires moments : c'est lui qui donne la sensation de saccades. Pour mesurer l'effet du boost, joue une partie avec et une sans (désactive le boost du jeu dans « Boost par jeu »).</p>
+      <p class="discret">Le « 1 % low » est le FPS des pires moments : c'est lui qui donne la sensation de saccades. Pour mesurer l'effet du boost, joue une partie avec et une sans (coupe le boost du jeu dans ses réglages, page « Mes jeux »).</p>
       <div id="comparaisons" class="grille-2"></div>
       <table class="tableau" id="sessions">
         <thead><tr><th>Date</th><th>Jeu</th><th>Durée</th><th>Boost</th><th>FPS moyen</th><th>1 % low</th><th>0,1 % low</th><th title="Température maximale de la carte graphique (NVIDIA)">GPU max</th></tr></thead>
@@ -423,7 +433,7 @@
       </div>
       <div class="carte">
         <h2>Interface</h2>
-        <p class="discret">Le mode simple ne garde que l'essentiel : accueil, optimisations, nettoyage, boost par jeu et statistiques. Le mode complet ajoute les tests, le benchmark, les pilotes, les écrans et l'overclocking.</p>
+        <p class="discret">Le mode simple ne garde que l'essentiel : accueil, optimisations, nettoyage, mes jeux et statistiques. Le mode complet ajoute les tests, le benchmark, les pilotes, les écrans et l'overclocking.</p>
         <div class="boutons">
           <button id="btn-mode-reglages"></button>
           <button id="btn-assistant">Relancer l'assistant</button>
@@ -463,6 +473,9 @@
     </div>
   </div>
   <div id="toast" role="status" hidden></div>
+  <div id="fenetre-jeu" class="fenetre" hidden>
+    <div class="boite boite-jeu" role="dialog" aria-modal="true" aria-labelledby="fj-titre"></div>
+  </div>
   <div id="fenetre" class="fenetre" hidden>
     <div class="boite" role="dialog" aria-modal="true" aria-labelledby="fenetre-titre">
       <h2 id="fenetre-titre"></h2>

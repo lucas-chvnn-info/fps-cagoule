@@ -67,7 +67,7 @@ document.querySelectorAll('nav button').forEach((b) =>
     if (b.dataset.page === 'jeux') {
       chargerChoixFermer();
       chargerModesJeu();
-      chargerConfigsJeux();
+      chargerJeux();
     }
   })
 );
@@ -743,50 +743,356 @@ $('#demarrage-liste').addEventListener('change', async (e) => {
   chargerDemarrage();
 });
 
-/* ---------- Jeux ---------- */
+/* ---------- Mes jeux ---------- */
 
-/* ---------- Réglages dans les jeux ---------- */
+const ECLAIR = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13.5 2 4 13.5h6.5L9.5 22 20 9.5h-6.6z"/></svg>';
+const ENGRENAGE =
+  '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>';
+const calme = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-async function chargerConfigsJeux() {
-  const jeux = await appel('jeux_configs').catch(() => []);
-  const installes = jeux.filter((j) => j.fichiers);
-  const absents = jeux.filter((j) => !j.fichiers);
-  $('#jeux-configs').innerHTML =
-    installes
-      .map((j) => {
-        const a_changer = j.reglages.filter((r) => r.actuel.toLowerCase() !== r.cible.toLowerCase());
-        let etat;
-        if (j.en_cours) etat = '<span class="badge orange">Jeu lancé : ferme-le d\'abord</span>';
-        else if (j.optimise) etat = '<span class="badge accent">Optimisé</span>';
-        else etat = `<span class="badge">${a_changer.length} réglage${a_changer.length > 1 ? 's' : ''} à changer</span>`;
-        const boutons = [
-          !j.optimise && !j.en_cours && j.reglages.length ? `<button class="petit principal" data-optimiser="${j.id}">Optimiser</button>` : '',
-          j.sauvegarde && !j.en_cours ? `<button class="petit" data-restaurer="${j.id}">Restaurer</button>` : '',
-        ].join('');
-        const detail = j.reglages.length
-          ? `<details><summary>Ce qui change</summary><ul>${j.reglages
-              .map((r) => `<li>${esc(r.libelle)}${r.actuel.toLowerCase() === r.cible.toLowerCase() ? ' ✓' : ` <span class="discret">(${esc(r.actuel)} → ${esc(r.cible)})</span>`}</li>`)
-              .join('')}</ul></details>`
-          : '<p class="note">Aucun réglage connu dans ce fichier (version du jeu différente).</p>';
-        return `<li><div class="jeu-config-entete"><strong>${esc(j.nom)}</strong>${etat}${boutons}</div>${detail}<p class="note">${esc(j.note)}${j.fichiers > 1 ? ` (${j.fichiers} comptes)` : ''}</p></li>`;
-      })
-      .join('') +
-    (absents.length ? `<li class="discret">Pas trouvés sur ce PC (ou jamais lancés) : ${absents.map((j) => esc(j.nom)).join(', ')}.</li>` : '');
+/** Image et état de chaque jeu (nom → { image, genre, installe }) */
+let vignettes = new Map();
+/** Réglages connus dans les fichiers des jeux (Fortnite, Valorant…) */
+let configsJeux = [];
+let nomsDefaut = null;
+let imagesCherchees = false;
+
+const pareil = (a, b) => a.toLowerCase() === b.toLowerCase();
+function configPour(p) {
+  return configsJeux.find((c) => c.exes.some((e) => p.exes.some((x) => pareil(x, e))) || pareil(c.nom, p.nom));
+}
+/** Le fichier de réglages du jeu a encore des réglages à changer */
+const configAFaire = (c) => c && c.fichiers && c.reglages.length && !c.optimise;
+function estOptimise(p) {
+  return p.actif && p.boost && p.priorite_haute && p.gpu_perf && !!reglages?.boost_auto && !configAFaire(configPour(p));
+}
+/** Jeu présent sur le PC, ou ajouté par l'utilisateur (pas dans la liste d'origine) */
+function jeuVisible(p) {
+  const c = configPour(p);
+  return vignettes.get(p.nom)?.installe || (c && c.fichiers > 0) || (nomsDefaut && !nomsDefaut.has(p.nom));
+}
+function teinte(nom) {
+  let h = 0;
+  for (const c of nom) h = (h * 31 + c.charCodeAt(0)) % 360;
+  return h;
+}
+const initiales = (nom) =>
+  nom
+    .split(/[\s:-]+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((m) => m[0].toUpperCase())
+    .join('');
+
+function visuelJeu(p) {
+  const v = vignettes.get(p.nom);
+  if (v?.image && v.genre !== 'icone') return `<img class="jaquette" src="${v.image}" alt="" draggable="false">`;
+  return `<div class="sans-image">${v?.image ? `<img class="icone-jeu" src="${v.image}" alt="" draggable="false">` : `<span class="initiales">${esc(initiales(p.nom))}</span>`}</div>`;
 }
 
-$('#jeux-configs').addEventListener('click', async (e) => {
-  const b = e.target.closest('button');
-  if (!b) return;
+function tuileJeu(p, i) {
+  const c = configPour(p);
+  const opti = estOptimise(p);
+  let etat = 'Pas encore optimisé';
+  if (!p.actif) etat = 'Pas surveillé';
+  else if (opti) etat = 'Optimisé';
+  else if (c?.en_cours) etat = 'Partie en cours';
+  return `<div class="tuile-jeu${opti ? ' optimise' : ''}" data-i="${i}" style="--teinte:${teinte(p.nom)}">
+    <div class="visuel">${visuelJeu(p)}</div>
+    <span class="etiquette-opti">${ECLAIR}Optimisé</span>
+    <button class="btn-reglages-jeu" data-reglages="${i}" title="Réglages de ${esc(p.nom)}" aria-label="Réglages de ${esc(p.nom)}">${ENGRENAGE}</button>
+    <button class="eclair" data-eclair="${i}" title="${opti ? 'Déjà optimisé : relancer' : 'Optimiser'} ${esc(p.nom)}" aria-label="Optimiser ${esc(p.nom)}">${ECLAIR}</button>
+    <div class="pied"><strong>${esc(p.nom)}</strong><small>${etat}</small></div>
+  </div>`;
+}
+
+function afficherProfils() {
+  const visibles = [];
+  const absents = [];
+  profils.forEach((p, i) => (jeuVisible(p) ? visibles : absents).push([p, i]));
+  $('#grille-jeux').innerHTML =
+    visibles.map(([p, i]) => tuileJeu(p, i)).join('') +
+    `<button class="tuile-ajout" data-ajout><span>+</span>Détecter mes jeux</button>`;
+  const zone = $('#jeux-absents');
+  zone.hidden = !absents.length;
+  zone.querySelector('summary').textContent = `${absents.length} autre${absents.length > 1 ? 's' : ''} jeu${absents.length > 1 ? 'x' : ''} de la liste, pas trouvé${absents.length > 1 ? 's' : ''} sur ce PC`;
+  zone.querySelector('.grille-jeux').innerHTML = absents.map(([p, i]) => tuileJeu(p, i)).join('');
+  const reste = visibles.filter(([p]) => !estOptimise(p)).length;
+  $('#btn-jeux-tout').disabled = !reste;
+  if (!$('#fenetre-jeu').hidden) afficherFenetreJeu();
+}
+
+async function chargerVignettes(chercher) {
+  const liste = await invoke(chercher ? 'jeux_images_chercher' : 'jeux_cartes').catch(() => null);
+  if (!liste) return;
+  vignettes = new Map(liste.map((c) => [c.nom, c]));
+  afficherProfils();
+}
+
+async function chargerConfigsJeux() {
+  configsJeux = await invoke('jeux_configs').catch(() => []);
+  // Jeu installé dont on connaît les réglages mais absent de la liste : ajouté
+  const manquants = configsJeux.filter((c) => c.fichiers && !profils.some((p) => configPour(p) === c));
+  for (const c of manquants) profils.push({ nom: c.nom, exes: [...c.exes], actif: true, boost: true, priorite_haute: true, gpu_perf: true, resolution: null, oc: true });
+  if (manquants.length) await sauverProfils();
+  else afficherProfils();
+}
+
+async function chargerJeux() {
+  if (!nomsDefaut) nomsDefaut = new Set((await invoke('profils_defaut').catch(() => [])).map((p) => p.nom));
+  await Promise.all([chargerVignettes(false), chargerConfigsJeux()]);
+  // Images manquantes : une seule recherche par ouverture de l'app (le reste vient du cache)
+  if (!imagesCherchees) {
+    imagesCherchees = true;
+    chargerVignettes(true);
+  }
+}
+
+/** Arcs électriques autour de l'éclair (SVG éphémère) */
+function arcs(tuile, nombre = 5, longueur = [30, 58]) {
+  if (calme()) return;
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('class', 'arcs');
+  svg.setAttribute('viewBox', '0 0 100 150');
+  svg.setAttribute('preserveAspectRatio', 'none');
+  for (let k = 0; k < nombre; k++) {
+    const angle = Math.random() * Math.PI * 2;
+    const l = longueur[0] + Math.random() * (longueur[1] - longueur[0]);
+    const points = [[50, 66]];
+    for (let s = 1; s <= 6; s++) {
+      const d = (l * s) / 6;
+      points.push([50 + Math.cos(angle) * d + (Math.random() - 0.5) * 9, 66 + Math.sin(angle) * d * 1.4 + (Math.random() - 0.5) * 9]);
+    }
+    const ligne = document.createElementNS(ns, 'polyline');
+    ligne.setAttribute('points', points.map((p) => p.join(',')).join(' '));
+    ligne.setAttribute('pathLength', '1');
+    ligne.style.animationDelay = `${Math.random() * 0.12}s`;
+    svg.append(ligne);
+  }
+  tuile.append(svg);
+  setTimeout(() => svg.remove(), 700);
+}
+
+// Survol : petites étincelles autour de l'éclair
+let etincelles = null;
+document.addEventListener('mouseover', (e) => {
+  const t = e.target.closest?.('.tuile-jeu');
+  if (!t || t === etincelles?.tuile) return;
+  clearInterval(etincelles?.minuteur);
+  etincelles = { tuile: t, minuteur: setInterval(() => (t.matches(':hover') ? arcs(t, 2, [12, 24]) : clearInterval(etincelles.minuteur)), 650) };
+});
+
+/** Optimise un jeu : boost, priorité haute, GPU puissant et réglages dans le jeu */
+async function optimiserJeu(i, { silencieux = false } = {}) {
+  const p = profils[i];
+  const tuile = document.querySelector(`.tuile-jeu[data-i="${i}"]`);
+  tuile?.classList.add('charge');
+  const crepite = tuile && setInterval(() => arcs(tuile), 260);
+  if (tuile) arcs(tuile, 7);
+  const fait = [];
+  const avertir = [];
   try {
-    if (b.dataset.optimiser) {
-      const n = await appel('jeux_config_appliquer', { id: b.dataset.optimiser }, b);
+    const debut = performance.now();
+    Object.assign(p, { actif: true, boost: true, priorite_haute: true, gpu_perf: true });
+    await invoke('profils_set', { profils });
+    fait.push('boost, priorité haute et carte graphique puissante');
+    if (!reglages.boost_auto) {
+      reglages.boost_auto = true;
+      await sauverReglages();
+      afficherReglages();
+      fait.push('boost automatique allumé');
+    }
+    const c = configPour(p);
+    if (configAFaire(c)) {
+      if (c.en_cours) avertir.push(`ferme ${p.nom} pour optimiser ses réglages en jeu`);
+      else {
+        const n = await invoke('jeux_config_appliquer', { id: c.id });
+        if (n) fait.push(`${n} réglage${n > 1 ? 's' : ''} changé${n > 1 ? 's' : ''} dans le jeu`);
+      }
+    }
+    // L'effet a le temps de se voir
+    await new Promise((r) => setTimeout(r, Math.max(0, 900 - (performance.now() - debut))));
+  } catch (err) {
+    avertir.push(String(err));
+  } finally {
+    clearInterval(crepite);
+    tuile?.classList.remove('charge');
+  }
+  configsJeux = await invoke('jeux_configs').catch(() => configsJeux);
+  afficherProfils();
+  const nouvelle = document.querySelector(`.tuile-jeu[data-i="${i}"]`);
+  if (nouvelle) {
+    nouvelle.classList.add('eclate');
+    arcs(nouvelle, 9, [40, 75]);
+    setTimeout(() => nouvelle.classList.remove('eclate'), 900);
+  }
+  if (!silencieux) toast(`${p.nom} : ${[...fait, ...avertir].join(', ')}.`, avertir.length ? 8000 : 5000);
+  return !avertir.length;
+}
+
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('#page-jeux button');
+  if (!b) return;
+  if (b.dataset.eclair !== undefined) optimiserJeu(Number(b.dataset.eclair));
+  else if (b.dataset.reglages !== undefined) ouvrirFenetreJeu(Number(b.dataset.reglages));
+  else if (b.hasAttribute('data-ajout')) $('#btn-jeux-detecter').click();
+});
+
+$('#btn-jeux-tout').addEventListener('click', async (e) => {
+  const bouton = e.currentTarget;
+  const a = profils.map((p, i) => [p, i]).filter(([p]) => jeuVisible(p) && !estOptimise(p));
+  if (!a.length) return toast('Tous tes jeux sont déjà optimisés.');
+  bouton.classList.add('chargement');
+  let ok = 0;
+  for (const [, i] of a) if (await optimiserJeu(i, { silencieux: true })) ok++;
+  bouton.classList.remove('chargement');
+  toast(ok === a.length ? `${ok} jeu${ok > 1 ? 'x' : ''} optimisé${ok > 1 ? 's' : ''}. Lance-les : FPS Cagoule s'occupe du reste.` : `${ok} sur ${a.length} optimisés. Ferme les jeux lancés et réessaie.`, 7000);
+});
+
+/* Fenêtre de réglages d'un jeu */
+let jeuOuvert = null;
+
+function ouvrirFenetreJeu(i) {
+  jeuOuvert = profils[i];
+  afficherFenetreJeu();
+  $('#fenetre-jeu').hidden = false;
+  $('#fenetre-jeu [data-fermer]')?.focus();
+}
+function fermerFenetreJeu() {
+  $('#fenetre-jeu').hidden = true;
+  jeuOuvert = null;
+}
+
+function afficherFenetreJeu() {
+  const i = profils.indexOf(jeuOuvert);
+  if (i < 0) return fermerFenetreJeu();
+  const p = jeuOuvert;
+  const v = vignettes.get(p.nom);
+  const c = configPour(p);
+  const bascule = (champ, titre, texte) =>
+    `<label class="bascule"><input type="checkbox" data-champ="${champ}" ${p[champ] ? 'checked' : ''}><span></span><div><strong>${titre}</strong><small>${texte}</small></div></label>`;
+  let config = '';
+  if (c && c.fichiers) {
+    const aChanger = c.reglages.filter((r) => (r.actuel || '').toLowerCase() !== r.cible.toLowerCase());
+    const etat = c.en_cours
+      ? '<span class="badge orange">Jeu lancé : ferme-le d\'abord</span>'
+      : c.optimise
+        ? '<span class="badge accent">Optimisés</span>'
+        : `<span class="badge">${aChanger.length} réglage${aChanger.length > 1 ? 's' : ''} à changer</span>`;
+    config = `<div class="fj-section"><div class="jeu-config-entete"><strong>Réglages dans le jeu</strong>${etat}
+        ${!c.optimise && !c.en_cours && c.reglages.length ? `<button class="petit principal" data-config-optimiser>Optimiser</button>` : ''}
+        ${c.sauvegarde && !c.en_cours ? `<button class="petit" data-config-restaurer>Restaurer</button>` : ''}</div>
+      ${
+        c.reglages.length
+          ? `<details><summary>Ce qui change</summary><ul>${c.reglages
+              .map((r) => `<li>${esc(r.libelle)}${(r.actuel || '').toLowerCase() === r.cible.toLowerCase() ? ' ✓' : ` <span class="discret">(${esc(r.actuel ?? '?')} → ${esc(r.cible)})</span>`}</li>`)
+              .join('')}</ul></details>`
+          : '<p class="note">Aucun réglage connu dans ce fichier (version du jeu différente).</p>'
+      }
+      <p class="note">${esc(c.note)}${c.fichiers > 1 ? ` (${c.fichiers} comptes)` : ''}</p></div>`;
+  }
+  $('#fenetre-jeu .boite').innerHTML = `
+    <div class="fj-entete">
+      <div class="tuile-jeu mini" style="--teinte:${teinte(p.nom)}"><div class="visuel">${visuelJeu(p)}</div></div>
+      <div class="fj-titre">
+        <h2 id="fj-titre">${esc(p.nom)}</h2>
+        <p class="discret">${esc(p.exes.join(', '))}</p>
+        <div class="boutons">
+          <label class="bouton petit">Changer l'image<input type="file" accept="image/png,image/jpeg,image/webp" data-image hidden></label>
+          ${v?.genre === 'perso' ? '<button class="petit" data-image-origine>Image d\'origine</button>' : ''}
+          ${!v?.image || v.genre === 'icone' ? '<button class="petit" data-image-chercher>Chercher l\'image</button>' : ''}
+        </div>
+      </div>
+    </div>
+    <div class="interrupteurs fj-bascules">
+      ${bascule('actif', 'Repérer ce jeu', 'FPS Cagoule voit quand il se lance et mesure tes FPS.')}
+      ${bascule('boost', 'Boost pendant les parties', 'Plan d\'alimentation performant, programmes de ta liste fermés.')}
+      ${bascule('priorite_haute', 'Priorité haute', 'Le processeur sert d\'abord le jeu.')}
+      ${bascule('gpu_perf', 'Carte graphique la plus puissante', 'Utile sur les PC portables avec deux cartes graphiques.')}
+      ${bascule('oc', 'Garder l\'overclocking', 'Décoche si ce jeu plante avec l\'overclocking de la carte graphique.')}
+    </div>
+    <label class="fj-resolution"><span>Résolution pendant la partie</span><select data-resolution aria-label="Résolution pendant ${esc(p.nom)}">${optionsResolution(p)}</select></label>
+    ${config}
+    <div class="boutons fj-pied">
+      <button class="discret-btn danger" data-retirer>Retirer de la liste</button>
+      <button class="principal" data-fermer>Fermer</button>
+    </div>`;
+}
+
+/** Réduit l'image choisie (400 × 600, recadrée au centre) avant de l'envoyer */
+async function reduireImage(fichier) {
+  const img = await createImageBitmap(fichier);
+  const canvas = document.createElement('canvas');
+  canvas.width = 400;
+  canvas.height = 600;
+  const echelle = Math.max(400 / img.width, 600 / img.height);
+  const l = img.width * echelle;
+  const h = img.height * echelle;
+  canvas.getContext('2d').drawImage(img, (400 - l) / 2, (600 - h) / 2, l, h);
+  return canvas.toDataURL('image/jpeg', 0.86);
+}
+
+$('#fenetre-jeu').addEventListener('click', async (e) => {
+  if (e.target === e.currentTarget) return fermerFenetreJeu();
+  const b = e.target.closest('button');
+  if (!b || !jeuOuvert) return;
+  const p = jeuOuvert;
+  const c = configPour(p);
+  try {
+    if (b.hasAttribute('data-fermer')) return fermerFenetreJeu();
+    if (b.hasAttribute('data-retirer')) {
+      profils.splice(profils.indexOf(p), 1);
+      fermerFenetreJeu();
+      await sauverProfils();
+      return toast(`${p.nom} retiré de la liste.`);
+    }
+    if (b.hasAttribute('data-config-optimiser')) {
+      const n = await appel('jeux_config_appliquer', { id: c.id }, b);
       toast(n ? `${n} réglage${n > 1 ? 's' : ''} changé${n > 1 ? 's' : ''}. Lance le jeu pour en profiter.` : 'Déjà optimisé.');
-    } else if (b.dataset.restaurer) {
-      await appel('jeux_config_restaurer', { id: b.dataset.restaurer }, b);
+    } else if (b.hasAttribute('data-config-restaurer')) {
+      await appel('jeux_config_restaurer', { id: c.id }, b);
       toast('Réglages du jeu remis comme avant.');
+    } else if (b.hasAttribute('data-image-origine')) {
+      await appel('jeu_image_effacer', { nom: p.nom }, b);
+      return chargerVignettes(true);
+    } else if (b.hasAttribute('data-image-chercher')) {
+      b.classList.add('chargement');
+      const liste = await invoke('jeux_images_chercher', { forcer: p.nom });
+      vignettes = new Map(liste.map((x) => [x.nom, x]));
+      const v = vignettes.get(p.nom);
+      if (!v?.image || v.genre === 'icone') toast('Pas d\'image trouvée pour ce jeu. Tu peux mettre la tienne avec « Changer l\'image ».', 6000);
+      return afficherProfils();
     }
   } catch {}
-  chargerConfigsJeux();
+  configsJeux = await invoke('jeux_configs').catch(() => configsJeux);
+  afficherProfils();
+});
+
+$('#fenetre-jeu').addEventListener('change', async (e) => {
+  const c = e.target;
+  const p = jeuOuvert;
+  if (!p) return;
+  if (c.dataset.champ) {
+    p[c.dataset.champ] = c.checked;
+    sauverProfils();
+  } else if (c.dataset.resolution !== undefined) {
+    const [largeur, hauteur, etirer] = c.value.split('x').map(Number);
+    p.resolution = c.value ? { largeur, hauteur, etirer: etirer === 1 } : null;
+    sauverProfils();
+  } else if (c.dataset.image !== undefined && c.files[0]) {
+    try {
+      await appel('jeu_image_choisir', { nom: p.nom, image: await reduireImage(c.files[0]) });
+      await chargerVignettes(false);
+      toast('Image changée.');
+    } catch (err) {
+      if (!String(err).includes('Erreur')) toast(`Image illisible : ${err}`, 6000);
+    }
+  }
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !$('#fenetre-jeu').hidden) fermerFenetreJeu();
 });
 
 let modesPrincipal = [];
@@ -825,44 +1131,11 @@ function optionsResolution(p) {
   return html;
 }
 
-function afficherProfils() {
-  const caseP = (i, champ, titre) => `<td><input type="checkbox" data-i="${i}" data-champ="${champ}" ${profils[i][champ] ? 'checked' : ''} aria-label="${titre}"></td>`;
-  $('#profils tbody').innerHTML = profils
-    .map(
-      (p, i) => `<tr>
-        <td>${esc(p.nom)}<small>${esc(p.exes.join(', '))}</small></td>
-        ${caseP(i, 'actif', 'Détection')}${caseP(i, 'boost', 'Boost')}${caseP(i, 'priorite_haute', 'Priorité haute')}${caseP(i, 'gpu_perf', 'GPU puissant')}${caseP(i, 'oc', 'Overclocking')}
-        <td><select data-i="${i}" data-resolution aria-label="Résolution pendant ${esc(p.nom)}">${optionsResolution(p)}</select></td>
-        <td><button class="petit discret-btn" data-suppr="${i}" title="Retirer">✕</button></td>
-      </tr>`
-    )
-    .join('');
-}
-
 async function sauverProfils() {
   await appel('profils_set', { profils });
   afficherProfils();
 }
 
-$('#profils').addEventListener('change', (e) => {
-  const c = e.target;
-  if (c.dataset.champ) {
-    profils[c.dataset.i][c.dataset.champ] = c.checked;
-    sauverProfils();
-  }
-  if (c.dataset.resolution !== undefined) {
-    const [largeur, hauteur, etirer] = c.value.split('x').map(Number);
-    profils[c.dataset.i].resolution = c.value ? { largeur, hauteur, etirer: etirer === 1 } : null;
-    sauverProfils();
-  }
-});
-$('#profils').addEventListener('click', (e) => {
-  const i = e.target.closest('button')?.dataset.suppr;
-  if (i !== undefined) {
-    profils.splice(Number(i), 1);
-    sauverProfils();
-  }
-});
 $('#ajout-jeu').addEventListener('submit', (e) => {
   e.preventDefault();
   let exe = $('#ajout-exe').value.trim();
@@ -888,14 +1161,15 @@ function ajouterJeux(jeux) {
 }
 
 $('#btn-jeux-detecter').addEventListener('click', async (e) => {
+  const bouton = e.currentTarget;
   let jeux;
   try {
-    e.target.classList.add('chargement');
+    bouton.classList.add('chargement');
     jeux = await nouveauxJeux();
   } catch (err) {
     return toast(`Recherche impossible : ${err}`, 7000);
   } finally {
-    e.target.classList.remove('chargement');
+    bouton.classList.remove('chargement');
   }
   if (!jeux.length) return toast('Aucun nouveau jeu trouvé : tous tes jeux sont déjà dans la liste.');
   const ok = await confirmer(
@@ -908,7 +1182,8 @@ $('#btn-jeux-detecter').addEventListener('click', async (e) => {
   if (!ok) return;
   const choisis = jeux.filter((_, i) => document.querySelector(`[data-jeu="${i}"]`)?.checked);
   await ajouterJeux(choisis);
-  toast(`${choisis.length} jeu${choisis.length > 1 ? 'x' : ''} ajouté${choisis.length > 1 ? 's' : ''} au boost automatique.`);
+  toast(`${choisis.length} jeu${choisis.length > 1 ? 'x' : ''} ajouté${choisis.length > 1 ? 's' : ''}. Clique sur l'éclair pour les optimiser.`);
+  chargerVignettes(true);
 });
 
 /** Une fois par semaine, à l'ouverture : les jeux installés depuis sont ajoutés tout seuls */
@@ -2432,7 +2707,7 @@ $('#btn-importer').addEventListener('click', async () => {
 $('#btn-tout-remettre').addEventListener('click', async (e) => {
   const ok = await confirmer(
     'Tout remettre comme avant',
-    "<p>Toutes les optimisations, l'overclocking, le DNS et les réglages des jeux vont reprendre leur valeur d'origine. Le boost pendant les parties reste actif (tu peux le couper dans « Boost par jeu »).</p>",
+    "<p>Toutes les optimisations, l'overclocking, le DNS et les réglages des jeux vont reprendre leur valeur d'origine. Le boost pendant les parties reste actif (tu peux le couper dans « Mes jeux »).</p>",
     'Tout remettre'
   );
   if (!ok) return;
@@ -2489,7 +2764,7 @@ const ETAPES_ASSISTANT = [
   {
     html: () => `<h2 id="assistant-titre">Quelle interface ?</h2>
       <div class="choix-cartes">
-        ${choix('simple', true, 'Simple (conseillé)', 'Juste l\'essentiel : accueil, optimisations, nettoyage, boost par jeu et statistiques.')}
+        ${choix('simple', true, 'Simple (conseillé)', 'Juste l\'essentiel : accueil, optimisations, nettoyage, mes jeux et statistiques.')}
         ${choix('simple', false, 'Complète', 'Tous les outils : tests, benchmark, pilotes, écrans et overclocking.')}
       </div>
       <p class="discret petit-texte">Tu pourras changer à tout moment en bas du menu.</p>`,

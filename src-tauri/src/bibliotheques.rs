@@ -14,6 +14,37 @@ pub struct JeuTrouve {
     pub exes: Vec<String>,
     pub source: &'static str,
     pub dossier: String,
+    /// Identifiant Steam (jaquette dans le cache de Steam ou sur son CDN)
+    #[serde(skip)]
+    pub steam: Option<u32>,
+    /// Identifiant du catalogue Epic (jaquette dans le cache du launcher)
+    #[serde(skip)]
+    pub epic: Option<String>,
+    /// Icône .ico déclarée par le désinstalleur (jeux Riot…)
+    #[serde(skip)]
+    pub icone: Option<String>,
+}
+
+impl JeuTrouve {
+    pub(crate) fn nouveau(nom: String, exes: Vec<String>, source: &'static str, dossier: String) -> Self {
+        Self { nom, exes, source, dossier, steam: None, epic: None, icone: None }
+    }
+}
+
+/// Exécutables du jeu, ou rien quand on veut seulement la liste (pas de parcours des dossiers)
+fn exes_si(avec: bool, dossier: &Path) -> Vec<String> {
+    if avec {
+        exes_du_jeu(dossier)
+    } else {
+        vec![]
+    }
+}
+
+/// Dossier d'installation de Steam
+pub fn steam_racine() -> Option<PathBuf> {
+    let cle = RegKey::predef(HKEY_CURRENT_USER).open_subkey_with_flags(r"Software\Valve\Steam", KEY_READ).ok()?;
+    let racine: String = cle.get_value("SteamPath").ok()?;
+    Some(PathBuf::from(racine.replace('/', "\\")))
 }
 
 /// Programmes qui ne sont pas le jeu lui-même (installeurs, anti-triches, lanceurs, rapports de plantage…)
@@ -90,10 +121,8 @@ fn paires_vdf(texte: &str) -> Vec<(String, String)> {
         .collect()
 }
 
-fn steam() -> Vec<JeuTrouve> {
-    let Ok(cle) = RegKey::predef(HKEY_CURRENT_USER).open_subkey_with_flags(r"Software\Valve\Steam", KEY_READ) else { return vec![] };
-    let Ok(racine) = cle.get_value::<String, _>("SteamPath") else { return vec![] };
-    let racine = PathBuf::from(racine.replace('/', "\\"));
+fn steam(avec_exes: bool) -> Vec<JeuTrouve> {
+    let Some(racine) = steam_racine() else { return vec![] };
     let mut bibliotheques = vec![racine.clone()];
     if let Ok(t) = fs::read_to_string(racine.join(r"steamapps\libraryfolders.vdf")) {
         bibliotheques.extend(paires_vdf(&t).into_iter().filter(|(k, _)| k == "path").map(|(_, v)| PathBuf::from(v)));
@@ -124,13 +153,15 @@ fn steam() -> Vec<JeuTrouve> {
                 continue;
             }
             let chemin = apps.join("common").join(&dossier);
-            jeux.push(JeuTrouve { exes: exes_du_jeu(&chemin), nom, source: "Steam", dossier: chemin.to_string_lossy().into() });
+            let mut j = JeuTrouve::nouveau(nom, exes_si(avec_exes, &chemin), "Steam", chemin.to_string_lossy().into());
+            j.steam = val("appid").and_then(|a| a.parse().ok());
+            jeux.push(j);
         }
     }
     jeux
 }
 
-fn epic() -> Vec<JeuTrouve> {
+fn epic(avec_exes: bool) -> Vec<JeuTrouve> {
     let dossier = Path::new(&std::env::var("ProgramData").unwrap_or_else(|_| r"C:\ProgramData".into())).join(r"Epic\EpicGamesLauncher\Data\Manifests");
     let Ok(entrees) = fs::read_dir(dossier) else { return vec![] };
     entrees
@@ -144,14 +175,16 @@ fn epic() -> Vec<JeuTrouve> {
             let nom = v["DisplayName"].as_str()?.to_string();
             let dossier = v["InstallLocation"].as_str()?.to_string();
             let lance = v["LaunchExecutable"].as_str().unwrap_or("");
-            let mut exes = exes_du_jeu(Path::new(&dossier));
+            let mut exes = exes_si(avec_exes, Path::new(&dossier));
             // L'exe déclaré par Epic passe en premier
             if let Some(n) = Path::new(lance).file_name().map(|n| n.to_string_lossy().to_string()).filter(|n| n.to_lowercase().ends_with(".exe")) {
                 exes.retain(|e| !e.eq_ignore_ascii_case(&n));
                 exes.insert(0, n);
                 exes.truncate(3);
             }
-            Some(JeuTrouve { nom, exes, source: "Epic Games", dossier })
+            let mut j = JeuTrouve::nouveau(nom, exes, "Epic Games", dossier);
+            j.epic = v["CatalogItemId"].as_str().map(String::from);
+            Some(j)
         })
         .collect()
 }
@@ -161,38 +194,38 @@ fn sous_cles(ruche: &RegKey, chemin: &str) -> Vec<RegKey> {
     cle.enum_keys().flatten().filter_map(|k| cle.open_subkey_with_flags(k, KEY_READ).ok()).collect()
 }
 
-fn gog() -> Vec<JeuTrouve> {
+fn gog(avec_exes: bool) -> Vec<JeuTrouve> {
     sous_cles(&RegKey::predef(HKEY_LOCAL_MACHINE), r"SOFTWARE\WOW6432Node\GOG.com\Games")
         .into_iter()
         .filter_map(|c| {
             let nom: String = c.get_value("gameName").ok()?;
             let dossier: String = c.get_value("path").ok()?;
             let exe: String = c.get_value("exe").unwrap_or_default();
-            let mut exes = exes_du_jeu(Path::new(&dossier));
+            let mut exes = exes_si(avec_exes, Path::new(&dossier));
             if let Some(n) = Path::new(&exe).file_name().map(|n| n.to_string_lossy().to_string()) {
                 exes.retain(|e| !e.eq_ignore_ascii_case(&n));
                 exes.insert(0, n);
                 exes.truncate(3);
             }
-            Some(JeuTrouve { nom, exes, source: "GOG", dossier })
+            Some(JeuTrouve::nouveau(nom, exes, "GOG", dossier))
         })
         .collect()
 }
 
-fn ubisoft() -> Vec<JeuTrouve> {
+fn ubisoft(avec_exes: bool) -> Vec<JeuTrouve> {
     sous_cles(&RegKey::predef(HKEY_LOCAL_MACHINE), r"SOFTWARE\WOW6432Node\Ubisoft\Launcher\Installs")
         .into_iter()
         .filter_map(|c| {
             let dossier: String = c.get_value("InstallDir").ok()?;
             let chemin = PathBuf::from(dossier.replace('/', "\\"));
             let nom = chemin.file_name()?.to_string_lossy().to_string();
-            Some(JeuTrouve { exes: exes_du_jeu(&chemin), nom, source: "Ubisoft Connect", dossier: chemin.to_string_lossy().into() })
+            Some(JeuTrouve::nouveau(nom, exes_si(avec_exes, &chemin), "Ubisoft Connect", chemin.to_string_lossy().into()))
         })
         .collect()
 }
 
 /// Jeux des autres éditeurs, retrouvés par leur désinstalleur Windows
-fn desinstalleurs() -> Vec<JeuTrouve> {
+fn desinstalleurs(avec_exes: bool) -> Vec<JeuTrouve> {
     const EDITEURS: [(&str, &str); 5] = [
         ("blizzard entertainment", "Battle.net"),
         ("electronic arts", "EA app"),
@@ -219,20 +252,35 @@ fn desinstalleurs() -> Vec<JeuTrouve> {
             if dossier.is_empty() {
                 continue;
             }
-            jeux.push(JeuTrouve { exes: exes_du_jeu(Path::new(&dossier)), nom, source, dossier });
+            // « "C:\…\jeu.ico",0 » → chemin de l'icône
+            let icone = c
+                .get_value::<String, _>("DisplayIcon")
+                .ok()
+                .map(|i| i.split(',').next().unwrap_or("").trim().trim_matches('"').to_string())
+                .filter(|i| i.to_lowercase().ends_with(".ico"));
+            let mut j = JeuTrouve::nouveau(nom, exes_si(avec_exes, Path::new(&dossier)), source, dossier);
+            j.icone = icone;
+            jeux.push(j);
         }
     }
     jeux
 }
 
-/// Tous les jeux installés avec au moins un exécutable trouvé, sans doublons
-pub fn chercher() -> Vec<JeuTrouve> {
+/// Jeux de toutes les bibliothèques, sans doublons. Sans `avec_exes`, rien n'est parcouru sur le disque (rapide).
+pub fn sources(avec_exes: bool) -> Vec<JeuTrouve> {
     let mut tous = Vec::new();
     for f in [steam, epic, gog, ubisoft, desinstalleurs] {
-        tous.extend(f());
+        tous.extend(f(avec_exes));
     }
     let mut vus = HashSet::new();
-    tous.retain(|j| !j.exes.is_empty() && vus.insert(j.dossier.to_lowercase()));
+    tous.retain(|j| vus.insert(j.dossier.to_lowercase()));
+    tous
+}
+
+/// Tous les jeux installés avec au moins un exécutable trouvé, sans doublons
+pub fn chercher() -> Vec<JeuTrouve> {
+    let mut tous = sources(true);
+    tous.retain(|j| !j.exes.is_empty());
     tous.sort_by_key(|j| j.nom.to_lowercase());
     tous
 }

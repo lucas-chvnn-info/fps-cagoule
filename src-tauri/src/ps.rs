@@ -14,7 +14,7 @@ function Lire($chemin, $nom) {
 }
 "#;
 
-fn base64(octets: &[u8]) -> String {
+pub fn base64(octets: &[u8]) -> String {
     const T: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut s = String::with_capacity(octets.len().div_ceil(3) * 4);
     for bloc in octets.chunks(3) {
