@@ -2825,6 +2825,7 @@ $('#clips-kills').addEventListener('click', (e) => {
 // Dossier des clips : chemin tapé ou collé (\\serveur\partage), ou choisi avec Parcourir
 function editerDossier(ouvrir) {
   $('#clips-dossier-edition').hidden = !ouvrir;
+  $('#clips-connexion').hidden = true;
   $('.clips-dossier').hidden = ouvrir;
   if (ouvrir) {
     const saisie = $('#clips-dossier-saisie');
@@ -2833,19 +2834,42 @@ function editerDossier(ouvrir) {
     saisie.select();
   }
 }
-async function validerDossier(bouton) {
+async function validerDossier(bouton, connexion = false) {
   const dossier = $('#clips-dossier-saisie').value.trim().replace(/^"|"$/g, '');
   if (!dossier) return;
+  const args = { dossier, identifiant: null, motDePasse: null };
+  if (connexion) {
+    args.identifiant = $('#clips-identifiant').value.trim();
+    args.motDePasse = $('#clips-mdp').value;
+    if (!args.identifiant) return $('#clips-identifiant').focus();
+  }
+  bouton?.classList.add('chargement');
   try {
-    await appel('clips_dossier_regler', { dossier }, bouton);
-    reglages.clips_dossier = dossier;
-    toast(`Les clips iront dans ${dossier}`, 5000);
+    const garde = await invoke('clips_dossier_regler', args);
+    reglages.clips_dossier = garde;
+    $('#clips-mdp').value = '';
+    $('#clips-connexion').hidden = true;
+    toast(`Les clips iront dans ${garde}`, 5000);
     editerDossier(false);
     chargerClips();
-  } catch {}
+  } catch (e) {
+    const msg = String(e);
+    if (msg.startsWith('connexion:')) {
+      // Le serveur veut un identifiant : on le demande une fois, Windows le retient ensuite
+      $('#clips-dossier-saisie').value = msg.slice('connexion:'.length);
+      $('#clips-connexion').hidden = false;
+      $('#clips-identifiant').focus();
+    } else toast(`Erreur : ${msg}`, 7000);
+  } finally {
+    bouton?.classList.remove('chargement');
+  }
 }
 $('#btn-clips-changer').addEventListener('click', () => editerDossier(true));
 $('#btn-clips-annuler-dossier').addEventListener('click', () => editerDossier(false));
+$('#btn-clips-connexion').addEventListener('click', (e) => validerDossier(e.currentTarget, true));
+['#clips-identifiant', '#clips-mdp'].forEach((id) =>
+  $(id).addEventListener('keydown', (e) => e.key === 'Enter' && validerDossier($('#btn-clips-connexion'), true))
+);
 $('#btn-clips-valider').addEventListener('click', (e) => validerDossier(e.currentTarget));
 $('#clips-dossier-saisie').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') validerDossier($('#btn-clips-valider'));

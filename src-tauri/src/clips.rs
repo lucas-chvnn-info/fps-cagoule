@@ -38,7 +38,7 @@ pub fn installe(stock: &Stockage) -> bool {
 
 /// Dossier des clips choisi par l'utilisateur, sinon Vidéos\FPS Cagoule
 pub fn dossier_clips(stock: &Stockage) -> PathBuf {
-    stock.donnees.lock().unwrap().reglages.clips_dossier.clone().filter(|d| !d.trim().is_empty()).map(PathBuf::from).unwrap_or_else(dossier_defaut)
+    stock.donnees.lock().unwrap().reglages.clips_dossier.clone().filter(|d| !d.trim().is_empty()).map(|d| PathBuf::from(crate::partage::resoudre(&d))).unwrap_or_else(dossier_defaut)
 }
 
 /// Dossiers où chercher les clips : celui choisi et Vidéos\FPS Cagoule (clips d'avant un changement, ou de secours)
@@ -53,10 +53,16 @@ pub fn dossiers_clips(stock: &Stockage) -> Vec<PathBuf> {
 
 /// Le dossier accepte l'écriture (dossier réseau joignable…)
 pub fn accessible(dossier: &Path) -> bool {
+    essai_ecriture(dossier).is_ok()
+}
+
+/// Essaie d'écrire un petit fichier dans le dossier (l'erreur de Windows dit pourquoi ça échoue)
+pub fn essai_ecriture(dossier: &Path) -> std::io::Result<()> {
     let essai = dossier.join(".fps-cagoule-essai");
-    let ok = fs::create_dir_all(dossier).is_ok() && fs::write(&essai, b"ok").is_ok();
+    fs::create_dir_all(dossier)?;
+    let r = fs::write(&essai, b"ok");
     let _ = fs::remove_file(essai);
-    ok
+    r
 }
 
 /// Fenêtre Windows de choix d'un dossier, avec un champ où taper un chemin réseau (\\serveur\partage),

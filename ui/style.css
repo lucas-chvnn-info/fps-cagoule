@@ -1097,3 +1097,14 @@ kbd { font: 600 12px/1 inherit; padding: 3px 7px; border-radius: 6px; background
 .clip-pied small { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .clips-dossier-edition { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .clips-dossier-edition input { flex: 1; min-width: 260px; font-family: Consolas, monospace; font-size: 13px; }
+
+/* Identifiants du serveur des clips (demandés une seule fois) */
+.clips-connexion {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 10px;
+  padding: 10px 12px; border-radius: 12px; border: 1px solid rgba(80, 160, 255, 0.35);
+  background: rgba(80, 160, 255, 0.07); animation: apparition-connexion 0.25s ease-out;
+}
+.clips-connexion > svg { width: 18px; height: 18px; fill: none; stroke: #6cb4ff; stroke-width: 2; stroke-linecap: round; }
+.clips-connexion > span { font-size: 13px; opacity: 0.85; margin-right: 4px; }
+.clips-connexion input { flex: 1; min-width: 140px; }
+@keyframes apparition-connexion { from { opacity: 0; transform: translateY(-4px); } }

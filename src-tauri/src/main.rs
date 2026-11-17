@@ -22,6 +22,7 @@ mod jeux;
 mod jeux_config;
 mod nettoyage;
 mod nvidia;
+mod partage;
 mod pilotes;
 mod maj;
 mod programmes;
@@ -495,23 +496,34 @@ fn clips_parcourir(app: AppHandle) -> Option<String> {
     clips::choisir_dossier(fenetre)
 }
 
-/// Dossier des clips (None = Vidéos\FPS Cagoule)
+/// Dossier des clips (None = Vidéos\FPS Cagoule). Z:\… devient \\serveur\partage\… (lecteurs réseau invisibles
+/// pour une appli administrateur). Avec identifiant/mot de passe : connexion au serveur avant l'essai.
+/// Renvoie le chemin gardé. Erreur commençant par « connexion: » = le serveur demande un identifiant.
 #[tauri::command(async)]
-fn clips_dossier_regler(app: AppHandle, dossier: Option<String>) -> Res<()> {
+fn clips_dossier_regler(app: AppHandle, dossier: Option<String>, identifiant: Option<String>, mot_de_passe: Option<String>) -> Res<Option<String>> {
+    let dossier = dossier.map(|d| partage::resoudre(d.trim()));
     if let Some(d) = &dossier {
-        if !clips::accessible(std::path::Path::new(d)) {
-            return Err(if d.starts_with(r"\\") {
-                "Windows n'arrive pas à écrire sur ce serveur. Vérifie le chemin, puis ouvre-le une fois dans l'Explorateur pour enregistrer ton identifiant.".into()
-            } else {
-                "Impossible d'écrire dans ce dossier. Choisis-en un autre.".into()
+        if partage::lecteur_inconnu(d) {
+            return Err("FPS Cagoule ne voit pas ce lecteur. Tape plutôt le chemin du serveur, par exemple \\\\192.168.1.204\\fichiers\\Clips".into());
+        }
+        let reseau = partage::racine(d).is_some();
+        if let (true, Some(id)) = (reseau, identifiant.as_deref().filter(|i| !i.trim().is_empty())) {
+            partage::connecter(d, id.trim(), mot_de_passe.as_deref().unwrap_or(""))?;
+        }
+        if let Err(e) = clips::essai_ecriture(std::path::Path::new(d)) {
+            return Err(match (reseau, e.raw_os_error()) {
+                (true, Some(53 | 67 | 1231 | 1222)) => "Serveur injoignable : vérifie qu'il est allumé et le chemin.".into(),
+                (true, _) if identifiant.is_none() => format!("connexion:{d}"),
+                (true, _) => "Connecté au serveur, mais ce compte n'a pas le droit d'écrire dans ce dossier.".into(),
+                _ => "Impossible d'écrire dans ce dossier. Choisis-en un autre.".into(),
             });
         }
     }
     let e = etat(&app);
-    e.stock.donnees.lock().unwrap().reglages.clips_dossier = dossier;
+    e.stock.donnees.lock().unwrap().reglages.clips_dossier = dossier.clone();
     e.stock.sauver();
     autoriser_dossiers_clips(&app);
-    Ok(())
+    Ok(dossier)
 }
 
 #[derive(Serialize, Clone)]
