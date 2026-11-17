@@ -446,7 +446,11 @@ pub fn liste(stock: &Stockage) -> Vec<TweakEtat> {
                 }
             };
             let attente = attentes.get(&t.id).map(|e| if e.annulation { "annulation" } else { "activation" });
-            TweakEtat { tweak: t.clone(), actif, annulable: sauvegardes.contains_key(&t.id), disponible, attente }
+            let annulable = sauvegardes.contains_key(&t.id);
+            // Réglages d'alimentation retirés de l'app (sans effet sur beaucoup de PC en veille moderne) :
+            // plus proposés, mais ceux déjà appliqués restent annulables par « Tout annuler »
+            let disponible = disponible && (t.categorie != "alimentation" || annulable);
+            TweakEtat { tweak: t.clone(), actif, annulable, disponible, attente }
         })
         .collect()
 }

@@ -33,12 +33,6 @@ test('les problèmes graves passent en premier et baissent le score', () => {
   assert.equal(problemes[2].correctif, 'mode-jeu');
 });
 
-test('le plan créé par l\'app compte comme Performances élevées', () => {
-  const pc = { ...pcSain, plan: { guid: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee', nom: 'Copie' } };
-  assert.equal(evaluer(pc, { maintenant }).problemes[0].id, 'plan');
-  assert.equal(evaluer(pc, { maintenant, planPerso: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee' }).score, 100);
-});
-
 test('RAM DDR4 sans XMP et disque presque plein', () => {
   const pc = {
     ...pcSain,
@@ -54,19 +48,13 @@ test('une analyse incomplète ne plante pas', () => {
   assert.equal(evaluer({}, { maintenant }).score, 98); // seule la planification GPU inconnue est signalée
 });
 
-test('copie du plan Performances élevées et carte graphique virtuelle ignorées', () => {
+test('carte graphique virtuelle ignorée', () => {
   const pc = {
     ...pcSain,
     plan: { guid: '11111111-2222-3333-4444-555555555555', nom: 'High performance' },
     gpus: [{ nom: 'Microsoft Hyper-V Video', datePilote: '2006-06-21', hz: 60, hzMax: 0 }],
   };
   assert.equal(evaluer(pc, { maintenant }).score, 100);
-});
-
-test('le mode « Meilleures performances » compte comme un plan performances', () => {
-  const pc = { ...pcSain, plan: { guid: '381b4222-f694-41f0-9685-ff5bb260df2e', nom: 'Utilisation normale', mode: 'ded574b5-45a0-4f42-8737-46345c09c238' } };
-  assert.equal(evaluer(pc, { maintenant }).score, 100);
-  assert.equal(evaluer({ ...pc, plan: { ...pc.plan, mode: '' } }, { maintenant }).problemes[0].id, 'plan');
 });
 
 test('analyse complète : msconfig, nettoyage, optimisations, jeux', () => {

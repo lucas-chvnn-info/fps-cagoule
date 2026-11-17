@@ -37,10 +37,29 @@ async function appel(cmd, args, bouton) {
 }
 
 // Navigation
-document.querySelectorAll('nav button').forEach((b) =>
+/** Menu en catégories : une seule ouverte à la fois, celle de la page affichée */
+function ouvrirGroupe(groupe) {
+  document.querySelectorAll('.groupe-nav').forEach((g) => {
+    g.classList.toggle('ouvert', g === groupe);
+    g.querySelector('.nav-groupe').setAttribute('aria-expanded', String(g === groupe));
+  });
+}
+document.querySelectorAll('.nav-groupe').forEach((b) =>
   b.addEventListener('click', () => {
-    document.querySelectorAll('nav button, .page').forEach((e) => e.classList.remove('actif'));
+    const groupe = b.closest('.groupe-nav');
+    if (groupe.classList.contains('ouvert') && !groupe.querySelector('[data-page].actif')) return ouvrirGroupe(null);
+    ouvrirGroupe(groupe);
+    // Ouvrir une catégorie affiche sa première page
+    if (!groupe.querySelector('[data-page].actif')) [...groupe.querySelectorAll('[data-page]')].find((x) => getComputedStyle(x).display !== 'none')?.click();
+  })
+);
+
+document.querySelectorAll('nav button[data-page]').forEach((b) =>
+  b.addEventListener('click', () => {
+    document.querySelectorAll('nav button[data-page], .page').forEach((e) => e.classList.remove('actif'));
     b.classList.add('actif');
+    ouvrirGroupe(b.closest('.groupe-nav'));
+    document.querySelectorAll('.groupe-nav').forEach((g) => g.classList.toggle('contient-actif', g.contains(b)));
     $(`#page-${b.dataset.page}`).classList.add('actif');
     if (b.dataset.page === 'optimisations') {
       chargerTweaks();
@@ -368,7 +387,6 @@ function ligneTweak(t) {
 const CATEGORIES_OPTI = [
   ['windows', 'Windows'],
   ['carte-graphique', 'Carte graphique'],
-  ['alimentation', 'Alimentation'],
   ['arriere-plan', 'Arrière-plan'],
   ['reseau', 'Réseau'],
   ['peripheriques', 'Souris et clavier'],
@@ -2514,7 +2532,7 @@ function appliquerMode() {
   document.body.classList.toggle('simple', simple);
   $('#btn-mode').textContent = simple ? 'Afficher tous les outils' : 'Simplifier le menu';
   $('#btn-mode-reglages').textContent = simple ? 'Passer en mode complet' : 'Passer en mode simple';
-  if (simple && document.querySelector('nav button.actif')?.hasAttribute('data-avance')) allerA('accueil');
+  if (simple && document.querySelector('nav button[data-page].actif')?.hasAttribute('data-avance')) allerA('accueil');
   if (simple && categorieChoisie === 'risque') choisirCategorie('');
 }
 
