@@ -178,6 +178,28 @@ pub struct Enregistreur {
     pub dossier: PathBuf,
     pub jeu: String,
     pub encodeur: Encodeur,
+    /// Horloge commune gardée d'un redémarrage à l'autre : les morceaux restent bout à bout
+    base_us: i64,
+    /// Redémarrages pendant la partie (changement de résolution, plein écran…)
+    pub relances: u32,
+}
+
+impl Enregistreur {
+    /// FFmpeg tourne encore
+    pub fn vivant(&mut self) -> bool {
+        matches!(self.enfant.try_wait(), Ok(None))
+    }
+
+    /// Relance FFmpeg après un arrêt (la capture d'écran s'arrête quand la résolution change)
+    pub fn relancer(&mut self, stock: &Stockage) -> Result<(), String> {
+        let _ = self.enfant.kill();
+        let _ = self.enfant.wait();
+        self.relances += 1;
+        let (enfant, son) = lancer_ffmpeg(stock, self.encodeur, &self.dossier, self.base_us)?;
+        self.enfant = enfant;
+        self._son = son;
+        Ok(())
+    }
 }
 
 impl Drop for Enregistreur {
@@ -188,9 +210,8 @@ impl Drop for Enregistreur {
     }
 }
 
-fn lancer_ffmpeg(stock: &Stockage, encodeur: Encodeur, dossier: &Path) -> Result<(Child, Option<crate::audio::Capture>), String> {
+fn lancer_ffmpeg(stock: &Stockage, encodeur: Encodeur, dossier: &Path, base_us: i64) -> Result<(Child, Option<crate::audio::Capture>), String> {
     let son = crate::audio::ouvrir().ok();
-    let base_us = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_micros() as i64);
     let args = arguments(ECRAN, son.as_ref().map(|(f, _)| *f), encodeur, base_us, dossier);
     let mut enfant = Command::new(ffmpeg(stock))
         .args(&args)
@@ -229,9 +250,10 @@ pub fn demarrer(stock: &Stockage, jeu: &str) -> Result<Enregistreur, String> {
     let _ = fs::remove_dir_all(&dossier);
     fs::create_dir_all(&dossier).map_err(|e| e.to_string())?;
     let mut erreurs = Vec::new();
+    let base_us = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_micros() as i64);
     for encodeur in [encodeur_conseille(), Encodeur::Logiciel] {
-        match lancer_ffmpeg(stock, encodeur, &dossier) {
-            Ok((enfant, son)) => return Ok(Enregistreur { enfant, _son: son, dossier, jeu: jeu.into(), encodeur }),
+        match lancer_ffmpeg(stock, encodeur, &dossier, base_us) {
+            Ok((enfant, son)) => return Ok(Enregistreur { enfant, _son: son, dossier, jeu: jeu.into(), encodeur, base_us, relances: 0 }),
             Err(e) => erreurs.push(e),
         }
         if encodeur == Encodeur::Logiciel {

@@ -98,6 +98,7 @@ fn verifier(app: &AppHandle) -> bool {
             entretenir_memoire(&etat);
             suivre_temperature(app, &etat);
             maj_discord(&etat);
+            surveiller_clips(app, &etat, pid);
             abaisser_fond(&etat, &procs);
             true
         }
@@ -247,9 +248,6 @@ fn demarrer(app: &AppHandle, etat: &Etat, profil: &crate::config::Profil, pid: u
         presence: None,
         enregistreur: None,
     });
-    if reglages.clips && crate::clips::installe(&etat.stock) {
-        demarrer_clips(app, pid, &profil.nom);
-    }
     if reglages.discord {
         demarrer_discord(etat, profil, boost);
     }
@@ -290,6 +288,10 @@ fn demarrer(app: &AppHandle, etat: &Etat, profil: &crate::config::Profil, pid: u
     }
     if reglages.overlay && reglages.mesure_fps {
         crate::fenetres::ouvrir_overlay(app);
+    }
+    // Après le changement de résolution du jeu : la capture démarre sur le bon mode d'écran
+    if reglages.clips && crate::clips::installe(&etat.stock) {
+        demarrer_clips(app, pid, &profil.nom);
     }
     crate::fenetres::infobulle(app, &format!("FPS Cagoule : {}{}", profil.nom, if boost { " boosté" } else { "" }));
     let _ = app.emit("jeu", etat.info_jeu());
@@ -366,6 +368,39 @@ fn demarrer_clips(app: &AppHandle, pid: u32, jeu: &str) {
             }
             (Some(s), Err(e)) if s.pid == pid => s.actions.push(e),
             _ => {}
+        }
+    });
+}
+
+/// L'enregistrement s'est arrêté (le jeu a changé la résolution ou passé en plein écran) : on le relance
+/// en arrière-plan, 8 fois au plus par partie
+fn surveiller_clips(app: &AppHandle, etat: &Etat, pid: u32) {
+    let mort = {
+        let mut session = etat.session.lock().unwrap();
+        match session.as_mut() {
+            Some(s) => {
+                let arrete = s.enregistreur.as_mut().is_some_and(|e| !e.vivant() && e.relances < 8);
+                if arrete {
+                    s.enregistreur.take()
+                } else {
+                    None
+                }
+            }
+            None => None,
+        }
+    };
+    let Some(mut enregistreur) = mort else { return };
+    let app = app.clone();
+    let _ = thread::Builder::new().name("clips".into()).spawn(move || {
+        let etat = app.state::<Arc<Etat>>();
+        let r = enregistreur.relancer(&etat.stock);
+        let mut session = etat.session.lock().unwrap();
+        if let Some(s) = session.as_mut().filter(|s| s.pid == pid) {
+            if r.is_err() && enregistreur.relances >= 8 {
+                s.actions.push("Clips : l'enregistrement n'a pas pu reprendre".into());
+            }
+            // Même raté, il est remis en place : la surveillance réessaiera au prochain passage
+            s.enregistreur = Some(enregistreur);
         }
     });
 }

@@ -38,6 +38,8 @@ The app only connects to the network for these user-visible features:
   then kept in `%APPDATA%\FPS Cagoule\images`. Only the game name is sent.
 - **Discord status** (optional, Settings): during a game, the app talks to the Discord app running on the same PC through its local
   connection (no internet request from FPS Cagoule) to show the game name and FPS on the user's profile.
+- **Clips** (off by default): when the user turns clip recording on, FFmpeg 9.0.2 is downloaded once from
+  `github.com/GyanD/codexffmpeg` and its SHA-256 checked. Recording only runs during games; clips stay in the user's `Videos\FPS Cagoule` folder.
 - **Play button**: opens the game through its launcher (Steam, Epic, Ubisoft Connect, Riot Client) like a desktop shortcut.
   Switching Steam accounts only edits Steam's own local files (`loginusers.vdf`, auto-login registry value) on the user's PC.
 

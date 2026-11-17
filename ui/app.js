@@ -3314,9 +3314,13 @@ const ICONES_NOUVEAUTES = {
   chaud: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 14.5V5a2 2 0 1 1 4 0v9.5a4 4 0 1 1-4 0z"/><path d="M12 9v7"/></svg>',
   discord: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7.5c3-1.5 7-1.5 10 0l1.5 9c-1.5 1.3-3 2-4.5 2l-.8-1.6M7 7.5 5.5 16.5c1.5 1.3 3 2 4.5 2l.8-1.6M8.5 15c2.3 1 4.7 1 7 0"/><circle cx="9.5" cy="12" r="1"/><circle cx="14.5" cy="12" r="1"/></svg>',
   reglages: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>',
+  clips: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10.5l5-3v9l-5-3z"/></svg>',
 };
 
 const NOUVEAUTES = {
+  '0.25.0': [
+    { icone: 'clips', titre: 'Tes clips, comme Medal', texte: 'Jeux → Clips : active l\'enregistrement, choisis ta touche et la durée. En jeu, elle garde les 30 s, 1 min ou 3 min d\'avant.' },
+  ],
   '0.24.0': [
     { icone: 'jouer', titre: 'Lance tes jeux depuis l\'app', texte: 'Bouton « Jouer » sur chaque jeu. Plusieurs comptes Steam ? Choisis lequel avant de lancer.' },
     { icone: 'courbe', titre: 'La courbe de tes FPS', texte: 'Dans Statistiques, vois chaque partie seconde par seconde et repère les chutes.' },
