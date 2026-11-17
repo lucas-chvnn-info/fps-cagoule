@@ -110,12 +110,67 @@ fn lire(v: &Valeur) -> Option<Value> {
 }
 
 fn ecrire(v: &Valeur, valeur: &Value) -> Result<(), String> {
-    let (cle, _) = ruche(v).create_subkey(&v.chemin).map_err(|e| format!("{} : {e}", v.chemin))?;
-    let r = match v.type_.as_str() {
-        "dword" => cle.set_value(&v.nom, &(valeur.as_u64().unwrap_or(0) as u32)),
-        _ => cle.set_value(&v.nom, &valeur.as_str().map(str::to_string).unwrap_or_else(|| valeur.to_string())),
+    let r = (|| {
+        let (cle, _) = ruche(v).create_subkey(&v.chemin).map_err(|e| format!("{} : {e}", v.chemin))?;
+        match v.type_.as_str() {
+            "dword" => cle.set_value(&v.nom, &(valeur.as_u64().unwrap_or(0) as u32)),
+            _ => cle.set_value(&v.nom, &valeur.as_str().map(str::to_string).unwrap_or_else(|| valeur.to_string())),
+        }
+        .map_err(|e| format!("{} : {e}", v.nom))
+    })();
+    // Démarrage d'un service dont Windows protège la clé (accès refusé même en administrateur) :
+    // on passe par le gestionnaire des services, qui a le droit de la modifier
+    match (r, service_de(v)) {
+        (Err(e), Some(service)) => demarrage_service(service, valeur.as_u64().unwrap_or(3) as u32).map_err(|e2| format!("{e} ; {e2}")),
+        (r, _) => r,
+    }
+}
+
+/// Nom du service quand la valeur est son mode de démarrage (Services\<nom>\Start)
+fn service_de(v: &Valeur) -> Option<&str> {
+    let nom = v.chemin.strip_prefix(r"SYSTEM\CurrentControlSet\Services\")?;
+    (v.ruche == "HKLM" && v.nom.eq_ignore_ascii_case("Start") && !nom.contains('\\')).then_some(nom)
+}
+
+/// Change le démarrage d'un service (2 automatique, 3 manuel, 4 désactivé) par le gestionnaire des services
+fn demarrage_service(nom: &str, demarrage: u32) -> Result<(), String> {
+    use windows_sys::Win32::System::Services::{
+        ChangeServiceConfigW, CloseServiceHandle, OpenSCManagerW, OpenServiceW, SC_MANAGER_CONNECT, SERVICE_CHANGE_CONFIG, SERVICE_NO_CHANGE,
     };
-    r.map_err(|e| format!("{} : {e}", v.nom))
+    let large: Vec<u16> = nom.encode_utf16().chain(std::iter::once(0)).collect();
+    unsafe {
+        let scm = OpenSCManagerW(std::ptr::null(), std::ptr::null(), SC_MANAGER_CONNECT);
+        if scm.is_null() {
+            return Err(format!("Gestionnaire des services inaccessible ({})", std::io::Error::last_os_error()));
+        }
+        let service = OpenServiceW(scm, large.as_ptr(), SERVICE_CHANGE_CONFIG);
+        let r = if service.is_null() {
+            Err(format!("Service {nom} : {}", std::io::Error::last_os_error()))
+        } else {
+            let ok = ChangeServiceConfigW(
+                service,
+                SERVICE_NO_CHANGE,
+                demarrage,
+                SERVICE_NO_CHANGE,
+                std::ptr::null(),
+                std::ptr::null(),
+                std::ptr::null_mut(),
+                std::ptr::null(),
+                std::ptr::null(),
+                std::ptr::null(),
+                std::ptr::null(),
+            ) != 0;
+            let erreur = std::io::Error::last_os_error();
+            CloseServiceHandle(service);
+            if ok {
+                Ok(())
+            } else {
+                Err(format!("Service {nom} : {erreur}"))
+            }
+        };
+        CloseServiceHandle(scm);
+        r
+    }
 }
 
 fn effacer(v: &Valeur) {
@@ -737,4 +792,29 @@ Register-ScheduledTask -TaskName {} -Action $a -Trigger $t -Settings $s -Princip
 
 pub fn demarrage_auto_actif() -> bool {
     systeme::executer("schtasks", &["/Query", "/TN", TACHE]).is_ok_and(|s| s.status.success())
+}
+
+#[cfg(test)]
+mod tests_services {
+    use super::*;
+
+    fn valeur(chemin: &str, nom: &str) -> Valeur {
+        serde_json::from_value(json!({ "ruche": "HKLM", "chemin": chemin, "nom": nom, "type": "dword", "valeur": 4 })).unwrap()
+    }
+
+    #[test]
+    fn reconnait_les_services() {
+        assert_eq!(service_de(&valeur(r"SYSTEM\CurrentControlSet\Services\TrkWks", "Start")), Some("TrkWks"));
+        assert_eq!(service_de(&valeur(r"SYSTEM\CurrentControlSet\Services\Tcpip\Parameters", "Start")), None);
+        assert_eq!(service_de(&valeur(r"SOFTWARE\Microsoft", "Start")), None);
+    }
+
+    /// Vrai gestionnaire des services (PC Windows de GitHub, administrateur) : on redonne à TrkWks son démarrage actuel
+    #[test]
+    fn gestionnaire_des_services() {
+        let v = valeur(r"SYSTEM\CurrentControlSet\Services\TrkWks", "Start");
+        let Some(actuel) = lire(&v).and_then(|x| x.as_u64()) else { return };
+        demarrage_service("TrkWks", actuel as u32).expect("gestionnaire des services");
+        assert_eq!(lire(&v).and_then(|x| x.as_u64()), Some(actuel));
+    }
 }
