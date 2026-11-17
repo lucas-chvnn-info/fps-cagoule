@@ -32,6 +32,32 @@ pub fn calculer(temps: &[f32]) -> Option<Stats> {
     })
 }
 
+/// FPS moyen par tranche de temps (une seconde au moins), au plus `points` valeurs : la courbe d'une partie.
+/// Renvoie aussi la durée d'une tranche en secondes.
+pub fn courbe(temps: &[f32], points: usize) -> (Vec<u16>, f32) {
+    let temps: Vec<f64> = temps.iter().map(|&t| t as f64).filter(|t| *t > 0.0 && t.is_finite()).collect();
+    let total: f64 = temps.iter().sum();
+    if temps.len() < 10 || points == 0 {
+        return (vec![], 0.0);
+    }
+    let pas = (total / points as f64).max(1000.0);
+    let mut sortie = Vec::new();
+    let (mut ms, mut n) = (0.0, 0u32);
+    for t in temps {
+        ms += t;
+        n += 1;
+        if ms >= pas {
+            sortie.push((n as f64 * 1000.0 / ms).round().min(u16::MAX as f64) as u16);
+            (ms, n) = (0.0, 0);
+        }
+    }
+    // Dernière tranche gardée si elle couvre au moins la moitié d'une tranche
+    if ms >= pas / 2.0 {
+        sortie.push((n as f64 * 1000.0 / ms).round().min(u16::MAX as f64) as u16);
+    }
+    (sortie, (pas / 1000.0) as f32)
+}
+
 /// Lecture du CSV de PresentMon, ligne par ligne.
 pub struct LecteurCsv {
     col_app: usize,
@@ -118,6 +144,21 @@ pub fn resumer_ping(mesures: &[Option<u32>]) -> Option<ResumePing> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn courbe_par_seconde_et_par_tranche() {
+        // 10 s à 100 FPS puis 10 s à 50 FPS
+        let mut t = vec![10.0f32; 1000];
+        t.extend(vec![20.0f32; 500]);
+        let (c, pas) = courbe(&t, 300);
+        assert_eq!(pas, 1.0);
+        assert_eq!(c.len(), 20);
+        assert_eq!((c[0], c[19]), (100, 50));
+        // Partie longue : 300 points au plus
+        let (c, pas) = courbe(&vec![10.0f32; 360_000], 300);
+        assert!(c.len() <= 300 && pas == 12.0, "{} points, pas {pas}", c.len());
+        assert!(courbe(&[16.0; 5], 300).0.is_empty());
+    }
 
     #[test]
     fn fps_constant() {

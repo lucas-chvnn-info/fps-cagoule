@@ -33,6 +33,8 @@ pub struct EnCours {
     abaisses: Vec<(u32, u32)>,
     /// Pids déjà vus (abaissés ou laissés tels quels), pour ne pas les retraiter toutes les 3 s
     vus: Vec<u32>,
+    /// Statut Discord de la partie (effacé quand il est lâché)
+    presence: Option<crate::discord::Presence>,
 }
 
 pub struct Etat {
@@ -91,6 +93,7 @@ fn verifier(app: &AppHandle) -> bool {
             }
             entretenir_memoire(&etat);
             suivre_temperature(app, &etat);
+            maj_discord(&etat);
             abaisser_fond(&etat, &procs);
             true
         }
@@ -237,7 +240,11 @@ fn demarrer(app: &AppHandle, etat: &Etat, profil: &crate::config::Profil, pid: u
         oc_actif,
         abaisses: Vec::new(),
         vus: Vec::new(),
+        presence: None,
     });
+    if reglages.discord {
+        demarrer_discord(etat, profil, boost);
+    }
     abaisser_fond(etat, procs);
     // Partie jouée avec l'overclocking : marque effacée à la fin de la partie (voir oc_au_demarrage)
     if oc_actif {
@@ -307,8 +314,9 @@ pub fn terminer(app: &AppHandle, etat: &Etat) {
     if let Some(capture) = s.capture {
         let acc = capture.terminer();
         if let Some(st) = stats::calculer(acc.principale()) {
+            let (courbe, pas_s) = stats::courbe(acc.principale(), 300);
             etat.stock.ajouter_session(Session {
-                jeu: s.profil,
+                jeu: s.profil.clone(),
                 debut: s.debut_unix,
                 duree_s: s.debut.elapsed().as_secs(),
                 boost: s.boost,
@@ -317,11 +325,51 @@ pub fn terminer(app: &AppHandle, etat: &Etat) {
                 low1: st.low1,
                 low01: st.low01,
                 temp_gpu: s.temp_max,
+                courbe,
+                pas_s,
             });
         }
     }
+    // Carte graphique à 85 °C ou plus : message à la prochaine ouverture de l'interface
+    if let Some(t) = s.temp_max.filter(|t| *t >= SEUIL_TEMP) {
+        etat.stock.donnees.lock().unwrap().alerte_temp = Some(crate::config::AlerteTemp { jeu: s.profil.clone(), temp: t });
+        etat.stock.sauver();
+        let _ = app.emit("alerte_temp", ());
+    }
     let _ = app.emit("jeu", None::<InfoJeu>);
 }
+
+fn texte_discord(boost: bool, fps: Option<f64>) -> String {
+    let base = if boost { "Boosté par FPS Cagoule" } else { "FPS mesurés par FPS Cagoule" };
+    match fps {
+        Some(f) if f > 0.0 => format!("{} · {} FPS", if boost { "Boosté" } else { "En jeu" }, f.round()),
+        _ => base.into(),
+    }
+}
+
+/// Statut Discord : jaquette Steam du jeu si on la connaît, sinon le logo de l'app
+fn demarrer_discord(etat: &Etat, profil: &crate::config::Profil, boost: bool) {
+    let jeux = crate::bibliotheques::sources(false);
+    let image = crate::images::meilleur(profil, &jeux)
+        .and_then(|j| j.steam)
+        .map(|id| format!("https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{id}/library_600x900.jpg"));
+    let mut session = etat.session.lock().unwrap();
+    if let Some(s) = session.as_mut() {
+        s.presence = crate::discord::demarrer(&profil.nom, texte_discord(boost, None), s.debut_unix, image);
+    }
+}
+
+fn maj_discord(etat: &Etat) {
+    let fps = *etat.fps_live.lock().unwrap();
+    if let Some(s) = etat.session.lock().unwrap().as_ref() {
+        if let Some(p) = &s.presence {
+            p.etat(texte_discord(s.boost, fps));
+        }
+    }
+}
+
+/// Température de la carte graphique à partir de laquelle on prévient (°C)
+const SEUIL_TEMP: i32 = 85;
 
 pub fn restaurer_plan(etat: &Etat) {
     let (ancien, retour) = {

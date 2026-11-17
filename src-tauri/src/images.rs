@@ -23,6 +23,10 @@ pub struct Carte {
     pub genre: Option<&'static str>,
     /// Trouvé dans une bibliothèque du PC
     pub installe: bool,
+    /// Bouton « Jouer » possible
+    pub jouable: bool,
+    /// Jeu Steam (choix du compte)
+    pub steam: bool,
 }
 
 /// Nom comparable : minuscules et chiffres seulement, sans « Tom Clancy's »
@@ -64,7 +68,7 @@ fn proche(court: &str, long: &str) -> bool {
     court.len() >= 6 && long.starts_with(court) && long.len() <= court.len() + 3
 }
 
-fn meilleur<'a>(profil: &Profil, jeux: &'a [JeuTrouve]) -> Option<&'a JeuTrouve> {
+pub(crate) fn meilleur<'a>(profil: &Profil, jeux: &'a [JeuTrouve]) -> Option<&'a JeuTrouve> {
     jeux.iter().map(|j| (ressemblance(profil, j), j)).filter(|(r, _)| *r > 0).max_by_key(|(r, _)| *r).map(|(_, j)| j)
 }
 
@@ -321,7 +325,15 @@ pub fn cartes(stock: &Stockage, profils: &[Profil]) -> Vec<Carte> {
                 .iter()
                 .find_map(|(f, g)| data_url(&fichier(stock, &p.nom, f)).map(|d| (Some(d), Some(*g))))
                 .unwrap_or((None, None));
-            Carte { nom: p.nom.clone(), image, genre, installe: meilleur(p, &jeux).is_some() }
+            let lancement = crate::lancement::jouable(p, &jeux);
+            Carte {
+                nom: p.nom.clone(),
+                image,
+                genre,
+                installe: lancement.is_some(),
+                jouable: lancement.is_some_and(|(_, j)| j),
+                steam: lancement.is_some_and(|(s, _)| s.is_some()),
+            }
         })
         .collect()
 }

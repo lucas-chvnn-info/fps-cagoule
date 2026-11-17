@@ -767,6 +767,7 @@ $('#demarrage-liste').addEventListener('change', async (e) => {
 const ECLAIR = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13.5 2 4 13.5h6.5L9.5 22 20 9.5h-6.6z"/></svg>';
 const ENGRENAGE =
   '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>';
+const JOUER = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.4-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z"/></svg>';
 const calme = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /** Image et état de chaque jeu (nom → { image, genre, installe }) */
@@ -821,7 +822,9 @@ function tuileJeu(p, i) {
     <span class="etiquette-opti">${ECLAIR}Optimisé</span>
     <button class="btn-reglages-jeu" data-reglages="${i}" title="Réglages de ${esc(p.nom)}" aria-label="Réglages de ${esc(p.nom)}">${ENGRENAGE}</button>
     <button class="eclair" data-eclair="${i}" title="${opti ? 'Déjà optimisé : relancer' : 'Optimiser'} ${esc(p.nom)}" aria-label="Optimiser ${esc(p.nom)}">${ECLAIR}</button>
-    <div class="pied"><strong>${esc(p.nom)}</strong><small>${etat}</small></div>
+    <div class="pied"><div><strong>${esc(p.nom)}</strong><small>${etat}</small></div>${
+      vignettes.get(p.nom)?.jouable ? `<button class="btn-jouer" data-jouer="${i}" title="Jouer à ${esc(p.nom)}" aria-label="Jouer à ${esc(p.nom)}">${JOUER}</button>` : ''
+    }</div>
   </div>`;
 }
 
@@ -954,9 +957,75 @@ document.addEventListener('click', (e) => {
   const b = e.target.closest('#page-jeux button');
   if (!b) return;
   if (b.dataset.eclair !== undefined) optimiserJeu(Number(b.dataset.eclair));
+  else if (b.dataset.jouer !== undefined) jouer(Number(b.dataset.jouer));
   else if (b.dataset.reglages !== undefined) ouvrirFenetreJeu(Number(b.dataset.reglages));
   else if (b.hasAttribute('data-ajout')) $('#btn-jeux-detecter').click();
 });
+
+/** Choix du compte Steam : résout avec le SteamID64 choisi, ou undefined si annulé */
+function choisirCompte(p, comptes) {
+  return new Promise((resoudre) => {
+    const prefere = p.compte_steam || comptes.find((c) => c.actif)?.id;
+    $('#comptes-titre').textContent = `Jouer à ${p.nom} avec…`;
+    const liste = $('#comptes-liste');
+    liste.innerHTML = '';
+    comptes.forEach((c, i) => {
+      const b = document.createElement('button');
+      b.className = `compte-steam${c.id === prefere ? ' prefere' : ''}`;
+      b.disabled = !c.memorise;
+      b.style.animationDelay = `${i * 50}ms`;
+      const photo = document.createElement('span');
+      photo.className = 'avatar';
+      if (c.avatar) photo.style.backgroundImage = `url("${c.avatar}")`;
+      else photo.textContent = (c.pseudo[0] || '?').toUpperCase();
+      const texte = document.createElement('span');
+      texte.className = 'texte';
+      const nom = document.createElement('strong');
+      nom.textContent = c.pseudo;
+      const detail = document.createElement('small');
+      detail.textContent = !c.memorise ? 'Reconnecte-toi une fois dans Steam' : c.actif ? 'Connecté dans Steam' : c.id === p.compte_steam ? 'Dernier choix' : c.identifiant;
+      texte.append(nom, detail);
+      b.append(photo, texte);
+      b.addEventListener('click', () => fin(c.id));
+      liste.append(b);
+    });
+    const fenetre = $('#fenetre-comptes');
+    function fin(r) {
+      fenetre.hidden = true;
+      fenetre.onclick = null;
+      resoudre(r);
+    }
+    $('#comptes-annuler').onclick = () => fin(undefined);
+    fenetre.onclick = (e) => e.target === fenetre && fin(undefined);
+    fenetre.hidden = false;
+    liste.querySelector('.prefere:not(:disabled), button:not(:disabled)')?.focus();
+  });
+}
+
+async function jouer(i) {
+  const p = profils[i];
+  const v = vignettes.get(p.nom);
+  let compte = null;
+  if (v?.steam) {
+    const comptes = await invoke('comptes_steam').catch(() => []);
+    if (comptes.length > 1) {
+      compte = await choisirCompte(p, comptes);
+      if (compte === undefined) return;
+    }
+  }
+  const tuile = document.querySelector(`.tuile-jeu[data-i="${i}"]`);
+  tuile?.classList.add('lance');
+  const actif = compte && !(await invoke('comptes_steam').catch(() => [])).find((c) => c.id === compte)?.actif;
+  toast(actif ? `Changement de compte Steam… ${p.nom} se lance juste après.` : `Lancement de ${p.nom}…`, 6000);
+  try {
+    toast(await invoke('jeu_lancer', { nom: p.nom, compte }), 6000);
+    if (compte) p.compte_steam = compte;
+  } catch (err) {
+    toast(String(err), 8000);
+  } finally {
+    setTimeout(() => tuile?.classList.remove('lance'), 1200);
+  }
+}
 
 $('#btn-jeux-tout').addEventListener('click', async (e) => {
   const bouton = e.currentTarget;
@@ -1222,6 +1291,8 @@ function afficherReglages() {
   $('#maj-auto').checked = reglages.maj_auto;
   $('#couleurs-en-jeu').checked = reglages.couleurs_en_jeu;
   $('#priorite-basse').checked = reglages.priorite_basse;
+  $('#discord').checked = reglages.discord;
+  $('#ligne-discord').hidden = !etat.discord;
   $('#fond-liste').innerHTML = reglages.priorite_basse_applis.length
     ? reglages.priorite_basse_applis.map((a, i) => `<span class="puce">${esc(a)}<button data-retirer="${i}" title="Retirer">✕</button></span>`).join('')
     : '<span class="discret">Aucun programme.</span>';
@@ -1230,7 +1301,7 @@ function afficherReglages() {
     : '<span class="discret">Aucun programme.</span>';
 }
 
-for (const [id, champ] of [['#boost-auto', 'boost_auto'], ['#boost-max', 'boost_max'], ['#mesure-fps', 'mesure_fps'], ['#overlay', 'overlay'], ['#maj-auto', 'maj_auto'], ['#couleurs-en-jeu', 'couleurs_en_jeu'], ['#priorite-basse', 'priorite_basse']]) {
+for (const [id, champ] of [['#boost-auto', 'boost_auto'], ['#boost-max', 'boost_max'], ['#mesure-fps', 'mesure_fps'], ['#overlay', 'overlay'], ['#maj-auto', 'maj_auto'], ['#couleurs-en-jeu', 'couleurs_en_jeu'], ['#priorite-basse', 'priorite_basse'], ['#discord', 'discord']]) {
   $(id).addEventListener('change', (e) => {
     reglages[champ] = e.target.checked;
     sauverReglages();
@@ -2350,15 +2421,117 @@ $('#btn-oc-auto').addEventListener('click', async (e) => {
 const moyenne = (l, f) => l.reduce((s, x) => s + f(x), 0) / l.length;
 const duree = (s) => (s >= 3600 ? `${Math.floor(s / 3600)} h ${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}` : `${Math.max(1, Math.round(s / 60))} min`);
 
+let sessionsFps = [];
+
+const dateCourte = (t) => new Date(t * 1000).toLocaleString('fr-CH', { dateStyle: 'short', timeStyle: 'short' });
+const minutes = (sec) => (sec >= 3600 ? `${Math.floor(sec / 3600)} h ${String(Math.floor((sec % 3600) / 60)).padStart(2, '0')}` : `${Math.floor(sec / 60)}:${String(Math.round(sec % 60)).padStart(2, '0')}`);
+
+/** Pas « rond » pour l'axe des FPS */
+function pasAxe(max) {
+  for (const p of [10, 20, 25, 50, 100, 200, 250, 500]) if (max / p <= 5) return p;
+  return 1000;
+}
+
+/** Courbe d'une partie : FPS moyen par tranche de temps, moyenne de la partie et creux le plus bas */
+function afficherCourbe(s) {
+  const carte = $('#courbe-partie');
+  if (!s?.courbe?.length) return (carte.hidden = true);
+  carte.hidden = false;
+  const L = 800, H = 230, g = 44, d = 14, h = 14, b = 30;
+  const max = Math.max(...s.courbe, s.moyenne);
+  const pas = pasAxe(max);
+  const haut = Math.ceil((max * 1.08) / pas) * pas;
+  const n = s.courbe.length;
+  const x = (i) => g + (n === 1 ? 0 : (i / (n - 1)) * (L - g - d));
+  const y = (v) => h + (1 - v / haut) * (H - h - b);
+  const points = s.courbe.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`);
+  const lignes = [];
+  for (let v = 0; v <= haut; v += pas) lignes.push(`<line class="grille" x1="${g}" x2="${L - d}" y1="${y(v)}" y2="${y(v)}"/><text class="axe" x="${g - 8}" y="${y(v) + 4}" text-anchor="end">${v}</text>`);
+  // Repères de temps : 5 au plus, en minutes
+  const total = n * s.pas_s;
+  const pasT = [60, 120, 300, 600, 900, 1800, 3600].find((p) => total / p <= 6) || 7200;
+  for (let t = 0; t <= total; t += pasT) {
+    const i = Math.min(n - 1, Math.round(t / s.pas_s));
+    lignes.push(`<text class="axe" x="${x(i)}" y="${H - 8}" text-anchor="${t === 0 ? 'start' : 'middle'}">${t === 0 ? '0' : `${Math.round(t / 60)} min`}</text>`);
+  }
+  const iMin = s.courbe.indexOf(Math.min(...s.courbe));
+  const yMoy = y(s.moyenne);
+  carte.innerHTML = `
+    <div class="courbe-entete">
+      <div><h2>${esc(s.jeu)}</h2><span class="discret">${dateCourte(s.debut)} · ${duree(s.duree_s)}</span></div>
+      <div class="courbe-chiffres">
+        <span><strong>${Math.round(s.moyenne)}</strong> FPS moyen</span>
+        <span><strong>${Math.round(s.low1)}</strong> 1 % low</span>
+        ${s.temp_gpu ? `<span><strong class="${s.temp_gpu >= 85 ? 'perte' : ''}">${s.temp_gpu} °C</strong> GPU max</span>` : ''}
+        ${s.boost ? '<span class="badge accent">Boosté</span>' : '<span class="badge">Sans boost</span>'}
+      </div>
+    </div>
+    <div class="courbe-zone">
+      <svg viewBox="0 0 ${L} ${H}" class="courbe" role="img" aria-label="FPS pendant la partie de ${esc(s.jeu)} : ${Math.round(s.moyenne)} en moyenne, creux à ${s.courbe[iMin]}">
+        ${lignes.join('')}
+        <path class="aire" d="M${x(0)},${y(0)} L${points.join(' L')} L${x(n - 1)},${y(0)} Z"/>
+        <line class="moyenne" x1="${g}" x2="${L - d}" y1="${yMoy}" y2="${yMoy}"/>
+        <text class="etiquette" x="${L - d}" y="${yMoy - 6}" text-anchor="end">moyenne ${Math.round(s.moyenne)}</text>
+        <polyline class="trace" points="${points.join(' ')}"/>
+        <circle class="creux" cx="${x(iMin)}" cy="${y(s.courbe[iMin])}" r="4.5"/>
+        <text class="etiquette" x="${Math.min(Math.max(x(iMin), g + 40), L - d - 40)}" y="${Math.min(y(s.courbe[iMin]) + 18, H - b - 4)}" text-anchor="middle">creux ${s.courbe[iMin]}</text>
+        <g class="survol" hidden><line class="viseur" y1="${h}" y2="${H - b}"/><circle class="point" r="5"/></g>
+        <rect class="capteur" x="${g}" y="0" width="${L - g - d}" height="${H}" tabindex="0" aria-label="Parcourir la courbe avec les flèches"/>
+      </svg>
+      <div class="infobulle-courbe" hidden><strong></strong><span></span></div>
+    </div>`;
+  const svg = carte.querySelector('svg');
+  const survol = svg.querySelector('.survol');
+  const bulle = carte.querySelector('.infobulle-courbe');
+  let courant = n - 1;
+  const montrer = (i) => {
+    courant = Math.max(0, Math.min(n - 1, i));
+    survol.hidden = false;
+    survol.querySelector('.viseur').setAttribute('x1', x(courant));
+    survol.querySelector('.viseur').setAttribute('x2', x(courant));
+    survol.querySelector('.point').setAttribute('cx', x(courant));
+    survol.querySelector('.point').setAttribute('cy', y(s.courbe[courant]));
+    bulle.hidden = false;
+    bulle.querySelector('strong').textContent = `${s.courbe[courant]} FPS`;
+    bulle.querySelector('span').textContent = `à ${minutes(courant * s.pas_s)}`;
+    const r = svg.getBoundingClientRect();
+    const px = (x(courant) / L) * r.width;
+    bulle.style.left = `${Math.min(Math.max(px, 50), r.width - 50)}px`;
+    bulle.style.top = `${(y(s.courbe[courant]) / H) * r.height}px`;
+  };
+  const cacher = () => {
+    survol.hidden = true;
+    bulle.hidden = true;
+  };
+  const capteur = svg.querySelector('.capteur');
+  capteur.addEventListener('pointermove', (e) => {
+    const r = svg.getBoundingClientRect();
+    const xs = ((e.clientX - r.left) / r.width) * L;
+    montrer(Math.round(((xs - g) / (L - g - d)) * (n - 1)));
+  });
+  capteur.addEventListener('pointerleave', cacher);
+  capteur.addEventListener('blur', cacher);
+  capteur.addEventListener('focus', () => montrer(courant));
+  capteur.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      e.preventDefault();
+      montrer(courant + (e.key === 'ArrowRight' ? 1 : -1) * Math.max(1, Math.round(n / 60)));
+    }
+  });
+  document.querySelectorAll('#sessions tr[data-s]').forEach((tr) => tr.classList.toggle('choisie', sessionsFps[tr.dataset.s] === s));
+}
+
 async function chargerSessions() {
   const sessions = (await appel('sessions')).reverse();
+  sessionsFps = sessions;
   $('#sessions tbody').innerHTML = sessions.length
     ? sessions
         .map(
-          (s) => `<tr><td>${new Date(s.debut * 1000).toLocaleString('fr-CH', { dateStyle: 'short', timeStyle: 'short' })}</td><td>${esc(s.jeu)}</td><td>${duree(s.duree_s)}</td><td>${s.boost ? '<span class="badge accent">Oui</span>' : '<span class="badge">Non</span>'}</td><td>${Math.round(s.moyenne)}</td><td>${Math.round(s.low1)}</td><td>${Math.round(s.low01)}</td><td>${s.temp_gpu ? `<span class="${s.temp_gpu >= 85 ? 'perte' : ''}">${s.temp_gpu} °C</span>` : '–'}</td></tr>`
+          (s, i) => `<tr data-s="${i}" class="${s.courbe?.length ? 'cliquable' : ''}"><td>${new Date(s.debut * 1000).toLocaleString('fr-CH', { dateStyle: 'short', timeStyle: 'short' })}</td><td>${esc(s.jeu)}</td><td>${duree(s.duree_s)}</td><td>${s.boost ? '<span class="badge accent">Oui</span>' : '<span class="badge">Non</span>'}</td><td>${Math.round(s.moyenne)}</td><td>${Math.round(s.low1)}</td><td>${Math.round(s.low01)}</td><td>${s.temp_gpu ? `<span class="${s.temp_gpu >= 85 ? 'perte' : ''}">${s.temp_gpu} °C</span>` : '–'}</td></tr>`
         )
         .join('')
     : '<tr><td colspan="8" class="discret">Aucune partie mesurée pour l\'instant.</td></tr>';
+  afficherCourbe(sessions.find((s) => s.courbe?.length));
 
   // Comparaison avec / sans boost, par jeu (parties de plus de 2 minutes)
   const parJeu = {};
@@ -2380,6 +2553,14 @@ async function chargerSessions() {
     })
     .join('');
 }
+
+$('#sessions').addEventListener('click', (e) => {
+  const s = sessionsFps[e.target.closest('tr[data-s]')?.dataset.s];
+  if (s?.courbe?.length) {
+    afficherCourbe(s);
+    $('#courbe-partie').scrollIntoView({ behavior: calme() ? 'auto' : 'smooth', block: 'nearest' });
+  }
+});
 
 /* ---------- Réglages et mises à jour ---------- */
 
@@ -2539,14 +2720,40 @@ function afficherAlertes() {
     alertes.push(`<div class="carte banniere"><p>${esc(etat.oc_baisse_auto)}</p><div class="boutons"><button class="petit" data-alerte-oc>Voir l'overclocking</button><button class="petit discret-btn" data-alerte-fermer>OK</button></div></div>`);
     toast(etat.oc_baisse_auto, 10000);
   }
+  if (etat.alerte_temp) {
+    const a = etat.alerte_temp;
+    alertes.push(`<div class="carte banniere alerte-chaud"><p><strong>${a.temp} °C</strong> : ta carte graphique a beaucoup chauffé pendant ${esc(a.jeu)}.</p><div class="boutons"><button class="petit" data-alerte-temp>Que faire ?</button><button class="petit discret-btn" data-alerte-fermer>OK</button></div></div>`);
+  }
   $('#alertes').innerHTML = alertes.join('');
+}
+
+function conseilsTemperature() {
+  confirmer(
+    'Carte graphique trop chaude',
+    `<ul class="conseils-chaud">
+      <li><strong>Dépoussière</strong> les ventilateurs du PC et de la carte graphique.</li>
+      <li><strong>Laisse respirer le boîtier</strong> : pas collé au mur ni enfermé dans un meuble.</li>
+      <li><strong>Limite tes FPS</strong> juste au-dessus de la fréquence de ton écran, dans le jeu.</li>
+      <li><strong>Overclocking</strong> : si tu en utilises un, baisse-le d'un cran.</li>
+    </ul>`,
+    'OK',
+    { non: 'Fermer' }
+  );
 }
 
 $('#alertes').addEventListener('click', (e) => {
   const b = e.target.closest('button');
   if (!b) return;
   if (b.hasAttribute('data-alerte-oc')) allerA('oc');
+  if (b.hasAttribute('data-alerte-temp')) return conseilsTemperature();
   b.closest('.banniere').remove();
+});
+
+// Carte graphique trop chaude pendant la partie qui vient de finir
+listen('alerte_temp', async () => {
+  etat = await invoke('etat_app');
+  afficherAlertes();
+  if (etat.alerte_temp) toast(`Ta carte graphique a atteint ${etat.alerte_temp.temp} °C pendant ${etat.alerte_temp.jeu}.`, 8000);
 });
 
 // OC baissé tout seul à la fin d'une partie, pendant que l'interface est ouverte
@@ -2939,8 +3146,68 @@ async function init() {
   majConso();
   setInterval(majConso, 3000);
   if (!reglages?.assistant_fait) setTimeout(ouvrirAssistant, 1300);
-  else setTimeout(detecterJeuxAuto, 4000);
+  else {
+    setTimeout(montrerNouveautes, 2400);
+    setTimeout(detecterJeuxAuto, 4000);
+  }
+  // Première installation : les nouveautés de cette version ne sont pas montrées
+  if (!reglages?.assistant_fait) montrerNouveautes();
 }
+
+/* ---------- Nouveautés après une mise à jour ---------- */
+
+const ICONES_NOUVEAUTES = {
+  jouer: JOUER,
+  courbe: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17l5-6 4 3 5-7 4 4"/><path d="M3 21h18"/></svg>',
+  chaud: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 14.5V5a2 2 0 1 1 4 0v9.5a4 4 0 1 1-4 0z"/><path d="M12 9v7"/></svg>',
+  discord: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7.5c3-1.5 7-1.5 10 0l1.5 9c-1.5 1.3-3 2-4.5 2l-.8-1.6M7 7.5 5.5 16.5c1.5 1.3 3 2 4.5 2l.8-1.6M8.5 15c2.3 1 4.7 1 7 0"/><circle cx="9.5" cy="12" r="1"/><circle cx="14.5" cy="12" r="1"/></svg>',
+  reglages: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>',
+};
+
+const NOUVEAUTES = {
+  '0.24.0': [
+    { icone: 'jouer', titre: 'Lance tes jeux depuis l\'app', texte: 'Bouton « Jouer » sur chaque jeu. Plusieurs comptes Steam ? Choisis lequel avant de lancer.' },
+    { icone: 'courbe', titre: 'La courbe de tes FPS', texte: 'Dans Statistiques, vois chaque partie seconde par seconde et repère les chutes.' },
+    { icone: 'chaud', titre: 'Alerte température', texte: 'Si ta carte graphique dépasse 85 °C en jeu, l\'app te prévient avec des conseils.' },
+    { icone: 'discord', titre: 'Statut Discord', texte: 'Tes potes voient à quoi tu joues et tes FPS, boostés par FPS Cagoule.' },
+    { icone: 'reglages', titre: 'Plus de jeux optimisés', texte: 'Les réglages en jeu couvrent maintenant plus de jeux.' },
+  ],
+};
+
+const nouveautes = { liste: [], etape: 0 };
+
+function afficherNouveautes() {
+  const n = nouveautes.liste.length;
+  const e = nouveautes.liste[nouveautes.etape];
+  $('#nouveautes-etape').innerHTML = `<div class="nouveaute-icone">${ICONES_NOUVEAUTES[e.icone] || ''}</div>
+    <p class="nouveaute-version">Nouveau dans la ${esc(etat.version)}</p>
+    <h2 id="nouveautes-titre">${esc(e.titre)}</h2>
+    <p>${esc(e.texte)}</p>`;
+  $('.nouveautes-points').innerHTML = nouveautes.liste.map((_, i) => `<span class="${i === nouveautes.etape ? 'actif' : ''}"></span>`).join('');
+  $('#nouveautes-suivant').textContent = nouveautes.etape === n - 1 ? 'C\'est parti' : 'Suivant';
+  $('#nouveautes-passer').hidden = nouveautes.etape === n - 1;
+}
+
+/** Une fois par version, si ce n'est pas la première installation */
+function montrerNouveautes() {
+  let vue = null;
+  try {
+    vue = localStorage.getItem('versionVue');
+    localStorage.setItem('versionVue', etat.version);
+  } catch {}
+  const liste = (NOUVEAUTES[etat.version] || []).filter((e) => e.icone !== 'discord' || etat.discord);
+  if (!liste.length || vue === etat.version || !reglages?.assistant_fait) return;
+  Object.assign(nouveautes, { liste, etape: 0 });
+  afficherNouveautes();
+  $('#nouveautes').hidden = false;
+  $('#nouveautes-suivant').focus();
+}
+$('#nouveautes-suivant').addEventListener('click', () => {
+  if (nouveautes.etape >= nouveautes.liste.length - 1) return ($('#nouveautes').hidden = true);
+  nouveautes.etape++;
+  afficherNouveautes();
+});
+$('#nouveautes-passer').addEventListener('click', () => ($('#nouveautes').hidden = true));
 
 // Icône du menu devant le titre de chaque page
 document.querySelectorAll('button[data-page]').forEach((b) => {

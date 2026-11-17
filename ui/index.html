@@ -385,6 +385,7 @@
     <!-- FPS -->
     <section id="page-fps" class="page">
       <header><h1>Statistiques FPS</h1></header>
+      <div id="courbe-partie" class="carte courbe-partie" hidden></div>
       <div id="comparaisons" class="grille-2"></div>
       <table class="tableau" id="sessions">
         <thead><tr><th>Date</th><th>Jeu</th><th>Durée</th><th>Boost</th><th>FPS moyen</th><th title="FPS des pires moments : les saccades">1 % low</th><th>0,1 % low</th><th title="Température maximale de la carte graphique (NVIDIA)">GPU max</th></tr></thead>
@@ -399,6 +400,7 @@
         <label class="bascule"><input type="checkbox" id="demarrage-auto"><span></span> Lancer avec Windows</label>
         <label class="bascule"><input type="checkbox" id="overlay"><span></span> Compteur FPS par-dessus le jeu</label>
         <label class="bascule"><input type="checkbox" id="maj-auto"><span></span> Mises à jour automatiques</label>
+        <label class="bascule" id="ligne-discord" hidden><input type="checkbox" id="discord"><span></span> Statut Discord pendant les parties</label>
       </div>
       <div class="carte ligne-carte">
         <h2>Assistant de départ</h2>
@@ -439,6 +441,23 @@
   <div id="toast" role="status" hidden></div>
   <div id="fenetre-jeu" class="fenetre" hidden>
     <div class="boite boite-jeu" role="dialog" aria-modal="true" aria-labelledby="fj-titre"></div>
+  </div>
+  <div id="fenetre-comptes" class="fenetre" hidden>
+    <div class="boite boite-comptes" role="dialog" aria-modal="true" aria-labelledby="comptes-titre">
+      <h2 id="comptes-titre"></h2>
+      <div id="comptes-liste" class="comptes-liste"></div>
+      <div class="boutons"><button id="comptes-annuler" class="discret-btn">Annuler</button></div>
+    </div>
+  </div>
+  <div id="nouveautes" class="fenetre nouveautes" hidden>
+    <div class="boite" role="dialog" aria-modal="true" aria-labelledby="nouveautes-titre">
+      <div class="nouveautes-points" aria-hidden="true"></div>
+      <div id="nouveautes-etape" class="nouveautes-etape"></div>
+      <div class="boutons">
+        <button id="nouveautes-passer" class="discret-btn">Passer</button>
+        <button id="nouveautes-suivant" class="principal">Suivant</button>
+      </div>
+    </div>
   </div>
   <div id="fenetre" class="fenetre" hidden>
     <div class="boite" role="dialog" aria-modal="true" aria-labelledby="fenetre-titre">

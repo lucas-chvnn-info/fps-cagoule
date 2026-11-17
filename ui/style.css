@@ -869,3 +869,98 @@ main { position: relative; }
 .bouton-coin::after { border-radius: 50%; }
 .bouton-coin.actif { border-color: rgba(111, 157, 255, .7); background: linear-gradient(135deg, rgba(47, 111, 237, .35), rgba(111, 59, 245, .25)); box-shadow: 0 0 20px rgba(47, 111, 237, .5); }
 .bouton-coin.actif svg { stroke: #fff; animation: tourne 8s linear infinite; }
+
+/* ---------- Bouton Jouer ---------- */
+.tuile-jeu .pied { display: flex; align-items: flex-end; justify-content: space-between; gap: 8px; }
+.tuile-jeu .pied > div { min-width: 0; }
+.btn-jouer {
+  flex-shrink: 0; width: 38px; height: 38px; padding: 0; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(135deg, #2f6fed, #5b5bff); border: 0; box-shadow: 0 4px 14px rgba(47, 111, 237, .45);
+  transform: scale(.9); transition: transform .25s cubic-bezier(.2, 1.4, .4, 1), box-shadow .25s;
+}
+.btn-jouer svg { width: 18px; height: 18px; fill: #fff; margin-left: 2px; }
+.btn-jouer::after { display: none; }
+.tuile-jeu:hover .btn-jouer { transform: scale(1); }
+.btn-jouer:hover:not(:disabled) { transform: scale(1.12) !important; box-shadow: 0 0 22px rgba(92, 160, 255, .9); background: linear-gradient(135deg, #3f7cf5, #6d6dff); }
+.petite .btn-jouer { width: 32px; height: 32px; }
+.tuile-jeu.lance { animation: lance .9s cubic-bezier(.2, .8, .3, 1); }
+.tuile-jeu.lance .btn-jouer { animation: lance-bouton .9s ease; }
+.tuile-jeu.lance::before {
+  content: ""; position: absolute; inset: 0; z-index: 4; pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(150, 200, 255, .55), transparent); animation: balayage .8s ease-out forwards;
+}
+@keyframes lance { 30% { transform: translateY(-8px) scale(1.04); box-shadow: 0 0 40px rgba(92, 160, 255, .7); } }
+@keyframes lance-bouton { 40% { transform: scale(1.35); box-shadow: 0 0 30px #5cc8ff; } }
+@keyframes balayage { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+
+/* Choix du compte Steam */
+.boite-comptes { width: min(440px, 92vw); max-width: none !important; }
+.comptes-liste { display: flex; flex-direction: column; gap: 8px; margin: 6px 0 4px; }
+.compte-steam {
+  display: flex; align-items: center; gap: 14px; padding: 10px 14px; text-align: left; width: 100%;
+  background: var(--fond); border-radius: 12px; animation: apparition .3s ease both;
+}
+.compte-steam .avatar {
+  width: 44px; height: 44px; border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(135deg, #2a3350, #1a1f2e) center / cover no-repeat; font-weight: 700; font-size: 18px; color: var(--accent-clair);
+  box-shadow: 0 0 0 2px var(--bordure);
+}
+.compte-steam .texte { display: flex; flex-direction: column; min-width: 0; }
+.compte-steam small { color: var(--discret); font-size: 12px; }
+.compte-steam.prefere { border-color: rgba(111, 157, 255, .6); background: var(--accent-fond); }
+.compte-steam.prefere .avatar { box-shadow: 0 0 0 2px var(--accent-clair), 0 0 14px rgba(92, 160, 255, .6); }
+.compte-steam:hover:not(:disabled) .avatar { box-shadow: 0 0 0 2px var(--bleu), 0 0 16px rgba(92, 200, 255, .7); }
+
+/* ---------- Courbe des FPS ---------- */
+.courbe-entete { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; margin-bottom: 10px; }
+.courbe-entete h2 { margin: 0 0 2px; font-size: 17px; }
+.courbe-entete .discret { font-size: 13px; }
+.courbe-chiffres { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; color: var(--discret); font-size: 13px; }
+.courbe-chiffres strong { color: var(--texte); font-size: 18px; font-variant-numeric: tabular-nums; margin-right: 3px; }
+.courbe-zone { position: relative; }
+.courbe { width: 100%; height: auto; display: block; overflow: visible; }
+.courbe .grille { stroke: #232837; stroke-width: 1; }
+.courbe .axe { fill: var(--discret); font-size: 11px; font-variant-numeric: tabular-nums; }
+.courbe .aire { fill: rgba(111, 157, 255, .1); }
+.courbe .trace { fill: none; stroke: var(--accent-clair); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; filter: drop-shadow(0 0 4px rgba(111, 157, 255, .45)); }
+.courbe .moyenne { stroke: #5d6782; stroke-width: 1; }
+.courbe .etiquette { fill: var(--texte); font-size: 11px; font-weight: 600; paint-order: stroke; stroke: var(--carte); stroke-width: 4px; }
+.courbe .creux { fill: var(--orange); stroke: var(--carte); stroke-width: 2; }
+.courbe .viseur { stroke: #8b92a5; stroke-width: 1; }
+.courbe .point { fill: var(--accent-clair); stroke: var(--carte); stroke-width: 2; }
+.courbe .capteur { fill: transparent; cursor: crosshair; outline: none; }
+.courbe .capteur:focus-visible { stroke: var(--accent-clair); stroke-width: 1; }
+.courbe .trace { stroke-dasharray: 4000; stroke-dashoffset: 4000; animation: trace 1.2s cubic-bezier(.3, .7, .3, 1) forwards; }
+@keyframes trace { to { stroke-dashoffset: 0; } }
+.infobulle-courbe {
+  position: absolute; transform: translate(-50%, calc(-100% - 12px)); pointer-events: none; white-space: nowrap;
+  background: #232838; border: 1px solid #343a4d; border-radius: 8px; padding: 5px 10px; font-size: 12px;
+  display: flex; flex-direction: column; align-items: center; box-shadow: 0 8px 20px rgba(0, 0, 0, .4);
+}
+.infobulle-courbe strong { font-size: 14px; font-variant-numeric: tabular-nums; }
+.infobulle-courbe span { color: var(--discret); }
+#sessions tr.cliquable { cursor: pointer; }
+#sessions tr.choisie td { background: var(--accent-fond); }
+#sessions tr.choisie td:first-child { box-shadow: inset 3px 0 0 var(--accent-clair); }
+
+/* ---------- Alerte température ---------- */
+.alerte-chaud { border-color: rgba(255, 84, 104, .45); background: rgba(255, 84, 104, .07); }
+.alerte-chaud strong { color: var(--rouge); }
+.conseils-chaud { display: flex; flex-direction: column; gap: 8px; color: var(--texte); }
+
+/* ---------- Nouveautés ---------- */
+.nouveautes .boite { width: min(460px, 92vw); max-width: none; text-align: center; padding: 28px; }
+.nouveautes-points { display: flex; justify-content: center; gap: 6px; margin-bottom: 18px; }
+.nouveautes-points span { width: 8px; height: 8px; border-radius: 50%; background: var(--bordure); transition: background .3s, width .3s; }
+.nouveautes-points span.actif { width: 22px; border-radius: 4px; background: var(--accent-clair); }
+.nouveautes-etape { min-height: 230px; display: flex; flex-direction: column; align-items: center; animation: apparition .35s ease; }
+.nouveautes-etape h2 { font-size: 21px; margin: 4px 0 8px; }
+.nouveautes-etape p { color: var(--discret); max-width: 34ch; margin: 0; }
+.nouveaute-version { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--accent-clair) !important; margin-top: 14px !important; }
+.nouveaute-icone {
+  width: 96px; height: 96px; border-radius: 28px; display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(135deg, rgba(47, 111, 237, .4), rgba(111, 59, 245, .3)); border: 1px solid rgba(111, 157, 255, .4);
+  box-shadow: 0 0 40px rgba(47, 111, 237, .45); animation: icone-arrivee .6s cubic-bezier(.2, 1.3, .4, 1) both, icone-respire 3s ease-in-out .6s infinite;
+}
+.nouveaute-icone svg { width: 46px; height: 46px; fill: none; stroke: #e6efff; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 0 8px rgba(92, 200, 255, .9)); }
+.nouveautes .boutons { justify-content: center; margin-top: 18px; }

@@ -23,12 +23,38 @@ pub struct JeuTrouve {
     /// Icône .ico déclarée par le désinstalleur (jeux Riot…)
     #[serde(skip)]
     pub icone: Option<String>,
+    /// Comment lancer le jeu par son launcher (sinon : son exécutable)
+    #[serde(skip)]
+    pub lancement: Option<Lancement>,
+}
+
+/// Lancement d'un jeu : lien du launcher (steam://, com.epicgames.launcher://, uplay://) ou programme avec arguments
+#[derive(Clone, Debug, PartialEq)]
+pub enum Lancement {
+    Lien(String),
+    Programme(String, Vec<String>),
 }
 
 impl JeuTrouve {
     pub(crate) fn nouveau(nom: String, exes: Vec<String>, source: &'static str, dossier: String) -> Self {
-        Self { nom, exes, source, dossier, steam: None, epic: None, icone: None }
+        Self { nom, exes, source, dossier, steam: None, epic: None, icone: None, lancement: None }
     }
+}
+
+/// Lien Epic : « namespace:catalogue:appli » encodé, comme le fait le launcher pour ses raccourcis
+pub fn lien_epic(espace: &str, catalogue: &str, appli: &str) -> String {
+    format!("com.epicgames.launcher://apps/{espace}%3A{catalogue}%3A{appli}?action=launch&silent=true")
+}
+
+/// Désinstalleur du Riot Client (« RiotClientServices.exe --uninstall-product=valorant --uninstall-patchline=live »)
+/// → le même programme avec --launch-product et --launch-patchline
+pub fn lancement_riot(desinstalleur: &str) -> Option<Lancement> {
+    let (programme, reste) = desinstalleur.split_once("RiotClientServices.exe")?;
+    let programme = format!("{}RiotClientServices.exe", programme.trim_start_matches('"'));
+    let valeur = |cle: &str| reste.split_whitespace().find_map(|m| m.trim_matches('"').strip_prefix(cle).map(String::from));
+    let produit = valeur("--uninstall-product=")?;
+    let canal = valeur("--uninstall-patchline=").unwrap_or_else(|| "live".into());
+    Some(Lancement::Programme(programme, vec![format!("--launch-product={produit}"), format!("--launch-patchline={canal}")]))
 }
 
 /// Exécutables du jeu, ou rien quand on veut seulement la liste (pas de parcours des dossiers)
@@ -155,6 +181,7 @@ fn steam(avec_exes: bool) -> Vec<JeuTrouve> {
             let chemin = apps.join("common").join(&dossier);
             let mut j = JeuTrouve::nouveau(nom, exes_si(avec_exes, &chemin), "Steam", chemin.to_string_lossy().into());
             j.steam = val("appid").and_then(|a| a.parse().ok());
+            j.lancement = j.steam.map(|id| Lancement::Lien(format!("steam://rungameid/{id}")));
             jeux.push(j);
         }
     }
@@ -184,6 +211,9 @@ fn epic(avec_exes: bool) -> Vec<JeuTrouve> {
             }
             let mut j = JeuTrouve::nouveau(nom, exes, "Epic Games", dossier);
             j.epic = v["CatalogItemId"].as_str().map(String::from);
+            if let (Some(espace), Some(catalogue), Some(appli)) = (v["CatalogNamespace"].as_str(), v["CatalogItemId"].as_str(), v["AppName"].as_str()) {
+                j.lancement = Some(Lancement::Lien(lien_epic(espace, catalogue, appli)));
+            }
             Some(j)
         })
         .collect()
@@ -207,19 +237,27 @@ fn gog(avec_exes: bool) -> Vec<JeuTrouve> {
                 exes.insert(0, n);
                 exes.truncate(3);
             }
-            Some(JeuTrouve::nouveau(nom, exes, "GOG", dossier))
+            let mut j = JeuTrouve::nouveau(nom, exes, "GOG", dossier);
+            j.lancement = Path::new(&exe).is_file().then(|| Lancement::Programme(exe, vec![]));
+            Some(j)
         })
         .collect()
 }
 
 fn ubisoft(avec_exes: bool) -> Vec<JeuTrouve> {
-    sous_cles(&RegKey::predef(HKEY_LOCAL_MACHINE), r"SOFTWARE\WOW6432Node\Ubisoft\Launcher\Installs")
-        .into_iter()
-        .filter_map(|c| {
+    let Ok(installs) = RegKey::predef(HKEY_LOCAL_MACHINE).open_subkey_with_flags(r"SOFTWARE\WOW6432Node\Ubisoft\Launcher\Installs", KEY_READ) else { return vec![] };
+    installs
+        .enum_keys()
+        .flatten()
+        .filter_map(|id| {
+            let c = installs.open_subkey_with_flags(&id, KEY_READ).ok()?;
             let dossier: String = c.get_value("InstallDir").ok()?;
             let chemin = PathBuf::from(dossier.replace('/', "\\"));
             let nom = chemin.file_name()?.to_string_lossy().to_string();
-            Some(JeuTrouve::nouveau(nom, exes_si(avec_exes, &chemin), "Ubisoft Connect", chemin.to_string_lossy().into()))
+            let mut j = JeuTrouve::nouveau(nom, exes_si(avec_exes, &chemin), "Ubisoft Connect", chemin.to_string_lossy().into());
+            // La clé porte l'identifiant du jeu dans Ubisoft Connect
+            j.lancement = id.chars().all(|c| c.is_ascii_digit()).then(|| Lancement::Lien(format!("uplay://launch/{id}/0")));
+            Some(j)
         })
         .collect()
 }
@@ -260,6 +298,7 @@ fn desinstalleurs(avec_exes: bool) -> Vec<JeuTrouve> {
                 .filter(|i| i.to_lowercase().ends_with(".ico"));
             let mut j = JeuTrouve::nouveau(nom, exes_si(avec_exes, Path::new(&dossier)), source, dossier);
             j.icone = icone;
+            j.lancement = c.get_value::<String, _>("UninstallString").ok().and_then(|u| lancement_riot(&u));
             jeux.push(j);
         }
     }
@@ -283,4 +322,23 @@ pub fn chercher() -> Vec<JeuTrouve> {
     tous.retain(|j| !j.exes.is_empty());
     tous.sort_by_key(|j| j.nom.to_lowercase());
     tous
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn lancement_des_jeux_riot() {
+        let d = r#""C:\Riot Games\Riot Client\RiotClientServices.exe" --uninstall-product=valorant --uninstall-patchline=live"#;
+        assert_eq!(
+            lancement_riot(d),
+            Some(Lancement::Programme(
+                r"C:\Riot Games\Riot Client\RiotClientServices.exe".into(),
+                vec!["--launch-product=valorant".into(), "--launch-patchline=live".into()]
+            ))
+        );
+        assert_eq!(lancement_riot(r"C:\Jeu\unins000.exe"), None);
+        assert!(lien_epic("fn", "4fe75b", "Fortnite").starts_with("com.epicgames.launcher://apps/fn%3A4fe75b%3AFortnite?"));
+    }
 }

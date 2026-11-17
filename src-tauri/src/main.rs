@@ -7,6 +7,7 @@ mod bibliotheques;
 mod bios;
 mod config;
 mod demarrage;
+mod discord;
 mod dns;
 mod edition;
 mod ecrans;
@@ -14,6 +15,7 @@ mod fenetres;
 mod fps;
 mod gpu;
 mod images;
+mod lancement;
 mod jeux;
 mod jeux_config;
 mod nettoyage;
@@ -25,6 +27,7 @@ mod ps;
 mod rampe;
 mod reseau;
 mod stats;
+mod steam_comptes;
 mod systeme;
 mod tweaks;
 
@@ -56,16 +59,20 @@ struct EtatApp {
     alimentation: systeme::Alimentation,
     /// Message de baisse automatique de l'OC après un plantage (montré une fois)
     oc_baisse_auto: Option<String>,
+    /// Carte graphique trop chaude pendant la dernière partie (montré une fois)
+    alerte_temp: Option<config::AlerteTemp>,
+    /// Statut Discord possible (application Discord configurée)
+    discord: bool,
 }
 
 #[tauri::command]
 fn etat_app(app: AppHandle) -> EtatApp {
     let e = etat(&app);
-    let (plan_perso, plan_max, oc_baisse_auto) = {
+    let (plan_perso, plan_max, oc_baisse_auto, alerte_temp) = {
         let mut d = e.stock.donnees.lock().unwrap();
-        (d.plan_perso.clone(), d.plan_max.clone(), d.oc_baisse_auto.take())
+        (d.plan_perso.clone(), d.plan_max.clone(), d.oc_baisse_auto.take(), d.alerte_temp.take())
     };
-    if oc_baisse_auto.is_some() {
+    if oc_baisse_auto.is_some() || alerte_temp.is_some() {
         e.stock.sauver();
     }
     EtatApp {
@@ -76,6 +83,8 @@ fn etat_app(app: AppHandle) -> EtatApp {
         presentmon: e.presentmon.exists(),
         alimentation: systeme::alimentation(),
         oc_baisse_auto,
+        alerte_temp,
+        discord: discord::disponible(),
     }
 }
 
@@ -115,6 +124,29 @@ fn jeux_images_chercher(app: AppHandle, forcer: Option<String>) -> Vec<images::C
     let profils = stock.donnees.lock().unwrap().profils.clone();
     images::chercher(stock, &profils, forcer.as_deref());
     images::cartes(stock, &profils)
+}
+
+/// Bouton « Jouer » ; le compte Steam choisi est retenu pour la prochaine fois
+#[tauri::command(async)]
+fn jeu_lancer(app: AppHandle, nom: String, compte: Option<String>) -> Res<String> {
+    let stock = &etat(&app).stock;
+    let profil = {
+        let mut d = stock.donnees.lock().unwrap();
+        let p = d.profils.iter_mut().find(|p| p.nom == nom).ok_or("Jeu introuvable")?;
+        if compte.is_some() {
+            p.compte_steam = compte.clone();
+        }
+        p.clone()
+    };
+    if compte.is_some() {
+        stock.sauver();
+    }
+    lancement::lancer(&profil, compte.as_deref())
+}
+
+#[tauri::command(async)]
+fn comptes_steam() -> Vec<steam_comptes::CompteSteam> {
+    steam_comptes::comptes()
 }
 
 #[tauri::command(async)]
@@ -647,6 +679,8 @@ fn main() {
             jeux_cartes,
             jeux_images_chercher,
             jeu_image_choisir,
+            jeu_lancer,
+            comptes_steam,
             jeu_image_effacer,
             amd_etat,
             amd_prereglage,

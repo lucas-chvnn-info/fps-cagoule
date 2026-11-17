@@ -30,6 +30,8 @@ pub struct Reglages {
     /// Pendant les parties : programmes de fond en priorité basse (comme Process Lasso)
     pub priorite_basse: bool,
     pub priorite_basse_applis: Vec<String>,
+    /// Statut Discord pendant les parties (« Joue à … · boosté par FPS Cagoule »)
+    pub discord: bool,
 }
 
 /// Programmes de fond courants : ils restent ouverts (vocal, musique) mais passent après le jeu
@@ -45,7 +47,7 @@ pub fn applis_fond_par_defaut() -> Vec<String> {
 
 impl Default for Reglages {
     fn default() -> Self {
-        Self { boost_auto: true, boost_max: false, mesure_fps: true, overlay: false, maj_auto: true, couleurs_en_jeu: false, fermer_applis: vec![], assistant_fait: false, mode_simple: false, oc_protection: true, priorite_basse: true, priorite_basse_applis: applis_fond_par_defaut() }
+        Self { boost_auto: true, boost_max: false, mesure_fps: true, overlay: false, maj_auto: true, couleurs_en_jeu: false, fermer_applis: vec![], assistant_fait: false, mode_simple: false, oc_protection: true, priorite_basse: true, priorite_basse_applis: applis_fond_par_defaut(), discord: true }
     }
 }
 
@@ -63,6 +65,8 @@ pub struct Profil {
     pub resolution: Option<ResolutionJeu>,
     /// Garder l'overclocking de la carte graphique pendant ce jeu
     pub oc: bool,
+    /// Dernier compte Steam choisi pour lancer ce jeu (SteamID64)
+    pub compte_steam: Option<String>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -74,7 +78,7 @@ pub struct ResolutionJeu {
 
 impl Default for Profil {
     fn default() -> Self {
-        Self { nom: String::new(), exes: vec![], actif: true, boost: true, priorite_haute: true, gpu_perf: true, resolution: None, oc: true }
+        Self { nom: String::new(), exes: vec![], actif: true, boost: true, priorite_haute: true, gpu_perf: true, resolution: None, oc: true, compte_steam: None }
     }
 }
 
@@ -135,6 +139,8 @@ pub struct Donnees {
     pub oc_coupe_apres_plantage: bool,
     /// L'OC a été baissé tout seul après un plantage en jeu (message à montrer une fois)
     pub oc_baisse_auto: Option<String>,
+    /// Carte graphique trop chaude pendant la dernière partie (montré une fois)
+    pub alerte_temp: Option<AlerteTemp>,
     /// Serveurs DNS d'origine des cartes réseau changées par l'app
     pub dns_avant: Vec<DnsAvant>,
 }
@@ -182,6 +188,7 @@ impl Default for Donnees {
             oc_partie: None,
             oc_coupe_apres_plantage: false,
             oc_baisse_auto: None,
+            alerte_temp: None,
             dns_avant: Vec::new(),
         }
     }
@@ -207,6 +214,17 @@ pub struct Session {
     /// Température maximale de la carte graphique pendant la partie (°C, NVIDIA)
     #[serde(default)]
     pub temp_gpu: Option<i32>,
+    /// FPS moyen par tranche de `pas_s` secondes, pour la courbe de la partie
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub courbe: Vec<u16>,
+    #[serde(default)]
+    pub pas_s: f32,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct AlerteTemp {
+    pub jeu: String,
+    pub temp: i32,
 }
 
 const MAX_SESSIONS: usize = 500;
