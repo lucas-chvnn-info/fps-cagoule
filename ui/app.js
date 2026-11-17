@@ -2910,13 +2910,13 @@ const ICONES_REPERES = {
   mort: '<svg viewBox="0 0 24 24"><path d="M12 3a7 7 0 0 0-7 7c0 2.4 1.2 4 2.5 5v3h9v-3c1.3-1 2.5-2.6 2.5-5a7 7 0 0 0-7-7z"/><circle cx="9.5" cy="10.5" r="1.3"/><circle cx="14.5" cy="10.5" r="1.3"/></svg>',
 };
 const NOMS_REPERES = { kill: 'Kill', ko: 'KO', mort: 'Mort' };
-const ed = { clip: null, duree: 0, passages: [], choisi: -1, historique: [] };
+const ed = { clip: null, duree: 0, passages: [], choisi: -1, historique: [], zone: null };
 const video = $('#ed-video');
 
 const horloge = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
 function ouvrirEditeur(c) {
-  Object.assign(ed, { clip: c, duree: 0, passages: [], choisi: -1, historique: [] });
+  Object.assign(ed, { clip: c, duree: 0, passages: [], choisi: -1, historique: [], zone: null });
   $('#editeur-titre').textContent = c.nom;
   $('#ed-progression').hidden = true;
   video.src = window.__TAURI__.core.convertFileSrc(c.chemin);
@@ -2925,6 +2925,7 @@ function ouvrirEditeur(c) {
 }
 
 function fermerEditeur() {
+  if (pleinEcran) basculerPleinEcran();
   video.pause();
   video.removeAttribute('src');
   video.load();
@@ -2966,8 +2967,111 @@ function dessinerEditeur() {
   $('#ed-exporter').disabled = !ed.duree || garde < 0.2 || ed.passages.every((p) => p.garde);
   $('#ed-supprimer').disabled = !ed.duree;
   $('#ed-annuler').disabled = !ed.historique.length;
+  dessinerZone();
   majTete();
 }
+
+/* Passage choisi (début → fin) : à retirer, ou à garder seul */
+const lireHeure = (texte) => {
+  const m = String(texte).trim().replace(',', '.').match(/^(?:(\d+):)?(\d+(?:\.\d+)?)$/);
+  return m ? Number(m[1] || 0) * 60 + Number(m[2]) : null;
+};
+const ecrireHeure = (s) => `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, '0')}`;
+
+function dessinerZone() {
+  const z = ed.zone, d = ed.duree || 1;
+  const valide = z && z.b - z.a >= 0.2;
+  $('#ed-selection').hidden = !valide;
+  if (valide) Object.assign($('#ed-selection').style, { left: `${(z.a / d) * 100}%`, width: `${((z.b - z.a) / d) * 100}%` });
+  for (const bord of ['a', 'b']) {
+    const champ = $(`#ed-${bord}`);
+    if (document.activeElement !== champ) champ.value = z?.[bord] != null ? ecrireHeure(z[bord]) : '';
+    champ.classList.remove('faux');
+  }
+  $('#ed-retirer-zone').disabled = $('#ed-garder-zone').disabled = !valide;
+}
+
+function borneZone(bord, t) {
+  t = Math.min(Math.max(t, 0), ed.duree);
+  const z = ed.zone || { a: bord === 'a' ? t : 0, b: bord === 'b' ? t : ed.duree };
+  z[bord] = t;
+  if (z.a > z.b) [z.a, z.b] = [z.b, z.a];
+  ed.zone = z;
+  dessinerZone();
+}
+
+/** Coupe les passages aux deux bords puis marque ceux du milieu (retirer) ou ceux d'autour (garder seul) */
+function appliquerZone(garderSeul) {
+  const z = ed.zone;
+  if (!z || z.b - z.a < 0.2) return;
+  memoriser();
+  for (const t of [z.a, z.b]) {
+    const i = passageA(t);
+    if (i < 0) continue;
+    const p = ed.passages[i];
+    if (t - p.a > 0.05 && p.b - t > 0.05) ed.passages.splice(i, 1, { a: p.a, b: t, garde: p.garde }, { a: t, b: p.b, garde: p.garde });
+  }
+  for (const p of ed.passages) {
+    const dedans = p.a >= z.a - 0.01 && p.b <= z.b + 0.01;
+    if (garderSeul ? !dedans : dedans) p.garde = false;
+  }
+  toast(garderSeul ? `Seul le passage ${horloge(z.a)} → ${horloge(z.b)} est gardé.` : `Passage ${horloge(z.a)} → ${horloge(z.b)} retiré.`);
+  ed.zone = null;
+  ed.choisi = -1;
+  video.currentTime = garderSeul ? z.a : Math.min(z.b, ed.duree);
+  dessinerEditeur();
+}
+
+$('#ed-debut').addEventListener('click', () => borneZone('a', video.currentTime));
+$('#ed-fin').addEventListener('click', () => borneZone('b', video.currentTime));
+$('#ed-retirer-zone').addEventListener('click', () => appliquerZone(false));
+$('#ed-garder-zone').addEventListener('click', () => appliquerZone(true));
+for (const bord of ['a', 'b']) {
+  const champ = $(`#ed-${bord}`);
+  const valider = () => {
+    if (!champ.value.trim()) return;
+    const t = lireHeure(champ.value);
+    if (t == null || t > ed.duree + 0.05) return champ.classList.add('faux');
+    borneZone(bord, t);
+    video.currentTime = Math.min(t, ed.duree);
+  };
+  champ.addEventListener('change', valider);
+  champ.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { valider(); champ.blur(); }
+    e.stopPropagation();
+  });
+}
+// Poignées du passage : glisser pour ajuster le début ou la fin
+$('#ed-selection').addEventListener('pointerdown', (e) => {
+  const poignee = e.target.closest('.ed-poignee');
+  if (!poignee) return;
+  e.stopPropagation();
+  e.preventDefault();
+  const bord = poignee.dataset.bord;
+  const glisser = (ev) => {
+    const t = positionTimeline(ev);
+    ed.zone[bord] = t;
+    if (ed.zone.a > ed.zone.b) [ed.zone.a, ed.zone.b] = [ed.zone.b, ed.zone.a];
+    video.currentTime = t;
+    dessinerZone();
+    majTete();
+  };
+  window.addEventListener('pointermove', glisser);
+  window.addEventListener('pointerup', () => window.removeEventListener('pointermove', glisser), { once: true });
+});
+
+/* Plein écran : la fenêtre de l'app passe en plein écran et l'éditeur la remplit */
+let pleinEcran = false;
+async function basculerPleinEcran() {
+  pleinEcran = !pleinEcran;
+  $('#editeur').classList.toggle('plein', pleinEcran);
+  $('#ed-plein').title = pleinEcran ? 'Quitter le plein écran (F ou Échap)' : 'Plein écran (F)';
+  try {
+    await window.__TAURI__.window.getCurrentWindow().setFullscreen(pleinEcran);
+  } catch {}
+}
+$('#ed-plein').addEventListener('click', basculerPleinEcran);
+video.addEventListener('dblclick', basculerPleinEcran);
 
 function majTete() {
   const d = ed.duree || 1;
@@ -3070,7 +3174,13 @@ document.addEventListener('keydown', (e) => {
     Backspace: basculerPassage,
     ArrowLeft: () => (video.currentTime = Math.max(0, video.currentTime - (e.shiftKey ? 0.04 : 1))),
     ArrowRight: () => (video.currentTime = Math.min(ed.duree, video.currentTime + (e.shiftKey ? 0.04 : 1))),
-    Escape: fermerEditeur,
+    i: () => borneZone('a', video.currentTime),
+    I: () => borneZone('a', video.currentTime),
+    o: () => borneZone('b', video.currentTime),
+    O: () => borneZone('b', video.currentTime),
+    f: basculerPleinEcran,
+    F: basculerPleinEcran,
+    Escape: () => (pleinEcran ? basculerPleinEcran() : fermerEditeur()),
   };
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
     e.preventDefault();
@@ -3084,19 +3194,32 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
+try { $('#ed-remplacer').checked = localStorage.getItem('montageRemplace') === '1'; } catch {}
+$('#ed-remplacer').addEventListener('change', (e) => {
+  try { localStorage.setItem('montageRemplace', e.target.checked ? '1' : '0'); } catch {}
+});
+
 $('#ed-exporter').addEventListener('click', async (e) => {
   const bouton = e.currentTarget;
+  const remplacer = $('#ed-remplacer').checked;
   video.pause();
+  // Le lecteur lâche le fichier : Windows refuse de remplacer un clip encore ouvert
+  if (remplacer) {
+    video.removeAttribute('src');
+    video.load();
+  }
   $('#ed-progression').hidden = false;
   $('#ed-barre').style.width = '0%';
   bouton.classList.add('chargement');
   try {
-    await invoke('clips_exporter', { chemin: ed.clip.chemin, morceaux: morceauxGardes() });
-    toast('Montage exporté à côté du clip d\'origine.', 5000);
+    const sortie = await invoke('clips_exporter', { chemin: ed.clip.chemin, morceaux: morceauxGardes(), remplacer });
+    const aCote = /\(montage( \d+)?\)\.mp4$/i.test(sortie);
+    toast(!aCote ? 'Clip raccourci.' : remplacer ? 'Clip encore ouvert : le montage est à côté de l\'original.' : 'Montage exporté à côté du clip d\'origine.', 5000);
     fermerEditeur();
     chargerClips();
   } catch (err) {
     toast(String(err), 8000);
+    if (remplacer) video.src = window.__TAURI__.core.convertFileSrc(ed.clip.chemin);
   } finally {
     bouton.classList.remove('chargement');
     $('#ed-progression').hidden = true;

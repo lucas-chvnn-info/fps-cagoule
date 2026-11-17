@@ -741,7 +741,8 @@ pub fn deplacer_repere(t: f64, morceaux: &[(f64, f64)]) -> Option<f64> {
 }
 
 /// Exporte le montage (morceaux gardés) dans un nouveau fichier « … (montage).mp4 ». `progression(0..1)`.
-pub fn exporter(stock: &Stockage, chemin: &str, morceaux: &[(f64, f64)], progression: impl Fn(f64)) -> Result<PathBuf, String> {
+/// Exporte le montage. `remplacer` : le montage prend la place du clip d'origine (même nom, même date)
+pub fn exporter(stock: &Stockage, chemin: &str, morceaux: &[(f64, f64)], remplacer: bool, progression: impl Fn(f64)) -> Result<PathBuf, String> {
     let source = clip_valide(stock, chemin)?;
     let mut m: Vec<(f64, f64)> = morceaux.iter().copied().filter(|(a, b)| b - a >= 0.2 && *a >= 0.0).collect();
     m.sort_by(|x, y| x.0.total_cmp(&y.0));
@@ -798,7 +799,6 @@ pub fn exporter(stock: &Stockage, chemin: &str, morceaux: &[(f64, f64)], progres
         let ok = enfant.wait().map(|s| s.success()).unwrap_or(false);
         if ok && sortie.is_file() {
             progression(1.0);
-            miniature(stock, &sortie);
             let reperes: Vec<Marqueur> = marqueurs(stock, &source)
                 .into_iter()
                 .filter_map(|mut r| deplacer_repere(r.t, &m).map(|t| {
@@ -806,8 +806,10 @@ pub fn exporter(stock: &Stockage, chemin: &str, morceaux: &[(f64, f64)], progres
                     r
                 }))
                 .collect();
-            ajouter_marqueurs(stock, &sortie, &reperes);
-            return Ok(sortie);
+            let fin = if remplacer { remplacer_original(stock, &source, &sortie) } else { sortie };
+            miniature(stock, &fin);
+            ajouter_marqueurs(stock, &fin, &reperes);
+            return Ok(fin);
         }
         let _ = fs::remove_file(&sortie);
         derniere_erreur = erreur.lines().last().unwrap_or("").to_string();
@@ -816,6 +818,22 @@ pub fn exporter(stock: &Stockage, chemin: &str, morceaux: &[(f64, f64)], progres
         }
     }
     Err(format!("Export impossible : {derniere_erreur}"))
+}
+
+/// Met le montage à la place du clip d'origine (même nom, même date dans la galerie).
+/// Si Windows refuse (clip encore ouvert…), le montage reste à côté et l'original n'est pas touché.
+fn remplacer_original(stock: &Stockage, original: &Path, montage: &Path) -> PathBuf {
+    let date = fs::metadata(original).and_then(|m| m.modified()).ok();
+    if fs::rename(montage, original).is_err() {
+        return montage.to_path_buf();
+    }
+    let _ = fs::remove_file(fichier_marqueurs(stock, original));
+    let _ = fs::remove_file(marqueurs_voisins(original));
+    let _ = fs::remove_file(miniatures(stock).join(cle_miniature(original)));
+    if let (Some(d), Ok(f)) = (date, fs::File::options().write(true).open(original)) {
+        let _ = f.set_modified(d);
+    }
+    original.to_path_buf()
 }
 
 #[cfg(test)]
@@ -865,8 +883,12 @@ mod tests {
         assert!(liste(&stock, || {}).iter().any(|c| Path::new(&c.chemin) == clip && c.miniature.is_some()), "miniature absente");
         // Montage : deux passages gardés, repère déplacé
         ajouter_marqueurs(&stock, &clip, &[Marqueur { t: 3.0, genre: "kill".into(), detail: "x".into(), headshot: true }]);
-        let montage = exporter(&stock, &clip.to_string_lossy(), &[(0.0, 1.0), (2.5, 4.0)], |_| {}).expect("export du montage");
+        let montage = exporter(&stock, &clip.to_string_lossy(), &[(0.0, 1.0), (2.5, 4.0)], false, |_| {}).expect("export du montage");
         assert_eq!(marqueurs(&stock, &montage).first().map(|m| m.t), Some(1.5));
+        // Montage qui remplace le clip : même chemin, plus de « (montage 2) » à côté
+        let remplace = exporter(&stock, &montage.to_string_lossy(), &[(0.0, 1.0)], true, |_| {}).expect("montage à la place");
+        assert_eq!(remplace, montage);
+        assert!(!montage.with_file_name(format!("{} (montage).mp4", montage.file_stem().unwrap().to_string_lossy())).exists());
         supprimer(&stock, &montage.to_string_lossy()).unwrap();
         supprimer(&stock, &clip.to_string_lossy()).unwrap();
         let _ = fs::remove_dir_all(&dossier);

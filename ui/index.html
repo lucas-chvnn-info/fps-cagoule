@@ -521,6 +521,7 @@
       <div class="editeur-entete">
         <h2 id="editeur-titre"></h2>
         <div class="boutons">
+          <button id="ed-plein" class="petit" title="Plein écran (F)" aria-label="Plein écran"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
           <button id="ed-externe" class="petit">Ouvrir dans Windows</button>
           <button id="ed-fermer" class="petit discret-btn" aria-label="Fermer">✕</button>
         </div>
@@ -529,17 +530,30 @@
       <div class="ed-timeline" id="ed-timeline" title="Clique pour te déplacer">
         <div class="ed-reperes" id="ed-reperes"></div>
         <div class="ed-passages" id="ed-passages"></div>
+        <div class="ed-selection" id="ed-selection" hidden><span class="ed-poignee" data-bord="a"></span><span class="ed-poignee" data-bord="b"></span></div>
         <div class="ed-tete" id="ed-tete"></div>
       </div>
       <div class="ed-commandes">
         <button id="ed-lecture" class="ed-rond" aria-label="Lecture"></button>
         <span id="ed-temps" class="ed-temps">0:00 / 0:00</span>
         <button id="ed-couper" title="Couper au curseur (S)"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M8.1 8.1 20 20M8.1 15.9 20 4"/></svg>Couper</button>
-        <button id="ed-supprimer" title="Retirer le passage choisi (Suppr)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>Retirer le passage</button>
+        <button id="ed-supprimer" title="Retirer ou remettre le morceau choisi entre deux coupes (Suppr)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>Retirer le morceau</button>
         <button id="ed-annuler" class="discret-btn" title="Annuler (Ctrl+Z)">Annuler</button>
         <span class="ed-espace"></span>
         <span id="ed-final" class="ed-temps"></span>
+        <label class="ed-remplacer" title="Le montage prend la place du clip d'origine (sinon il est créé à côté)"><input type="checkbox" id="ed-remplacer"> Remplacer l'original</label>
         <button id="ed-exporter" class="principal">Exporter</button>
+      </div>
+      <div class="ed-zone">
+        <span class="ed-zone-titre">Passage</span>
+        <button id="ed-debut" class="petit" title="Début du passage au curseur (I)">[ Début</button>
+        <input id="ed-a" class="ed-heure" type="text" inputmode="numeric" placeholder="0:20" aria-label="Début du passage">
+        <span class="ed-fleche">→</span>
+        <input id="ed-b" class="ed-heure" type="text" inputmode="numeric" placeholder="0:30" aria-label="Fin du passage">
+        <button id="ed-fin" class="petit" title="Fin du passage au curseur (O)">Fin ]</button>
+        <span class="ed-espace"></span>
+        <button id="ed-retirer-zone" class="petit" disabled>Retirer</button>
+        <button id="ed-garder-zone" class="petit" disabled>Garder seulement</button>
       </div>
       <div id="ed-progression" class="ed-progression" hidden><div class="barre"><div id="ed-barre"></div></div><small>Export du montage…</small></div>
     </div>

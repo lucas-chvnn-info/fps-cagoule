@@ -1102,6 +1102,29 @@ kbd { font: 600 12px/1 inherit; padding: 3px 7px; border-radius: 6px; background
 .clips-dossier-edition { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .clips-dossier-edition input { flex: 1; min-width: 260px; font-family: Consolas, monospace; font-size: 13px; }
 
+/* Éditeur : passage choisi (début → fin) et plein écran */
+.ed-selection {
+  position: absolute; top: 24px; bottom: 0; border-radius: 4px; pointer-events: none; z-index: 2;
+  background: rgba(92, 160, 255, .18); border-left: 2px solid var(--accent-clair); border-right: 2px solid var(--accent-clair);
+  box-shadow: 0 0 14px rgba(92, 160, 255, .35) inset; transition: background .2s;
+}
+.ed-poignee {
+  position: absolute; top: -4px; bottom: -4px; width: 12px; pointer-events: auto; cursor: ew-resize;
+  background: var(--accent-clair); border-radius: 4px; box-shadow: 0 0 10px rgba(92, 160, 255, .8);
+}
+.ed-poignee[data-bord="a"] { left: -7px; }
+.ed-poignee[data-bord="b"] { right: -7px; }
+.ed-zone { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding-top: 4px; }
+.ed-remplacer { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--discret); cursor: pointer; white-space: nowrap; }
+.ed-remplacer input { accent-color: var(--accent); }
+.ed-zone-titre { color: var(--discret); font-size: 12.5px; margin-right: 2px; }
+.ed-heure { width: 64px; text-align: center; font-variant-numeric: tabular-nums; padding: 5px 6px; font-size: 13px; }
+.ed-heure.faux { border-color: var(--rouge); }
+.ed-fleche { color: var(--discret); }
+#ed-plein svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; vertical-align: -3px; }
+.editeur.plein .editeur-boite { width: 100vw; height: 100vh; max-width: none; max-height: none; border-radius: 0; display: flex; flex-direction: column; }
+.editeur.plein #ed-video { flex: 1; min-height: 0; max-height: none; height: auto; }
+
 /* Identifiants du serveur des clips (demandés une seule fois) */
 .clips-connexion {
   display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 10px;

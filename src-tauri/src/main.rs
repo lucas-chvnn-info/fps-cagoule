@@ -536,10 +536,10 @@ struct ProgressionExport {
 
 /// Exporte le montage d'un clip (passages gardés, en secondes)
 #[tauri::command(async)]
-fn clips_exporter(app: AppHandle, chemin: String, morceaux: Vec<(f64, f64)>) -> Res<String> {
+fn clips_exporter(app: AppHandle, chemin: String, morceaux: Vec<(f64, f64)>, remplacer: Option<bool>) -> Res<String> {
     let e = etat(&app);
     let app2 = app.clone();
-    let sortie = clips::exporter(&e.stock, &chemin, &morceaux, move |fraction| {
+    let sortie = clips::exporter(&e.stock, &chemin, &morceaux, remplacer.unwrap_or(false), move |fraction| {
         let _ = app2.emit("clips_export", ProgressionExport { fraction });
     })?;
     Ok(sortie.to_string_lossy().into())
