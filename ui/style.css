@@ -1014,3 +1014,60 @@ main { position: relative; }
 .clips-vide svg { width: 56px; height: 56px; fill: none; stroke: var(--accent-clair); stroke-width: 1.4; stroke-linejoin: round; filter: drop-shadow(0 0 10px rgba(92, 160, 255, .6)); animation: flotte 3s ease-in-out infinite; }
 kbd { font: 600 12px/1 inherit; padding: 3px 7px; border-radius: 6px; background: #232838; border: 1px solid #3a4157; border-bottom-width: 2px; color: var(--texte); }
 .clips-auto small { color: var(--discret); font-size: 12px; margin-left: 4px; }
+
+/* Clips : réglages supplémentaires et repères */
+.clips-auto-ligne { gap: 14px; }
+.clips-dossier { display: flex; align-items: center; gap: 10px; min-width: 0; color: var(--discret); font-size: 13px; }
+.clips-dossier svg { width: 18px; height: 18px; flex-shrink: 0; fill: none; stroke: var(--accent-clair); stroke-width: 1.8; stroke-linejoin: round; }
+.chemin-dossier { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--texte); font-family: Consolas, monospace; font-size: 12.5px; }
+.chemin-dossier.injoignable { color: var(--orange); }
+.chemin-dossier.injoignable::after { content: " · injoignable"; font-family: inherit; }
+.clip-reperes { position: absolute; left: 8px; bottom: 8px; display: flex; gap: 4px; }
+.pastille-repere { min-width: 22px; height: 22px; padding: 0 6px; border-radius: 99px; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: #fff; backdrop-filter: blur(6px); }
+.pastille-repere.kill { background: rgba(255, 84, 104, .85); }
+.pastille-repere.ko { background: rgba(255, 181, 71, .85); color: #1a1205; }
+.pastille-repere.mort { background: rgba(90, 98, 120, .85); }
+.pastille-repere::before { content: ""; width: 0; }
+
+/* ---------- Éditeur ---------- */
+.editeur { z-index: 30; }
+.editeur-boite {
+  width: min(1100px, 94vw); max-height: 94vh; display: flex; flex-direction: column; gap: 12px; padding: 16px 18px;
+  background: var(--carte); border: 1px solid var(--bordure); border-radius: var(--rayon); box-shadow: 0 24px 60px rgba(0, 0, 0, .6);
+  animation: monte-assistant .25s ease;
+}
+.editeur-entete { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.editeur-entete h2 { margin: 0; font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.editeur-entete .boutons { margin: 0; flex-wrap: nowrap; }
+#ed-video { width: 100%; max-height: 62vh; background: #000; border-radius: 10px; display: block; cursor: pointer; }
+.ed-timeline { position: relative; height: 54px; cursor: pointer; touch-action: none; user-select: none; }
+.ed-passages { position: absolute; left: 0; right: 0; bottom: 0; height: 30px; border-radius: 8px; background: #0e1118; overflow: hidden; }
+.ed-passage {
+  position: absolute; top: 0; bottom: 0; background: linear-gradient(180deg, rgba(47, 111, 237, .55), rgba(47, 111, 237, .3));
+  border-right: 2px solid var(--carte); box-sizing: border-box; transition: background .2s;
+}
+.ed-passage:hover { background: linear-gradient(180deg, rgba(92, 160, 255, .65), rgba(47, 111, 237, .4)); }
+.ed-passage.choisi { box-shadow: inset 0 0 0 2px var(--accent-clair); }
+.ed-passage.retire { background: repeating-linear-gradient(135deg, rgba(255, 84, 104, .18) 0 6px, rgba(255, 84, 104, .05) 6px 12px); }
+.ed-tete { position: absolute; top: 14px; bottom: -4px; width: 2px; margin-left: -1px; background: #fff; box-shadow: 0 0 8px rgba(255, 255, 255, .8); pointer-events: none; }
+.ed-tete::before { content: ""; position: absolute; top: -4px; left: -5px; width: 12px; height: 8px; border-radius: 2px; background: #fff; }
+.ed-reperes { position: absolute; left: 0; right: 0; top: 0; height: 22px; }
+.ed-repere {
+  position: absolute; top: 0; width: 22px; height: 22px; margin-left: -11px; padding: 0; border-radius: 50% 50% 50% 0; transform: rotate(-45deg);
+  display: flex; align-items: center; justify-content: center; border: 0; box-shadow: 0 2px 8px rgba(0, 0, 0, .5); z-index: 2;
+}
+.ed-repere::after { display: none; }
+.ed-repere svg { width: 12px; height: 12px; transform: rotate(45deg); fill: none; stroke: #fff; stroke-width: 2.4; stroke-linecap: round; }
+.ed-repere.kill { background: var(--rouge); }
+.ed-repere.ko { background: var(--orange); }
+.ed-repere.ko svg { stroke: #1a1205; }
+.ed-repere.mort { background: #5a6278; }
+.ed-repere:hover:not(:disabled) { transform: rotate(-45deg) scale(1.2); box-shadow: 0 0 14px rgba(255, 255, 255, .45); }
+.ed-commandes { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ed-commandes button svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; vertical-align: -3px; margin-right: 6px; }
+.ed-rond { width: 40px; height: 40px; padding: 0; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--degrade); border: 0; }
+.ed-rond svg { width: 18px !important; height: 18px !important; margin: 0 0 0 2px !important; fill: #fff !important; stroke: none !important; }
+.ed-temps { font-variant-numeric: tabular-nums; color: var(--discret); font-size: 13px; min-width: 88px; }
+.ed-espace { flex: 1; }
+.ed-progression small { color: var(--discret); font-size: 12px; }
+.ed-progression .barre { margin: 0 0 4px; }

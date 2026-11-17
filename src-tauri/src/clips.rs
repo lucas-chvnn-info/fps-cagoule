@@ -375,10 +375,20 @@ pub fn sauver(stock: &Stockage, dossier_tampon: &Path, jeu: &str, secondes: u32,
     Ok(sortie)
 }
 
+/// Chemin sous sa forme courante : « \\?\C:\… » (chemin canonique de Windows) → « C:\… », « \\?\UNC\serveur\… » → « \\serveur\… »
+pub fn chemin_simple(p: &Path) -> String {
+    let t = p.to_string_lossy();
+    if let Some(r) = t.strip_prefix(r"\\?\UNC\") {
+        format!(r"\\{r}")
+    } else {
+        t.strip_prefix(r"\\?\").unwrap_or(&t).to_string()
+    }
+}
+
 fn cle_clip(clip: &Path, extension: &str) -> String {
-    // Nom stable par chemin de clip
+    // Nom stable par chemin de clip, quelle que soit sa forme
     let mut h: u64 = 1469598103934665603;
-    for b in clip.to_string_lossy().to_lowercase().bytes() {
+    for b in chemin_simple(clip).to_lowercase().bytes() {
         h = (h ^ b as u64).wrapping_mul(1099511628211);
     }
     format!("{h:016x}.{extension}")
@@ -480,7 +490,7 @@ pub fn clip_valide(stock: &Stockage, chemin: &str) -> Result<PathBuf, String> {
     let p = fs::canonicalize(chemin).map_err(|_| "Clip introuvable".to_string())?;
     let dans_un_dossier = dossiers_clips(stock).iter().filter_map(|d| fs::canonicalize(d).ok()).any(|r| p.starts_with(r));
     if dans_un_dossier && p.extension().is_some_and(|x| x.eq_ignore_ascii_case("mp4")) {
-        Ok(p)
+        Ok(PathBuf::from(chemin_simple(&p)))
     } else {
         Err("Chemin refusé".into())
     }
@@ -676,6 +686,13 @@ mod tests {
             }
             Err(e) => println!("Capture de l'écran indisponible sur ce PC : {e}"),
         }
+    }
+
+    #[test]
+    fn chemins() {
+        assert_eq!(chemin_simple(Path::new(r"\\?\C:\Vidéos\a.mp4")), r"C:\Vidéos\a.mp4");
+        assert_eq!(chemin_simple(Path::new(r"\\?\UNC\192.168.1.204\fichiers\a.mp4")), r"\\192.168.1.204\fichiers\a.mp4");
+        assert_eq!(cle_clip(Path::new(r"\\?\C:\V\A.mp4"), "json"), cle_clip(Path::new(r"C:\V\a.mp4"), "json"));
     }
 
     #[test]

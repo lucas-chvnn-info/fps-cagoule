@@ -342,7 +342,18 @@
             <span class="etiquette-option">Touche</span>
             <button id="clips-touche" class="touche-clavier" title="Clique puis appuie sur la touche voulue">F8</button>
           </div>
-          <label class="bascule clips-auto" title="À chaque fin de manche, FPS Cagoule lit le replay de R6 et garde tes 2K, 3K, 4K et ACE. Le « Match Replay » doit être activé dans R6."><input type="checkbox" id="clips-auto"><span></span> Clips auto dans R6 <small>2K · 3K · 4K · ACE</small></label>
+        </div>
+        <div class="clips-options clips-auto-ligne">
+          <label class="bascule clips-auto" title="À chaque fin de manche, FPS Cagoule lit le replay de R6 et garde tes multi-kills. Le « Match Replay » doit être activé dans R6."><input type="checkbox" id="clips-auto"><span></span> Clips auto dans R6</label>
+          <div class="choix-duree" id="clips-kills" aria-label="Multi-kills à garder">
+            <button data-kills="2">2K</button><button data-kills="3">3K</button><button data-kills="4">4K</button><button data-kills="5">ACE</button>
+          </div>
+        </div>
+        <div class="clips-dossier">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+          <span id="clips-dossier-chemin" class="chemin-dossier"></span>
+          <button id="btn-clips-changer" class="petit">Changer</button>
+          <button id="btn-clips-defaut" class="petit discret-btn" hidden>Remettre Vidéos</button>
         </div>
       </div>
       <div id="clips-grille" class="clips-grille"></div>
@@ -471,6 +482,34 @@
   <div id="toast" role="status" hidden></div>
   <div id="fenetre-jeu" class="fenetre" hidden>
     <div class="boite boite-jeu" role="dialog" aria-modal="true" aria-labelledby="fj-titre"></div>
+  </div>
+  <div id="editeur" class="fenetre editeur" hidden>
+    <div class="editeur-boite" role="dialog" aria-modal="true" aria-labelledby="editeur-titre">
+      <div class="editeur-entete">
+        <h2 id="editeur-titre"></h2>
+        <div class="boutons">
+          <button id="ed-externe" class="petit">Ouvrir dans Windows</button>
+          <button id="ed-fermer" class="petit discret-btn" aria-label="Fermer">✕</button>
+        </div>
+      </div>
+      <video id="ed-video" preload="metadata"></video>
+      <div class="ed-timeline" id="ed-timeline" title="Clique pour te déplacer">
+        <div class="ed-reperes" id="ed-reperes"></div>
+        <div class="ed-passages" id="ed-passages"></div>
+        <div class="ed-tete" id="ed-tete"></div>
+      </div>
+      <div class="ed-commandes">
+        <button id="ed-lecture" class="ed-rond" aria-label="Lecture"></button>
+        <span id="ed-temps" class="ed-temps">0:00 / 0:00</span>
+        <button id="ed-couper" title="Couper au curseur (S)"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M8.1 8.1 20 20M8.1 15.9 20 4"/></svg>Couper</button>
+        <button id="ed-supprimer" title="Retirer le passage choisi (Suppr)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>Retirer le passage</button>
+        <button id="ed-annuler" class="discret-btn" title="Annuler (Ctrl+Z)">Annuler</button>
+        <span class="ed-espace"></span>
+        <span id="ed-final" class="ed-temps"></span>
+        <button id="ed-exporter" class="principal">Exporter</button>
+      </div>
+      <div id="ed-progression" class="ed-progression" hidden><div class="barre"><div id="ed-barre"></div></div><small>Export du montage…</small></div>
+    </div>
   </div>
   <div id="fenetre-comptes" class="fenetre" hidden>
     <div class="boite boite-comptes" role="dialog" aria-modal="true" aria-labelledby="comptes-titre">

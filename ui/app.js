@@ -2592,7 +2592,15 @@ function afficherClips() {
       : clipsEtat?.enregistrement
         ? `Enregistrement en cours · ${touche} pour garder le moment`
         : `Prêt : appuie sur ${touche} en jeu`;
-  $('.clips-options').classList.toggle('inactif', !reglages.clips);
+  document.querySelectorAll('.clips-options').forEach((o) => o.classList.toggle('inactif', !reglages.clips));
+  document.querySelectorAll('#clips-kills button').forEach((b) => b.classList.toggle('actif', (reglages.clips_auto_kills || []).includes(Number(b.dataset.kills))));
+  if (clipsEtat) {
+    $('#clips-dossier-chemin').textContent = clipsEtat.dossier;
+    $('#clips-dossier-chemin').title = clipsEtat.dossier;
+    $('#clips-dossier-chemin').classList.toggle('injoignable', !clipsEtat.accessible);
+    $('#btn-clips-defaut').hidden = !clipsEtat.personnalise;
+    if (!clipsEtat.accessible) $('#clips-dossier-chemin').title = 'Injoignable pour l\'instant : les clips iront dans Vidéos\\FPS Cagoule';
+  }
   const grille = $('#clips-grille');
   grille.innerHTML = '';
   if (!clipsListe.length) {
@@ -2605,10 +2613,14 @@ function afficherClips() {
     tuile.style.animationDelay = `${Math.min(i, 12) * 40}ms`;
     const visuel = document.createElement('button');
     visuel.className = 'clip-visuel';
-    visuel.title = 'Regarder';
+    visuel.title = 'Regarder et monter';
     if (c.miniature) visuel.style.backgroundImage = `url("${c.miniature}")`;
-    visuel.innerHTML = `<span class="clip-lecture">${JOUER}</span>`;
-    visuel.addEventListener('click', () => appel('clips_ouvrir', { chemin: c.chemin }).catch(() => {}));
+    const compte = (g) => c.marqueurs.filter((m) => m.genre === g).length;
+    const resume = [['kill', compte('kill')], ['ko', compte('ko')], ['mort', compte('mort')]].filter(([, n]) => n);
+    visuel.innerHTML = `<span class="clip-lecture">${JOUER}</span>${
+      resume.length ? `<span class="clip-reperes">${resume.map(([g, n]) => `<span class="pastille-repere ${g}">${n}</span>`).join('')}</span>` : ''
+    }`;
+    visuel.addEventListener('click', () => ouvrirEditeur(c));
     const pied = document.createElement('div');
     pied.className = 'clip-pied';
     const textes = document.createElement('div');
@@ -2707,6 +2719,33 @@ $('#clips-touche').addEventListener('click', (e) => {
   window.addEventListener('keydown', ecouter, true);
 });
 
+$('#clips-kills').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-kills]');
+  if (!b) return;
+  const n = Number(b.dataset.kills);
+  const liste = new Set(reglages.clips_auto_kills || []);
+  liste.has(n) ? liste.delete(n) : liste.add(n);
+  reglages.clips_auto_kills = [...liste].sort();
+  sauverReglages();
+  afficherClips();
+});
+
+$('#btn-clips-changer').addEventListener('click', async (e) => {
+  try {
+    const choix = await appel('clips_choisir_dossier', {}, e.currentTarget);
+    if (choix) {
+      reglages.clips_dossier = choix;
+      toast(`Les clips iront dans ${choix}`, 5000);
+      chargerClips();
+    }
+  } catch {}
+});
+$('#btn-clips-defaut').addEventListener('click', async (e) => {
+  await appel('clips_dossier_regler', { dossier: null }, e.currentTarget).catch(() => {});
+  reglages.clips_dossier = null;
+  chargerClips();
+});
+
 $('#btn-clips-dossier').addEventListener('click', (e) => appel('clips_ouvrir', { chemin: null }, e.currentTarget).catch(() => {}));
 
 listen('clip', () => {
@@ -2714,6 +2753,209 @@ listen('clip', () => {
   if ($('#page-clips').classList.contains('actif')) chargerClips();
 });
 listen('clip_erreur', (e) => toast(`Clip impossible : ${e.payload}`, 6000));
+listen('clip_secours', () => toast('Dossier des clips injoignable (serveur éteint ?) : clip gardé dans Vidéos\\FPS Cagoule.', 7000));
+
+/* ---------- Éditeur de clips ---------- */
+
+const ICONES_REPERES = {
+  kill: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><path d="M12 2v5M12 17v5M2 12h5M17 12h5"/></svg>',
+  ko: '<svg viewBox="0 0 24 24"><path d="M6 18l12-12M6 6h7M18 18h-7"/></svg>',
+  mort: '<svg viewBox="0 0 24 24"><path d="M12 3a7 7 0 0 0-7 7c0 2.4 1.2 4 2.5 5v3h9v-3c1.3-1 2.5-2.6 2.5-5a7 7 0 0 0-7-7z"/><circle cx="9.5" cy="10.5" r="1.3"/><circle cx="14.5" cy="10.5" r="1.3"/></svg>',
+};
+const NOMS_REPERES = { kill: 'Kill', ko: 'KO', mort: 'Mort' };
+const ed = { clip: null, duree: 0, passages: [], choisi: -1, historique: [] };
+const video = $('#ed-video');
+
+const horloge = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+
+function ouvrirEditeur(c) {
+  Object.assign(ed, { clip: c, duree: 0, passages: [], choisi: -1, historique: [] });
+  $('#editeur-titre').textContent = c.nom;
+  $('#ed-progression').hidden = true;
+  video.src = window.__TAURI__.core.convertFileSrc(c.chemin);
+  $('#editeur').hidden = false;
+  dessinerEditeur();
+}
+
+function fermerEditeur() {
+  video.pause();
+  video.removeAttribute('src');
+  video.load();
+  $('#editeur').hidden = true;
+}
+
+video.addEventListener('loadedmetadata', () => {
+  ed.duree = video.duration || 0;
+  ed.passages = [{ a: 0, b: ed.duree, garde: true }];
+  dessinerEditeur();
+});
+
+/** Durée gardée et morceaux à exporter (passages gardés voisins fusionnés) */
+function morceauxGardes() {
+  const m = [];
+  for (const p of ed.passages) {
+    if (!p.garde) continue;
+    const dernier = m[m.length - 1];
+    if (dernier && Math.abs(dernier[1] - p.a) < 0.01) dernier[1] = p.b;
+    else m.push([p.a, p.b]);
+  }
+  return m;
+}
+
+function dessinerEditeur() {
+  const d = ed.duree || 1;
+  $('#ed-passages').innerHTML = ed.passages
+    .map((p, i) => `<div class="ed-passage${p.garde ? '' : ' retire'}${i === ed.choisi ? ' choisi' : ''}" data-i="${i}" style="left:${(p.a / d) * 100}%;width:${((p.b - p.a) / d) * 100}%"></div>`)
+    .join('');
+  $('#ed-reperes').innerHTML = (ed.clip?.marqueurs || [])
+    .filter((m) => m.t <= d + 0.5)
+    .map(
+      (m) =>
+        `<button class="ed-repere ${m.genre}" style="left:${(m.t / d) * 100}%" data-t="${m.t}" title="${NOMS_REPERES[m.genre] || m.genre} · ${esc(m.detail)}${m.headshot ? ' · headshot' : ''} (${horloge(m.t)})">${ICONES_REPERES[m.genre] || ''}</button>`
+    )
+    .join('');
+  const garde = morceauxGardes().reduce((t, [a, b]) => t + b - a, 0);
+  $('#ed-final').textContent = ed.duree ? `Montage : ${horloge(garde)}` : '';
+  $('#ed-exporter').disabled = !ed.duree || garde < 0.2 || ed.passages.every((p) => p.garde);
+  $('#ed-supprimer').disabled = !ed.duree;
+  $('#ed-annuler').disabled = !ed.historique.length;
+  majTete();
+}
+
+function majTete() {
+  const d = ed.duree || 1;
+  $('#ed-tete').style.left = `${(video.currentTime / d) * 100}%`;
+  $('#ed-temps').textContent = `${horloge(video.currentTime)} / ${horloge(ed.duree)}`;
+  $('#ed-lecture').innerHTML = video.paused ? JOUER : '<svg viewBox="0 0 24 24"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>';
+}
+
+function memoriser() {
+  ed.historique.push(ed.passages.map((p) => ({ ...p })));
+  if (ed.historique.length > 50) ed.historique.shift();
+}
+
+const passageA = (t) => ed.passages.findIndex((p) => t >= p.a && t < p.b);
+
+function couper() {
+  const t = video.currentTime;
+  const i = passageA(t);
+  if (i < 0) return;
+  const p = ed.passages[i];
+  if (t - p.a < 0.2 || p.b - t < 0.2) return toast('Trop près d\'une coupe existante.');
+  memoriser();
+  ed.passages.splice(i, 1, { a: p.a, b: t, garde: p.garde }, { a: t, b: p.b, garde: p.garde });
+  ed.choisi = i + 1;
+  dessinerEditeur();
+}
+
+function basculerPassage() {
+  const i = ed.choisi >= 0 ? ed.choisi : passageA(video.currentTime);
+  if (i < 0) return;
+  memoriser();
+  ed.passages[i].garde = !ed.passages[i].garde;
+  dessinerEditeur();
+}
+
+function annuler() {
+  const precedent = ed.historique.pop();
+  if (!precedent) return;
+  ed.passages = precedent;
+  ed.choisi = -1;
+  dessinerEditeur();
+}
+
+// Lecture : les passages retirés sont sautés
+function sauterRetires() {
+  const i = passageA(video.currentTime);
+  if (i >= 0 && !ed.passages[i].garde) {
+    const suivant = ed.passages.slice(i).find((p) => p.garde);
+    if (suivant) video.currentTime = suivant.a;
+    else video.pause();
+  }
+  majTete();
+}
+video.addEventListener('timeupdate', sauterRetires);
+video.addEventListener('play', function boucle() {
+  if (video.paused || $('#editeur').hidden) return majTete();
+  sauterRetires();
+  requestAnimationFrame(boucle);
+});
+video.addEventListener('pause', majTete);
+
+function positionTimeline(e) {
+  const r = $('#ed-timeline').getBoundingClientRect();
+  return Math.min(Math.max((e.clientX - r.left) / r.width, 0), 1) * ed.duree;
+}
+$('#ed-timeline').addEventListener('pointerdown', (e) => {
+  const repere = e.target.closest('.ed-repere');
+  if (repere) {
+    video.currentTime = Math.max(0, Number(repere.dataset.t) - 2);
+    return majTete();
+  }
+  const passage = e.target.closest('.ed-passage');
+  ed.choisi = passage ? Number(passage.dataset.i) : -1;
+  video.currentTime = positionTimeline(e);
+  const glisser = (ev) => {
+    video.currentTime = positionTimeline(ev);
+    majTete();
+  };
+  window.addEventListener('pointermove', glisser);
+  window.addEventListener('pointerup', () => window.removeEventListener('pointermove', glisser), { once: true });
+  dessinerEditeur();
+});
+
+$('#ed-lecture').addEventListener('click', () => (video.paused ? video.play() : video.pause()));
+video.addEventListener('click', () => (video.paused ? video.play() : video.pause()));
+$('#ed-couper').addEventListener('click', couper);
+$('#ed-supprimer').addEventListener('click', basculerPassage);
+$('#ed-annuler').addEventListener('click', annuler);
+$('#ed-fermer').addEventListener('click', fermerEditeur);
+$('#ed-externe').addEventListener('click', () => appel('clips_ouvrir', { chemin: ed.clip.chemin }).catch(() => {}));
+$('#editeur').addEventListener('click', (e) => e.target === e.currentTarget && fermerEditeur());
+
+document.addEventListener('keydown', (e) => {
+  if ($('#editeur').hidden || e.target.matches('input, select, textarea')) return;
+  const touches = {
+    ' ': () => (video.paused ? video.play() : video.pause()),
+    s: couper,
+    S: couper,
+    Delete: basculerPassage,
+    Backspace: basculerPassage,
+    ArrowLeft: () => (video.currentTime = Math.max(0, video.currentTime - (e.shiftKey ? 0.04 : 1))),
+    ArrowRight: () => (video.currentTime = Math.min(ed.duree, video.currentTime + (e.shiftKey ? 0.04 : 1))),
+    Escape: fermerEditeur,
+  };
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+    e.preventDefault();
+    return annuler();
+  }
+  const f = touches[e.key];
+  if (f) {
+    e.preventDefault();
+    f();
+    majTete();
+  }
+});
+
+$('#ed-exporter').addEventListener('click', async (e) => {
+  const bouton = e.currentTarget;
+  video.pause();
+  $('#ed-progression').hidden = false;
+  $('#ed-barre').style.width = '0%';
+  bouton.classList.add('chargement');
+  try {
+    await invoke('clips_exporter', { chemin: ed.clip.chemin, morceaux: morceauxGardes() });
+    toast('Montage exporté à côté du clip d\'origine.', 5000);
+    fermerEditeur();
+    chargerClips();
+  } catch (err) {
+    toast(String(err), 8000);
+  } finally {
+    bouton.classList.remove('chargement');
+    $('#ed-progression').hidden = true;
+  }
+});
+listen('clips_export', (e) => ($('#ed-barre').style.width = `${Math.round(e.payload.fraction * 100)}%`));
 
 /* ---------- Réglages et mises à jour ---------- */
 
