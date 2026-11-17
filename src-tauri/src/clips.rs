@@ -515,8 +515,16 @@ fn fichier_marqueurs(stock: &Stockage, clip: &Path) -> PathBuf {
     stock.dossier().join("clips-infos").join(cle_clip(clip, "json"))
 }
 
+/// Repères rangés à côté du clip (dossier caché « .fps-cagoule »), pour des clips importés (Medal…)
+/// ou venus d'un autre PC : ils suivent le clip sur le serveur
+fn marqueurs_voisins(clip: &Path) -> PathBuf {
+    let nom = clip.file_name().map(|n| format!("{}.json", n.to_string_lossy())).unwrap_or_default();
+    clip.parent().unwrap_or(Path::new("")).join(".fps-cagoule").join(nom)
+}
+
 pub fn marqueurs(stock: &Stockage, clip: &Path) -> Vec<Marqueur> {
-    fs::read_to_string(fichier_marqueurs(stock, clip)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+    let lire = |f: PathBuf| fs::read_to_string(f).ok().and_then(|t| serde_json::from_str::<Vec<Marqueur>>(&t).ok());
+    lire(fichier_marqueurs(stock, clip)).or_else(|| lire(marqueurs_voisins(clip))).unwrap_or_default()
 }
 
 /// Ajoute des repères au clip (sans doublon à moins d'une demi-seconde du même genre)
@@ -672,6 +680,7 @@ pub fn supprimer(stock: &Stockage, chemin: &str) -> Result<(), String> {
     let p = clip_valide(stock, chemin)?;
     let _ = fs::remove_file(miniatures(stock).join(cle_miniature(Path::new(chemin))));
     let _ = fs::remove_file(fichier_marqueurs(stock, Path::new(chemin)));
+    let _ = fs::remove_file(marqueurs_voisins(&p));
     fs::remove_file(p).map_err(|e| e.to_string())
 }
 
@@ -869,6 +878,21 @@ mod tests {
             }
             Err(e) => println!("Capture de l'écran indisponible sur ce PC : {e}"),
         }
+    }
+
+    #[test]
+    fn reperes_a_cote_du_clip() {
+        let d = std::env::temp_dir().join("fps-cagoule-test-voisins");
+        let _ = fs::remove_dir_all(&d);
+        let clip = d.join("Rainbow Six Siege").join("3K · Kaid · Oregon.mp4");
+        fs::create_dir_all(clip.parent().unwrap().join(".fps-cagoule")).unwrap();
+        fs::write(&clip, b"x").unwrap();
+        fs::write(marqueurs_voisins(&clip), r#"[{"t":4.5,"genre":"kill","detail":"x","headshot":true}]"#).unwrap();
+        let stock = Stockage::ouvrir(d.join("donnees"));
+        assert_eq!(marqueurs(&stock, &clip).len(), 1);
+        // Le dossier caché n'est pas pris pour un jeu
+        assert_eq!(videos(&d).len(), 1);
+        let _ = fs::remove_dir_all(&d);
     }
 
     #[test]
