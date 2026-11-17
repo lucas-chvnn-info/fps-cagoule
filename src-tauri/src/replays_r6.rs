@@ -84,6 +84,9 @@ pub const OPERATEURS: &[(u64, &str, Option<bool>)] = &[
     (92270642292, "Ying", Some(true)),
     (291191151607, "Zero", Some(true)),
     (92270644189, "Zofia", Some(true)),
+    // Y11 : vus dans les replays de l'utilisateur (nom lu dans l'en-tête, côté pas encore vérifié)
+    (444310693746, "Solid Snake", None),
+    (456757346397, "Noor", None),
 ];
 
 /// Maps connues : (worldid, nom)
@@ -125,6 +128,9 @@ pub const MAPS: &[(u64, &str)] = &[
     (418126004176, "Consulate"),
     // Y11S3 : vu dans un replay de quick match (« Littoral » en français)
     (436375283234, "Coastline"),
+    // Y11 : reconnues par les zones d'apparition des attaquants écrites dans les replays
+    (434715462383, "Oregon"),
+    (441408792952, "Kanal"),
 ];
 
 /// Versions du jeu (« code » de l'en-tête) à partir desquelles le format change
@@ -141,6 +147,18 @@ const INDICE_KILL: [u8; 5] = [0x22, 0xD9, 0x13, 0x3C, 0xBA];
 
 pub fn nom_operateur(id: u64) -> Option<&'static str> {
     OPERATEURS.iter().find(|(i, _, _)| *i == id).map(|(_, n, _)| *n)
+}
+
+/// « SOLID SNAKE » → « Solid Snake », « CAPITÃO » → « Capitão » (vide → rien)
+pub fn nom_lisible(texte: &str) -> Option<String> {
+    let mots: Vec<String> = texte
+        .split_whitespace()
+        .map(|m| {
+            let mut c = m.chars();
+            c.next().map_or(String::new(), |p| p.to_uppercase().chain(c.flat_map(char::to_lowercase)).collect())
+        })
+        .collect();
+    (!mots.is_empty()).then(|| mots.join(" "))
 }
 
 pub fn nom_map(id: u64) -> Option<&'static str> {
@@ -163,6 +181,10 @@ pub struct Joueur {
     id_dissect: Vec<u8>,
     #[serde(skip)]
     id_ui: u64,
+    /// Nom de l'opérateur écrit dans l'en-tête (« KAID », « SOLID SNAKE ») : secours pour un opérateur
+    /// d'une nouvelle saison absent de la liste
+    #[serde(skip)]
+    role_entete: String,
 }
 
 #[derive(Serialize, Clone, Debug, PartialEq)]
@@ -342,7 +364,7 @@ pub fn lire(fichier: &[u8]) -> Result<Manche, String> {
         let v = c.texte_entete().ok_or("En-tête illisible")?;
         if k == "playerid" {
             dans_joueur = true;
-            joueurs.push(Joueur { pseudo: String::new(), equipe: 0, operateur_id: 0, operateur: None, profil: String::new(), id_entete: v.parse().unwrap_or(0), id_dissect: vec![], id_ui: 0 });
+            joueurs.push(Joueur { pseudo: String::new(), equipe: 0, operateur_id: 0, operateur: None, profil: String::new(), id_entete: v.parse().unwrap_or(0), id_dissect: vec![], id_ui: 0, role_entete: String::new() });
         } else if k == "playlistcategory" || k == "id" {
             dans_joueur = false;
         }
@@ -350,6 +372,7 @@ pub fn lire(fichier: &[u8]) -> Result<Manche, String> {
             (true, "playername", Some(j)) => j.pseudo = v.clone(),
             (true, "team", Some(j)) => j.equipe = v.parse().unwrap_or(0),
             (true, "profileid", Some(j)) => j.profil = v.clone(),
+            (true, "rolename", Some(j)) => j.role_entete = v.clone(),
             _ => {}
         }
         let fin = k == "teamscore1";
@@ -381,7 +404,7 @@ pub fn lire(fichier: &[u8]) -> Result<Manche, String> {
     lire_paquets(&donnees, &mut manche, !profil_moi.is_empty());
     manche.joueurs.retain(|j| !j.pseudo.is_empty());
     for j in &mut manche.joueurs {
-        j.operateur = nom_operateur(j.operateur_id).map(String::from);
+        j.operateur = nom_operateur(j.operateur_id).map(String::from).or_else(|| nom_lisible(&j.role_entete));
     }
     manche.moi = manche
         .joueurs
@@ -465,7 +488,7 @@ fn lire_joueur(c: &mut Curseur, m: &mut Manche, rang: usize, profils: bool) -> O
                 j.profil = profil;
             }
         }
-        None if !pseudo.is_empty() => m.joueurs.push(Joueur { pseudo, equipe, operateur_id: op, operateur: None, profil, id_entete: 0, id_dissect: id, id_ui }),
+        None if !pseudo.is_empty() => m.joueurs.push(Joueur { pseudo, equipe, operateur_id: op, operateur: None, profil, id_entete: 0, id_dissect: id, id_ui, role_entete: String::new() }),
         None => {}
     }
     Some(())
@@ -604,10 +627,9 @@ pub fn titre_clip(m: &Manche) -> Option<String> {
         return None;
     }
     let kills = if n >= 5 { "ACE".to_string() } else { format!("{n}K") };
-    let op = m.mon_operateur().and_then(|j| j.operateur.clone()).unwrap_or_else(|| "Nouvel opérateur".into());
-    let map = m.map.clone().unwrap_or_else(|| "Nouvelle map".into());
-    let pseudo = m.moi.as_deref().unwrap_or_default();
-    Some(format!("{kills} · {op} · {map} · {pseudo}"))
+    // Opérateur ou map inconnus (nouvelle saison) : simplement absents du nom
+    let morceaux = [Some(kills), m.mon_operateur().and_then(|j| j.operateur.clone()), m.map.clone(), m.moi.clone()];
+    Some(morceaux.into_iter().flatten().filter(|t| !t.is_empty()).collect::<Vec<_>>().join(" · "))
 }
 
 #[cfg(test)]
@@ -636,7 +658,7 @@ mod tests {
             map: nom_map(407193663917).map(String::from),
             manche: 5,
             moi: Some("Cagoule".into()),
-            joueurs: vec![Joueur { pseudo: "Cagoule".into(), equipe: 0, operateur_id: op, operateur: nom_operateur(op).map(String::from), profil: String::new(), id_entete: 0, id_dissect: vec![], id_ui: 0 }],
+            joueurs: vec![Joueur { pseudo: "Cagoule".into(), equipe: 0, operateur_id: op, operateur: nom_operateur(op).map(String::from), profil: String::new(), id_entete: 0, id_dissect: vec![], id_ui: 0, role_entete: String::new() }],
             kills: kills.iter().enumerate().map(|(i, (t, c))| Kill { tueur: t.to_string(), victime: format!("ennemi{i}"), headshot: false, chrono: *c, ko: None }).collect(),
             chrono_fin,
         }
@@ -646,8 +668,12 @@ mod tests {
     fn titres_des_clips() {
         assert_eq!(titre_clip(&manche(&[("Cagoule", 150), ("Autre", 140), ("Cagoule", 120), ("Cagoule", 100)], 104189664390, 60)).as_deref(), Some("3K · Ace · Clubhouse · Cagoule"));
         assert_eq!(titre_clip(&manche(&[("Cagoule", 150); 5], 92270642656, 0)).as_deref(), Some("ACE · Ash · Clubhouse · Cagoule"));
-        // Opérateur d'une nouvelle saison : pas de plantage, nom provisoire
-        assert_eq!(titre_clip(&manche(&[("Cagoule", 150), ("Cagoule", 140)], 444310693746, 0)).as_deref(), Some("2K · Nouvel opérateur · Clubhouse · Cagoule"));
+        assert_eq!(titre_clip(&manche(&[("Cagoule", 150), ("Cagoule", 140)], 444310693746, 0)).as_deref(), Some("2K · Solid Snake · Clubhouse · Cagoule"));
+        // Opérateur d'une prochaine saison, absent de la liste et de l'en-tête : pas de plantage, il est juste omis
+        assert_eq!(titre_clip(&manche(&[("Cagoule", 150), ("Cagoule", 140)], 1, 0)).as_deref(), Some("2K · Clubhouse · Cagoule"));
+        assert_eq!(nom_lisible("SOLID SNAKE").as_deref(), Some("Solid Snake"));
+        assert_eq!(nom_lisible("CAPITÃO").as_deref(), Some("Capitão"));
+        assert_eq!(nom_lisible(""), None);
         assert_eq!(titre_clip(&manche(&[("Cagoule", 150)], 104189664390, 0)), None);
     }
 
