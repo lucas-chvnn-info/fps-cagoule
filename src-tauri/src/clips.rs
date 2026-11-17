@@ -864,10 +864,11 @@ pub fn exporter(stock: &Stockage, chemin: &str, morceaux: &[(f64, f64)], remplac
     let mut derniere_erreur = String::new();
     for encodeur in [encodeur_conseille(), Encodeur::Logiciel] {
         let video: Vec<&str> = match encodeur {
-            Encodeur::Nvidia => vec!["-c:v", "h264_nvenc", "-preset", "p5", "-rc", "vbr", "-cq", "21", "-b:v", "0"],
-            Encodeur::Amd => vec!["-c:v", "h264_amf", "-quality", "quality", "-rc", "cqp", "-qp_i", "20", "-qp_p", "22"],
-            Encodeur::Intel => vec!["-c:v", "h264_qsv", "-global_quality", "21", "-pix_fmt", "nv12"],
-            Encodeur::Logiciel => vec!["-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p"],
+            // Débit plafonné (~12 Mb/s, 20 au plus) : sinon un clip HEVC de Medal devient un fichier de 1 Go
+            Encodeur::Nvidia => vec!["-c:v", "h264_nvenc", "-preset", "p5", "-rc", "vbr", "-cq", "22", "-b:v", "12M", "-maxrate", "20M", "-bufsize", "30M"],
+            Encodeur::Amd => vec!["-c:v", "h264_amf", "-quality", "quality", "-rc", "vbr_peak", "-b:v", "12M", "-maxrate", "20M"],
+            Encodeur::Intel => vec!["-c:v", "h264_qsv", "-preset", "medium", "-b:v", "12M", "-maxrate", "20M", "-pix_fmt", "nv12"],
+            Encodeur::Logiciel => vec!["-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-maxrate", "20M", "-bufsize", "30M", "-pix_fmt", "yuv420p"],
         };
         let mut cmd = Command::new(ffmpeg(stock));
         cmd.args(["-hide_banner", "-loglevel", "error", "-y", "-nostats", "-progress", "pipe:1", "-i"])
