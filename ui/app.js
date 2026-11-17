@@ -152,7 +152,7 @@ function afficherScore() {
   $('#score-depart').hidden = !(depart && score > depart.score);
   if (depart && score > depart.score) $('#score-depart').innerHTML = `Avant FPS Cagoule : ${depart.score} → <span class="gain">${score} aujourd'hui (+${score - depart.score})</span>`;
   $('#score-texte').textContent =
-    score >= 90 ? 'Ton PC est au top pour jouer.' : score >= 70 ? 'Quelques réglages peuvent encore te faire gagner des FPS.' : 'Plusieurs points freinent ton PC en jeu.';
+    score >= 90 ? 'Au top' : score >= 70 ? 'Encore un peu de FPS à gagner' : 'Ton PC peut faire mieux';
   if (derniereAnalyse.date) {
     const min = Math.round((Date.now() - new Date(derniereAnalyse.date)) / 60000);
     $('#date-derniere').textContent = `Dernière analyse : ${min < 1 ? "à l'instant" : min < 60 ? `il y a ${min} min` : min < 1440 ? `il y a ${Math.round(min / 60)} h` : new Date(derniereAnalyse.date).toLocaleDateString('fr-CH')}`;
@@ -166,10 +166,10 @@ function afficherScore() {
           const b = BOUTONS_CORRECTIF[p.correctif];
           if (b) bouton = `<button class="petit ${['nettoyer', 'optimiser', 'msconfig', 'redemarrer'].includes(b[1]) ? 'principal' : ''}" data-action="${b[1]}">${b[0]}</button>`;
           else if (p.correctif && (ids.has(p.correctif) || !tweaks.length)) bouton = `<button class="petit principal" data-tweak="${esc(p.correctif)}">Corriger</button>`;
-          return `<li class="probleme" style="animation-delay:${i * 40}ms"><span class="point ${p.gravite}"></span><div><strong>${esc(p.titre)}</strong><p>${esc(p.detail)}</p></div>${bouton}</li>`;
+          return `<li class="probleme" style="animation-delay:${i * 40}ms" title="${esc(p.detail)}"><span class="point ${p.gravite}"></span><div><strong>${esc(p.titre)}</strong></div>${bouton}</li>`;
         })
         .join('')
-    : '<li class="ok">Aucun problème détecté : ton PC est au top. 🎯</li>';
+    : '<li class="ok">Rien à corriger</li>';
   $('#btn-tout-corriger').hidden = !correctifsAuto(problemes).length;
   afficherMateriel();
 }
@@ -350,22 +350,18 @@ function afficherMateriel() {
 const gainBadge = { fort: '<span class="badge accent">Gain fort</span>', moyen: '<span class="badge bleu">Gain moyen</span>', faible: '<span class="badge">Gain faible</span>' };
 
 function ligneTweak(t) {
-  const annuler = t.annulable ? `<button class="petit" data-annuler="${esc(t.id)}">Annuler</button>` : '';
-  const activer = `<button class="petit principal" data-activer="${esc(t.id)}">Activer</button>`;
-  let droite;
-  if (!t.disponible) droite = '<span class="badge">Non disponible sur ton PC</span>';
-  else if (t.attente === 'activation') droite = `<span class="badge orange">Redémarre pour l'activer</span>${annuler}`;
-  else if (t.attente === 'annulation') droite = `<span class="badge orange">Redémarre pour terminer l'annulation</span>${t.actif ? '' : activer}`;
-  else if (t.actif) droite = `<span class="badge accent">Actif</span>${annuler}`;
-  else droite = `${annuler}${activer}`;
-  // « Redémarrage nécessaire » n'est qu'une information tant que le réglage n'est pas appliqué
-  const redemarrage = t.redemarrage && !t.actif && !t.attente ? '<span class="badge">Redémarrage nécessaire</span>' : '';
-  return `<li class="tweak" data-id="${esc(t.id)}">
-      <div>
-        <div class="titre">${esc(t.titre)} ${gainBadge[t.gain] || ''} ${t.niveau === 'max' ? '<span class="badge violet">Boost max</span>' : ''}${t.niveau === 'risque' ? '<span class="badge rouge">Risqué</span>' : ''}${t.niveau === 'choix' ? '<span class="badge">À choisir</span>' : ''} ${redemarrage}</div>
-        <p>${esc(t.description)}</p>
-      </div>
-      <div class="droite">${droite}</div>
+  if (!t.disponible) return '';
+  const coche = t.attente === 'annulation' ? false : t.attente === 'activation' || t.actif;
+  const badges = [
+    t.gain === 'fort' ? '<span class="badge accent">Gros gain</span>' : '',
+    t.niveau === 'max' ? '<span class="badge violet">Max</span>' : '',
+    t.niveau === 'risque' ? '<span class="badge rouge">Risqué</span>' : '',
+    t.attente ? '<span class="badge orange" title="Redémarre ton PC pour terminer">↻ Redémarrage</span>' : '',
+  ].join('');
+  return `<li class="tweak${coche ? ' actif' : ''}" data-id="${esc(t.id)}" title="${esc(t.description)}">
+      <div class="titre">${esc(t.titre)}</div>
+      <div class="badges">${badges}</div>
+      <label class="bascule"><input type="checkbox" data-tweak-bascule="${esc(t.id)}" ${coche ? 'checked' : ''} ${coche && !t.annulable ? 'disabled' : ''} aria-label="${esc(t.titre)}"><span></span></label>
     </li>`;
 }
 
@@ -450,8 +446,12 @@ $('#btn-redemarrer').addEventListener('click', async (e) => {
 });
 
 document.querySelectorAll('.tweaks[data-categorie]').forEach((ul) =>
-  ul.addEventListener('click', async (e) => {
-    const b = e.target.closest('button');
+  ul.addEventListener('change', async (e) => {
+    const c = e.target;
+    const id = c.dataset.tweakBascule;
+    if (!id) return;
+    const b = { dataset: c.checked ? { activer: id } : { annuler: id }, classList: c.closest('.tweak').classList };
+    c.disabled = true;
     if (b?.dataset.activer) {
       const t = tweaks.find((x) => x.id === b.dataset.activer);
       if (t?.niveau === 'risque') {
@@ -460,13 +460,14 @@ document.querySelectorAll('.tweaks[data-categorie]').forEach((ul) =>
           `<p>${esc(t.description)}</p><p class="alerte">Ce réglage réduit la sécurité ou modifie le démarrage de Windows. Tu pourras l'annuler ici à tout moment.</p>`,
           'Activer quand même'
         );
-        if (!ok) return;
+        if (!ok) return chargerTweaks();
       }
-      return appliquerTweaks([b.dataset.activer], b);
+      return appliquerTweaks([b.dataset.activer], b).catch(() => chargerTweaks());
     }
-    if (!b?.dataset.annuler) return;
-    const [r] = await appel('tweaks_annuler', { ids: [b.dataset.annuler] }, b);
-    toast(r.ok ? 'Réglage remis comme avant' : `Impossible d'annuler : ${r.erreur}`);
+    try {
+      const [r] = await appel('tweaks_annuler', { ids: [b.dataset.annuler] }, b);
+      toast(r.ok ? 'Remis comme avant' : `Impossible d'annuler : ${r.erreur}`);
+    } catch {}
     chargerTweaks();
   })
 );
@@ -927,7 +928,7 @@ async function optimiserJeu(i, { silencieux = false } = {}) {
     arcs(nouvelle, 9, [40, 75]);
     setTimeout(() => nouvelle.classList.remove('eclate'), 900);
   }
-  if (!silencieux) toast(`${p.nom} : ${[...fait, ...avertir].join(', ')}.`, avertir.length ? 8000 : 5000);
+  if (!silencieux) toast(avertir.length ? `${p.nom} : ${avertir.join(', ')}` : `⚡ ${p.nom} optimisé`, avertir.length ? 7000 : 3000);
   return !avertir.length;
 }
 
@@ -947,7 +948,7 @@ $('#btn-jeux-tout').addEventListener('click', async (e) => {
   let ok = 0;
   for (const [, i] of a) if (await optimiserJeu(i, { silencieux: true })) ok++;
   bouton.classList.remove('chargement');
-  toast(ok === a.length ? `${ok} jeu${ok > 1 ? 'x' : ''} optimisé${ok > 1 ? 's' : ''}. Lance-les : FPS Cagoule s'occupe du reste.` : `${ok} sur ${a.length} optimisés. Ferme les jeux lancés et réessaie.`, 7000);
+  toast(ok === a.length ? `⚡ ${ok} jeu${ok > 1 ? 'x' : ''} optimisé${ok > 1 ? 's' : ''}` : `${ok} sur ${a.length} optimisés : ferme les jeux lancés`, 7000);
 });
 
 /* Fenêtre de réglages d'un jeu */
@@ -1136,14 +1137,6 @@ async function sauverProfils() {
   afficherProfils();
 }
 
-$('#ajout-jeu').addEventListener('submit', (e) => {
-  e.preventDefault();
-  let exe = $('#ajout-exe').value.trim();
-  if (!exe.toLowerCase().endsWith('.exe')) exe += '.exe';
-  profils.push({ nom: $('#ajout-nom').value.trim(), exes: [exe], actif: true, boost: true, priorite_haute: true, gpu_perf: true, resolution: null, oc: true });
-  e.target.reset();
-  sauverProfils();
-});
 /** Jeux installés qui ne sont pas encore dans la liste */
 async function nouveauxJeux() {
   const trouves = await invoke('jeux_installes');
@@ -1198,10 +1191,6 @@ async function detecterJeuxAuto() {
   if (jeux.length) toast(`${jeux.length} nouveau${jeux.length > 1 ? 'x' : ''} jeu${jeux.length > 1 ? 'x' : ''} ajouté${jeux.length > 1 ? 's' : ''} au boost : ${jeux.map((j) => j.nom).slice(0, 4).join(', ')}${jeux.length > 4 ? '…' : ''}`, 8000);
 }
 
-$('#btn-profils-defaut').addEventListener('click', async () => {
-  profils = await appel('profils_defaut');
-  sauverProfils();
-});
 
 async function sauverReglages() {
   await appel('reglages_set', { reglages });
@@ -1984,27 +1973,18 @@ async function chargerProcesseur() {
   let boutons = '';
   if (amd) {
     badge = x3d && !serie9000x3d ? 'Undervolt seulement' : 'Overclockable';
-    html = `<p>Le réglage qui marche le mieux sur un Ryzen, c'est le <strong>Curve Optimizer</strong> : il baisse la tension à chaque fréquence. Le processeur chauffe moins et monte plus haut tout seul, donc plus de FPS sans risque pour la puce.${
-      x3d && !serie9000x3d ? ' Ton processeur X3D ne se surcadence pas autrement (protection du cache 3D) : le Curve Optimizer est la bonne méthode.' : ''
-    }</p>
-      <ol>
-        <li>Ouvre <strong>AMD Ryzen Master</strong> (l'outil officiel d'AMD), mode <strong>Curve Optimizer</strong>, et lance son réglage automatique « Per Core ». Ou, dans le BIOS : PBO → Curve Optimizer → All Cores → Negative → 15.</li>
-        <li>Lance le <strong>Benchmark</strong> de FPS Cagoule avant et après pour voir le gain.</li>
-        <li>Joue une heure : si le PC plante ou redémarre, baisse la valeur (par exemple de 15 à 10).</li>
-      </ol>`;
+    html = `<p><strong>Curve Optimizer</strong> dans Ryzen Master (réglage auto « Per Core ») ou dans le BIOS : PBO → Curve Optimizer → All Cores → Negative → 15. Si ça plante, baisse à 10.</p>`;
     boutons = p.ryzen_master ? '<button class="principal" data-cpu="ryzen">Ouvrir AMD Ryzen Master</button>' : '<button class="principal" data-cpu-lien="amd">Télécharger AMD Ryzen Master</button>';
   } else if (intelK) {
     badge = 'Overclockable';
-    html = `<p>Ton processeur Intel « K » peut être réglé avec <strong>Intel XTU</strong> (outil officiel) ou dans le BIOS. Le plus utile est souvent un léger <strong>undervolt</strong> : moins de chaleur, des fréquences plus stables en jeu.${
-      intel1314 ? ' Sur les 13e et 14e génération, mets d\'abord ton BIOS à jour (correctif Intel contre la dégradation) et n\'augmente jamais la tension.' : ''
-    }</p>`;
+    html = `<p>Un léger <strong>undervolt</strong> avec Intel XTU : moins de chaleur, fréquences plus stables.${intel1314 ? ' Mets d\'abord ton BIOS à jour (correctif Intel 13e/14e génération).' : ''}</p>`;
     boutons = '<button class="principal" data-cpu-lien="intel">Télécharger Intel XTU</button>';
   } else {
     badge = 'Non overclockable';
-    html = `<p>Ce processeur n'est pas fait pour être surcadencé. Les optimisations de FPS Cagoule (alimentation, cœurs éveillés, priorité des jeux) sont le meilleur moyen de le garder à pleine vitesse.</p>`;
+    html = `<p>Les optimisations de FPS Cagoule suffisent pour ce processeur.</p>`;
   }
   $('#cpu-badge').textContent = badge;
-  $('#cpu-conseils').innerHTML = html + '<p class="petit-texte">FPS Cagoule ne règle pas le processeur lui-même : il faudrait un pilote système que Windows bloque et que les anti-triches (Vanguard, FACEIT) détectent. Les outils officiels d\'AMD et Intel utilisent leur propre pilote signé.</p>';
+  $('#cpu-conseils').innerHTML = html;
   $('#cpu-boutons').innerHTML = boutons + '<button data-cpu="benchmark">Ouvrir le benchmark</button>';
 }
 
@@ -2509,9 +2489,8 @@ function afficherBios() {
     `<li class="bios-entete discret petit-texte">${marque} · BIOS ${esc(bios.biosVersion)}${bios.biosDate ? ` du ${new Date(bios.biosDate).toLocaleDateString('fr-CH')}` : ''}${guide ? ` · Touche pour entrer dans le BIOS : ${guide.touche}` : ''}</li>` +
     (oem ? '<li class="discret petit-texte">PC de marque : son BIOS propose rarement ces réglages. Ce qui reste possible est indiqué ci-dessous.</li>' : '') +
     items
-      .map((i) => `<li class="bios-item"><div><strong>${esc(i.titre)}</strong>${badge[i.statut]}<p>${esc(i.texte)}</p>${i.chemin ? `<p class="chemin">${esc(i.chemin)}</p>` : ''}</div></li>`)
-      .join('') +
-    '<li class="discret petit-texte">Les noms des menus changent un peu selon les versions : si tu ne trouves pas, cherche les mots en gras. En cas de souci au démarrage, « Load Optimized Defaults » (souvent F5 ou F9) remet le BIOS d\'origine.</li>';
+      .map((i) => `<li class="bios-item" title="${esc(i.texte)}"><div><strong>${esc(i.titre)}</strong>${badge[i.statut]}${i.chemin ? `<p class="chemin">${esc(i.chemin)}</p>` : ''}</div></li>`)
+      .join('');
 }
 
 $('#btn-bios-redemarrer').addEventListener('click', async (e) => {
@@ -2967,5 +2946,17 @@ async function init() {
   if (!reglages?.assistant_fait) setTimeout(ouvrirAssistant, 1300);
   else setTimeout(detecterJeuxAuto, 4000);
 }
+
+// Icône du menu devant le titre de chaque page
+document.querySelectorAll('nav button[data-page]').forEach((b) => {
+  const h1 = document.querySelector(`#page-${b.dataset.page} > header h1`);
+  const svg = b.querySelector('svg');
+  if (!h1 || !svg) return;
+  const titre = document.createElement('div');
+  titre.className = 'titre-page';
+  titre.innerHTML = `<span class="icone-page">${svg.outerHTML}</span>`;
+  h1.replaceWith(titre);
+  titre.append(h1);
+});
 
 init();

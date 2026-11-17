@@ -44,7 +44,6 @@
     <div class="conso" title="Ressources utilisées par FPS Cagoule elle-même">
       <span class="etiquette">FPS Cagoule utilise</span>
       <span id="conso">…</span>
-      <span class="note">L'interface est libérée de la mémoire quand tu fermes cette fenêtre.</span>
     </div>
   </aside>
 
@@ -63,14 +62,14 @@
             </svg>
             <div class="score"><div><span id="score">–</span><small>/100</small></div></div>
           </div>
-          <p id="score-texte" class="discret">Lance une analyse pour obtenir ton score.</p>
+          <p id="score-texte" class="discret">Lance une analyse</p>
           <ul id="etapes-analyse" class="etapes" hidden></ul>
           <p id="score-depart" class="petit-texte" hidden></p>
           <p id="date-derniere" class="discret petit-texte"></p>
         </div>
         <div class="carte" id="carte-jeu">
           <h2>Partie en cours</h2>
-          <div id="jeu-vide" class="discret">Aucun jeu détecté. Lance un jeu : FPS Cagoule le repère et le boost tout seul.</div>
+          <div id="jeu-vide" class="jeu-vide"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 9h10a4 4 0 0 1 4 4v1a3 3 0 0 1-5.4 1.8L14 14h-4l-1.6 1.8A3 3 0 0 1 3 14v-1a4 4 0 0 1 4-4z"/><path d="M8 11v3M6.5 12.5h3"/><circle cx="16" cy="12" r=".8"/></svg><span>Lance un jeu, je m'occupe du reste</span></div>
           <div id="jeu-actif" hidden>
             <div class="jeu-ligne"><strong id="jeu-nom"></strong><span id="jeu-badge" class="badge accent">Boosté</span></div>
             <div class="fps-geant"><span id="jeu-fps">–</span><small>FPS</small></div>
@@ -97,11 +96,9 @@
         <div class="barre-ram"><div id="ram-barre"></div></div>
         <p id="ram-texte" class="discret"></p>
         <ul id="ram-liste" class="liste-ram"></ul>
-        <p class="discret petit-texte">Fermer un programme ici ne le désinstalle pas. Avec 16 Go ou moins, R6 + Discord + un navigateur + un enregistreur (Medal) remplissent vite la mémoire : passer à 32 Go est la vraie solution.</p>
       </div>
       <div class="carte" id="carte-bios">
         <div class="entete-diagnostic"><h2>Réglages du BIOS</h2><button class="petit" id="btn-bios-redemarrer">Redémarrer dans le BIOS</button></div>
-        <p class="discret">Les plus gros gains qui restent se règlent dans le BIOS, pas dans Windows. FPS Cagoule vérifie ce qu'il peut voir depuis Windows et t'indique où cliquer selon ta carte mère.</p>
         <ul id="bios-liste" class="liste-bios"><li class="discret">Chargement…</li></ul>
       </div>
       <h2 class="section">Tests</h2>
@@ -112,19 +109,17 @@
         </div>
         <div class="carte">
           <h2>Test de ping</h2>
-          <p class="discret">25 pings vers ta box et vers Internet. La gigue (variation du ping) compte plus que le ping lui-même : c'est elle qui donne des tirs qui ne partent pas.</p>
           <button id="btn-ping" class="principal">Lancer le test</button>
           <div id="ping-resultats" class="ping-resultats"></div>
         </div>
       </div>
       <div class="carte" id="carte-dns">
         <div class="entete-diagnostic"><h2>Serveur DNS</h2><button class="petit principal" id="btn-dns">Trouver le plus rapide</button></div>
-        <p class="discret">Le DNS traduit les noms (discord.com, les serveurs des jeux…) en adresses. Il ne change pas ton ping en partie, mais un DNS rapide accélère les connexions : lancement des jeux, matchmaking, pages web. Le test dure quelques secondes.</p>
         <div id="dns-resultats"></div>
       </div>
       <div class="carte">
         <h2>Test de ta souris</h2>
-        <p class="discret">Bouge ta souris rapidement en rond dans la zone. Une souris gaming envoie sa position 1000 fois par seconde (1 ms) ou plus ; à 125 Hz (8 ms), monte la fréquence d'interrogation (polling rate) dans le logiciel de ta souris. Double-clic pour recommencer.</p>
+        <p class="discret petit-texte">Bouge ta souris en rond dans la zone.</p>
         <div id="zone-souris" class="zone-souris">
           <div><span id="souris-hz">–</span><small>Hz</small></div>
           <div><span id="souris-ms">–</span><small>ms entre deux positions</small></div>
@@ -135,7 +130,6 @@
     <!-- Benchmark -->
     <section id="page-benchmark" class="page">
       <header><h1>Benchmark</h1><button id="btn-benchmark" class="principal">Lancer le benchmark</button></header>
-      <p class="discret">Environ 45 secondes : processeur, mémoire, disque et carte graphique. Ferme tes jeux et les programmes lourds ; sur un portable, branche le chargeur. Lance-le avant et après tes optimisations pour voir la différence.</p>
       <div class="carte bench-total">
         <div>
           <div class="discret">Score FPS Cagoule</div>
@@ -150,7 +144,6 @@
         <canvas id="bench-gpu" width="1920" height="1080" hidden></canvas>
       </div>
       <div id="bench-resultats" class="grille-bench"></div>
-      <p class="discret petit-texte">Points : 1000 = le PC de référence (processeur AMD EPYC 7763 à 4 cœurs, pour la carte graphique environ une RTX 3060). Les optimisations de Windows changent souvent peu ces scores bruts : leur effet se voit surtout en jeu, sur les « 1 % low » de la page Statistiques FPS.</p>
       <table class="tableau" id="bench-historique">
         <thead><tr><th>Date</th><th>Optimisations</th><th>Total</th><th>CPU 1 cœur</th><th>CPU multi</th><th>Mémoire</th><th>Disque</th><th>Carte graphique</th></tr></thead>
         <tbody></tbody>
@@ -161,7 +154,7 @@
     <section id="page-optimisations" class="page">
       <header>
         <h1>Optimisations</h1>
-        <label class="case"><input type="checkbox" id="restauration" checked> Point de restauration avant chaque changement</label>
+        <label class="case" title="Point de restauration Windows avant chaque changement"><input type="checkbox" id="restauration" checked> Sauvegarde Windows</label>
       </header>
       <div id="banniere-redemarrage" class="carte banniere" hidden>
         <p id="banniere-texte"></p>
@@ -170,7 +163,6 @@
       <div class="carte boost-global">
         <div>
           <h2>Optimiser en un clic</h2>
-          <p class="discret">Toutes les catégories ci-dessous, sauf la Zone risquée. Chaque réglage reste réversible : FPS Cagoule garde la valeur d'origine, et « Tout annuler » remet ton PC comme avant.</p>
           <p id="resume-tweaks" class="discret"></p>
         </div>
         <div class="boutons-boost">
@@ -210,19 +202,17 @@
       </section>
       <section class="categorie" data-categorie="services">
         <div class="entete-categorie"><h2>Services Windows inutiles</h2><span class="compte"></span></div>
-        <p class="discret">Seulement des services qui ne servent à rien sur un PC de jeu. Rien qui touche au Wi-Fi, au Store, aux mises à jour, aux manettes Xbox ou aux anti-triches. Chaque service reste réactivable ici.</p>
         <ul class="tweaks" data-categorie="services"></ul>
       </section>
       <section class="categorie" data-categorie="demarrage" id="carte-demarrage">
         <div class="entete-categorie"><h2>Programmes au démarrage</h2><span class="compte"></span></div>
         <div class="carte">
-          <p class="discret">Ils se lancent avec Windows et tournent en arrière-plan pendant tes parties. Désactiver un programme ne le désinstalle pas : il se lance quand tu l'ouvres toi-même, et tu peux le réactiver ici.</p>
           <ul id="demarrage-liste" class="liste-demarrage"><li class="discret">Chargement…</li></ul>
         </div>
       </section>
       <section class="categorie" data-categorie="risque">
         <div class="entete-categorie"><h2 class="danger">Zone risquée</h2><span class="compte"></span></div>
-        <p class="discret">Ces réglages gagnent un peu de performances en retirant des protections de Windows. Ils ne sont jamais appliqués par « Boost maximum » : active-les un par un, en connaissance de cause. Ils restent annulables.</p>
+        <p class="discret petit-texte">Retire des protections de Windows. À activer un par un.</p>
         <ul class="tweaks" data-categorie="risque"></ul>
       </section>
     </section>
@@ -238,17 +228,14 @@
         <button class="principal" id="btn-nettoyer" disabled>Nettoyer la sélection</button>
       </div>
       <ul id="nettoyage-categories" class="liste-nettoyage"></ul>
-      <p class="discret">Les fichiers en cours d'utilisation sont ignorés : ferme tes navigateurs, Discord et Steam pour tout nettoyer. Pas de « nettoyage du registre » : Microsoft le déconseille, le gain est nul et il peut casser des programmes.</p>
       <div class="grille-2">
         <div class="carte">
           <h2>Optimiser les disques</h2>
-          <p class="discret">Comme l'outil de Windows : TRIM pour les SSD (quelques secondes), défragmentation pour les disques durs (peut prendre longtemps).</p>
           <button id="btn-disques">Optimiser les disques</button>
           <div id="disques-resultat" class="discret"></div>
         </div>
         <div class="carte">
           <h2>Applis préinstallées de Windows <span id="nb-applis" class="discret"></span></h2>
-          <p class="discret">Les applis que Windows installe d'office. Elles se réinstallent depuis le Microsoft Store si tu changes d'avis. Le Store, Edge et ce qu'il faut aux jeux Xbox ne sont jamais proposés.</p>
           <ul id="applis-liste" class="liste-applis"><li class="discret">Chargement…</li></ul>
           <button class="principal" id="btn-applis" disabled>Désinstaller la sélection</button>
         </div>
@@ -263,11 +250,9 @@
     <!-- Pilotes -->
     <section id="page-pilotes" class="page">
       <header><h1>Pilotes</h1></header>
-      <p class="discret">Tous tes pilotes au même endroit, sans installer les applications des fabricants. FPS Cagoule ne vérifie rien en arrière-plan : la recherche se fait quand tu ouvres cette page.</p>
       <div class="carte" id="carte-gpu"><h2>Carte graphique</h2><p class="discret">Recherche du dernier pilote…</p></div>
       <div class="carte">
         <h2>Autres pilotes (Windows Update)</h2>
-        <p class="discret">Pour tous tes périphériques : réseau, son, Bluetooth, chipset, manettes… Les pilotes viennent du catalogue officiel de Microsoft, fournis par les fabricants. La recherche démarre à l'ouverture de la page et peut prendre une minute.</p>
         <button id="btn-wu" class="principal">Rechercher les mises à jour</button>
         <div id="wu-resultats"></div>
       </div>
@@ -295,51 +280,30 @@
           <button id="btn-jeux-tout" class="principal"><svg class="icone-eclair" viewBox="0 0 24 24" aria-hidden="true"><path d="M13.5 2 4 13.5h6.5L9.5 22 20 9.5h-6.6z"/></svg>Tout optimiser</button>
         </div>
       </header>
-      <p class="discret aide-jeux">Passe la souris sur un jeu et clique sur l'<strong>éclair</strong> : boost pendant les parties, priorité haute, carte graphique la plus puissante et réglages du jeu optimisés. La roue dentée ouvre les réglages du jeu.</p>
       <div id="grille-jeux" class="grille-jeux"></div>
       <details id="jeux-absents" class="jeux-absents" hidden>
         <summary></summary>
         <div class="grille-jeux petite"></div>
       </details>
-      <div class="carte interrupteurs">
-        <label class="bascule"><input type="checkbox" id="boost-auto"><span></span> Boost automatique au lancement d'un jeu</label>
-        <label class="bascule"><input type="checkbox" id="boost-max"><span></span> Mode Boost max pendant les parties</label>
-        <p class="discret retrait">En plus du boost : plan Performances optimales, minuteur système à 0,5 ms et mémoire en veille vidée au lancement. Le PC chauffe et consomme un peu plus pendant la partie ; tout revient à la normale à la fin.</p>
-        <label class="bascule"><input type="checkbox" id="mesure-fps"><span></span> Mesurer les FPS pendant les parties</label>
-      </div>
-      <details class="carte explications">
-        <summary>Comment marche l'optimisation d'un jeu</summary>
-        <p class="discret">Pendant une partie, le boost active le plan Performances élevées, donne la priorité haute au jeu, choisit la carte graphique la plus puissante et ferme les programmes de ta liste. Tout est remis comme avant à la fin.</p>
-        <p class="discret">La priorité haute est aussi enregistrée dans Windows, qui l'applique lui-même au lancement du jeu : l'anti-triche ne peut pas la refuser.</p>
-        <p class="discret">Pour Fortnite, Valorant, Rainbow Six Siege, CS2, Apex, Rocket League, Marvel Rivals et The Finals, FPS Cagoule modifie aussi leur fichier de réglages : V-Sync, flou de mouvement, ombres lourdes et effets coupés, mais distance d'affichage et textures gardées pour bien voir. Seuls les réglages déjà présents sont changés, après une copie de sauvegarde (bouton « Restaurer » dans les réglages du jeu). Ferme le jeu avant.</p>
-        <p class="discret">Résolution par jeu : l'écran principal passe dans cette résolution pendant la partie (par exemple 4:3 étiré), puis revient à celle du bureau. Dans le jeu, choisis la même résolution en plein écran. Une résolution comme 1440 × 1080 doit d'abord être créée dans le panneau de ta carte graphique (« Résolutions personnalisées ») pour apparaître.</p>
-        <p class="discret">Les images des jeux viennent du cache de Steam et du launcher Epic sur ton PC, sinon de la boutique Steam. Tu peux mettre la tienne dans les réglages du jeu.</p>
-      </details>
-      <details class="carte ajout-manuel">
-        <summary>Ajouter un jeu à la main</summary>
-        <form id="ajout-jeu" class="ligne-form">
-          <input id="ajout-nom" placeholder="Nom du jeu" required>
-          <input id="ajout-exe" placeholder="Exécutable, par ex. jeu.exe" required>
-          <button>Ajouter</button>
-          <button type="button" id="btn-profils-defaut" class="discret-btn">Remettre la liste d'origine</button>
-        </form>
-      </details>
-      <div class="carte">
-        <label class="bascule"><input type="checkbox" id="priorite-basse"><span></span> <strong>Programmes de fond après le jeu</strong></label>
-        <p class="discret petit-texte">Pendant une partie, ces programmes restent ouverts (vocal Discord, musique) mais passent en priorité basse : le processeur sert d'abord ton jeu, ce qui réduit les saccades. Tout revient à la normale à la fin de la partie.</p>
-        <div id="fond-liste" class="puces"></div>
-        <div class="ligne-form">
-          <select id="fond-choix"><option value="">Choisir un programme ouvert…</option></select>
-          <button id="btn-fond-ajout">Ajouter</button>
+      <div class="carte pendant-parties">
+        <h2>Pendant les parties</h2>
+        <div class="options-partie">
+          <label class="option-partie"><input type="checkbox" id="boost-auto"><span class="pastille"><svg viewBox="0 0 24 24"><path d="M13.5 2 4 13.5h6.5L9.5 22 20 9.5h-6.6z"/></svg></span><strong>Boost auto</strong></label>
+          <label class="option-partie" title="Plan Performances optimales, minuteur à 0,5 ms, mémoire vidée. Le PC chauffe un peu plus."><input type="checkbox" id="boost-max"><span class="pastille"><svg viewBox="0 0 24 24"><path d="M12 2.5c.6 3.2 4.8 5.3 4.8 10.2a4.8 4.8 0 0 1-9.6 0c0-2.3 1.2-3.7 2.3-4.6.1 2 1 3.2 2.3 3.4-.6-3.1-.4-6 .2-9z"/></svg></span><strong>Boost max</strong></label>
+          <label class="option-partie"><input type="checkbox" id="mesure-fps"><span class="pastille"><svg viewBox="0 0 24 24"><path d="M3 17l5.5-5.5 4 3.5L20 7"/><path d="M15 7h5v5"/></svg></span><strong>Mesurer les FPS</strong></label>
+          <label class="option-partie" title="Ces programmes restent ouverts mais passent après le jeu"><input type="checkbox" id="priorite-basse"><span class="pastille"><svg viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg></span><strong>Ralentir les applis de fond</strong></label>
         </div>
-      </div>
-      <div class="carte">
-        <h2>Programmes à fermer pendant les jeux</h2>
-        <p class="discret">Ils sont fermés au lancement d'un jeu boosté et ne sont pas relancés ensuite.</p>
-        <div id="fermer-liste" class="puces"></div>
-        <div class="ligne-form">
-          <select id="fermer-choix"><option value="">Choisir un programme ouvert…</option></select>
-          <button id="btn-fermer-ajout">Ajouter</button>
+        <div class="grille-2 listes-partie">
+          <div>
+            <h3>Ralentis <span class="discret">(Discord, musique…)</span></h3>
+            <div id="fond-liste" class="puces"></div>
+            <div class="ligne-form"><select id="fond-choix"><option value="">Ajouter un programme ouvert…</option></select><button id="btn-fond-ajout" class="petit">Ajouter</button></div>
+          </div>
+          <div>
+            <h3>Fermés</h3>
+            <div id="fermer-liste" class="puces"></div>
+            <div class="ligne-form"><select id="fermer-choix"><option value="">Ajouter un programme ouvert…</option></select><button id="btn-fermer-ajout" class="petit">Ajouter</button></div>
+          </div>
         </div>
       </div>
     </section>
@@ -348,8 +312,7 @@
     <section id="page-ecrans" class="page">
       <header><h1>Écrans</h1></header>
       <div class="carte interrupteurs">
-        <label class="bascule"><input type="checkbox" id="couleurs-en-jeu"><span></span> Appliquer mes couleurs de jeu pendant les parties (remises comme avant à la fin)</label>
-        <p class="discret retrait">La vibrance ne fonctionne qu'avec une carte NVIDIA. Luminosité, contraste et gamma passent par Windows : ils n'ont pas d'effet en HDR ni dans certains jeux en plein écran exclusif.</p>
+        <label class="bascule"><input type="checkbox" id="couleurs-en-jeu"><span></span> Mes couleurs de jeu pendant les parties</label>
       </div>
       <div id="ecrans" class="grille-2"><p class="discret">Chargement…</p></div>
     </section>
@@ -358,8 +321,7 @@
     <section id="page-oc" class="page">
       <header><h1>Overclocking</h1></header>
       <div class="carte avertissement-oc">
-        <strong>À lire avant</strong>
-        <p>Overclocker fait tourner ta carte graphique plus vite que prévu par le fabricant : 3 à 8 % de FPS en plus en général. Trop haut, le jeu ou le pilote plante, mais la carte ne s'abîme pas (le pilote limite tension et température). Tout revient à la normale au redémarrage du PC. Pour le processeur, FPS Cagoule te guide vers l'outil officiel de son fabricant.</p>
+        <p><strong>+3 à 8 % de FPS.</strong> Trop haut, le jeu plante mais la carte ne s'abîme pas. Tout revient à la normale au redémarrage.</p>
       </div>
       <div class="carte" id="carte-processeur">
         <div class="entete-diagnostic"><h2 id="cpu-nom">Processeur</h2><span id="cpu-badge" class="badge"></span></div>
@@ -371,7 +333,6 @@
       <div id="oc-amd" hidden>
         <div class="carte">
           <div class="entete-diagnostic"><h2 id="amd-nom">Carte AMD</h2><span class="actions-entete"><span id="amd-temp" class="badge" hidden></span><span id="amd-resume" class="badge"></span></span></div>
-          <p class="discret">Les préréglages d'AMD règlent les fréquences, la puissance et la ventilation de ta carte, sans risque. « Rage » est l'overclocking officiel d'AMD : il augmente la limite de puissance. Pour aller plus loin (undervolt, réglage automatique du pilote), utilise Adrenalin → Performances → Réglage.</p>
           <div id="amd-prereglages" class="choix-cartes amd-prereglages"></div>
           <div class="boutons">
             <button id="btn-amd-usine" class="discret-btn">Remettre d'usine</button>
@@ -386,7 +347,7 @@
           <div class="grille-2">
             <div>
               <h2>Automatique</h2>
-              <p class="discret">FPS Cagoule monte les fréquences par paliers et vérifie à chaque palier que la carte calcule encore des images parfaitement justes. Il garde ensuite une bonne marge de sécurité, car les jeux sollicitent la carte autrement que ce test. Si un jeu plante quand même, clique sur « Baisser d'un cran ». Environ 4 minutes, ne touche à rien pendant ce temps.</p>
+              <p class="discret">Environ 4 minutes. Ne touche à rien.</p>
               <button class="principal" id="btn-oc-auto">Trouver mon overclocking</button>
               <ul id="oc-journal" class="journal"></ul>
             </div>
@@ -414,10 +375,9 @@
     <!-- FPS -->
     <section id="page-fps" class="page">
       <header><h1>Statistiques FPS</h1></header>
-      <p class="discret">Le « 1 % low » est le FPS des pires moments : c'est lui qui donne la sensation de saccades. Pour mesurer l'effet du boost, joue une partie avec et une sans (coupe le boost du jeu dans ses réglages, page « Mes jeux »).</p>
       <div id="comparaisons" class="grille-2"></div>
       <table class="tableau" id="sessions">
-        <thead><tr><th>Date</th><th>Jeu</th><th>Durée</th><th>Boost</th><th>FPS moyen</th><th>1 % low</th><th>0,1 % low</th><th title="Température maximale de la carte graphique (NVIDIA)">GPU max</th></tr></thead>
+        <thead><tr><th>Date</th><th>Jeu</th><th>Durée</th><th>Boost</th><th>FPS moyen</th><th title="FPS des pires moments : les saccades">1 % low</th><th>0,1 % low</th><th title="Température maximale de la carte graphique (NVIDIA)">GPU max</th></tr></thead>
         <tbody></tbody>
       </table>
     </section>
@@ -426,37 +386,34 @@
     <section id="page-reglages" class="page">
       <header><h1>Réglages</h1></header>
       <div class="carte interrupteurs">
-        <label class="bascule"><input type="checkbox" id="demarrage-auto"><span></span> Lancer FPS Cagoule avec Windows (discrètement, dans la zone de notification)</label>
-        <label class="bascule"><input type="checkbox" id="overlay"><span></span> Afficher le compteur FPS par-dessus le jeu</label>
-        <p class="discret retrait">Le compteur utilise environ 40 Mo de plus pendant les parties et ne s'affiche que si le jeu est en mode fenêtré sans bordure. Les FPS sont mesurés même sans lui.</p>
-        <label class="bascule"><input type="checkbox" id="maj-auto"><span></span> Installer les mises à jour automatiquement (jamais pendant une partie)</label>
+        <label class="bascule"><input type="checkbox" id="demarrage-auto"><span></span> Lancer avec Windows</label>
+        <label class="bascule"><input type="checkbox" id="overlay"><span></span> Compteur FPS par-dessus le jeu</label>
+        <label class="bascule"><input type="checkbox" id="maj-auto"><span></span> Mises à jour automatiques</label>
       </div>
-      <div class="carte">
+      <div class="carte ligne-carte">
         <h2>Interface</h2>
-        <p class="discret">Le mode simple ne garde que l'essentiel : accueil, optimisations, nettoyage, mes jeux et statistiques. Le mode complet ajoute les tests, le benchmark, les pilotes, les écrans et l'overclocking.</p>
         <div class="boutons">
           <button id="btn-mode-reglages"></button>
           <button id="btn-assistant">Relancer l'assistant</button>
         </div>
       </div>
-      <div class="carte">
-        <h2>Partager mes réglages</h2>
-        <p class="discret">Copie un code avec tes optimisations, tes jeux et ton boost, et envoie-le à un pote : il le colle dans son FPS Cagoule et retrouve les mêmes réglages. L'overclocking et la zone risquée ne sont jamais partagés (chaque carte est différente).</p>
+      <div class="carte ligne-carte">
+        <h2>Partager mes réglages avec un pote</h2>
         <div class="boutons">
           <button class="principal" id="btn-exporter">Copier mon code</button>
           <button id="btn-importer">Coller un code</button>
         </div>
       </div>
-      <div class="carte">
-        <h2>Tout remettre comme avant</h2>
-        <p class="discret">Annule toutes les optimisations, l'overclocking, le changement de DNS et les réglages modifiés dans les jeux. Les fichiers nettoyés et les applis supprimées ne reviennent pas.</p>
-        <button id="btn-tout-remettre">Tout remettre comme avant</button>
+      <div class="carte ligne-carte">
+        <div><h2>Mises à jour</h2><p id="maj-texte" class="discret"></p></div>
+        <div class="boutons">
+          <button id="btn-maj">Rechercher</button>
+          <button id="btn-maj-installer" class="principal" hidden>Installer maintenant</button>
+        </div>
       </div>
-      <div class="carte">
-        <h2>Mises à jour</h2>
-        <p id="maj-texte" class="discret"></p>
-        <button id="btn-maj">Rechercher une mise à jour</button>
-        <button id="btn-maj-installer" class="principal" hidden>Installer maintenant</button>
+      <div class="carte ligne-carte">
+        <h2>Tout remettre comme avant</h2>
+        <button id="btn-tout-remettre">Remettre</button>
       </div>
     </section>
   </main>
