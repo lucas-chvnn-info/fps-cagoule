@@ -63,7 +63,9 @@ pub fn installer(stock: &Stockage, progression: impl Fn(u64, u64)) -> Result<(),
     let script = format!(
         r#"[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 Invoke-WebRequest -UseBasicParsing -TimeoutSec 600 -Uri {url} -OutFile {zip}
-if ((Get-FileHash -Algorithm SHA256 -LiteralPath {zip}).Hash -ne {hash}) {{ Remove-Item -LiteralPath {zip}; throw 'Fichier FFmpeg corrompu' }}
+$flux = [IO.File]::OpenRead({zip})
+try {{ $empreinte = -join ([Security.Cryptography.SHA256]::Create().ComputeHash($flux) | ForEach-Object {{ $_.ToString('X2') }}) }} finally {{ $flux.Dispose() }}
+if ($empreinte -ne {hash}) {{ Remove-Item -LiteralPath {zip}; throw 'Fichier FFmpeg corrompu' }}
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $z = [IO.Compression.ZipFile]::OpenRead({zip})
 try {{ [IO.Compression.ZipFileExtensions]::ExtractToFile($z.GetEntry({entree}), {exe}, $true) }} finally {{ $z.Dispose() }}
