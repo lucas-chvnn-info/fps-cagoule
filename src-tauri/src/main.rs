@@ -904,7 +904,7 @@ mod tests_windows {
         assert!(std::fs::metadata(&f).unwrap().permissions().readonly());
         // Aucun jeu installé sur le PC de GitHub : la liste se fait sans erreur
         let stock = Stockage::ouvrir(std::env::temp_dir().join("fps-cagoule-test-jeux"));
-        assert_eq!(jeux_config::liste(&stock).len(), 8);
+        assert_eq!(jeux_config::liste(&stock).len(), 11);
     }
 
     #[test]
