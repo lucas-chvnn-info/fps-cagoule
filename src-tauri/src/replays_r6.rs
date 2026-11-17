@@ -513,7 +513,8 @@ pub fn manches_recentes(documents: &std::path::Path, depuis: std::time::SystemTi
     liste
 }
 
-/// Nom du clip : « 3K · Ace · Clubhouse », « ACE · Ash · Bank » (aucun pour moins de 2 kills)
+/// Nom du clip : « 3K · Ace · Clubhouse · Pseudo », « ACE · Ash · Bank · Pseudo » (aucun pour moins de 2 kills).
+/// Le pseudo est celui du compte Ubisoft qui a joué la manche.
 pub fn titre_clip(m: &Manche) -> Option<String> {
     let n = m.mes_kills().len();
     if n < 2 {
@@ -522,7 +523,8 @@ pub fn titre_clip(m: &Manche) -> Option<String> {
     let kills = if n >= 5 { "ACE".to_string() } else { format!("{n}K") };
     let op = m.mon_operateur().and_then(|j| j.operateur.clone()).unwrap_or_else(|| "Nouvel opérateur".into());
     let map = m.map.clone().unwrap_or_else(|| "Nouvelle map".into());
-    Some(format!("{kills} · {op} · {map}"))
+    let pseudo = m.moi.as_deref().unwrap_or_default();
+    Some(format!("{kills} · {op} · {map} · {pseudo}"))
 }
 
 #[cfg(test)]
@@ -545,10 +547,10 @@ mod tests {
 
     #[test]
     fn titres_des_clips() {
-        assert_eq!(titre_clip(&manche(&[("Cagoule", 150), ("Autre", 140), ("Cagoule", 120), ("Cagoule", 100)], 104189664390, 60)).as_deref(), Some("3K · Ace · Clubhouse"));
-        assert_eq!(titre_clip(&manche(&[("Cagoule", 150); 5], 92270642656, 0)).as_deref(), Some("ACE · Ash · Clubhouse"));
+        assert_eq!(titre_clip(&manche(&[("Cagoule", 150), ("Autre", 140), ("Cagoule", 120), ("Cagoule", 100)], 104189664390, 60)).as_deref(), Some("3K · Ace · Clubhouse · Cagoule"));
+        assert_eq!(titre_clip(&manche(&[("Cagoule", 150); 5], 92270642656, 0)).as_deref(), Some("ACE · Ash · Clubhouse · Cagoule"));
         // Opérateur d'une nouvelle saison : pas de plantage, nom provisoire
-        assert_eq!(titre_clip(&manche(&[("Cagoule", 150), ("Cagoule", 140)], 444310693746, 0)).as_deref(), Some("2K · Nouvel opérateur · Clubhouse"));
+        assert_eq!(titre_clip(&manche(&[("Cagoule", 150), ("Cagoule", 140)], 444310693746, 0)).as_deref(), Some("2K · Nouvel opérateur · Clubhouse · Cagoule"));
         assert_eq!(titre_clip(&manche(&[("Cagoule", 150)], 104189664390, 0)), None);
     }
 

@@ -269,7 +269,7 @@ pub fn nom_fichier(texte: &str) -> String {
     n.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-fn date_texte() -> String {
+pub fn date_texte() -> String {
     // Heure locale via PowerShell serait lourde : on demande l'heure à Windows directement
     use windows_sys::Win32::System::SystemInformation::GetLocalTime;
     let mut t = unsafe { std::mem::zeroed() };

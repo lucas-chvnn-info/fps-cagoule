@@ -40,6 +40,8 @@ pub struct EnCours {
     /// Replays de manches de R6 déjà traités pour les clips automatiques
     replays_vus: Vec<PathBuf>,
     debut_systeme: SystemTime,
+    /// Compte Ubisoft qui joue (lu dans le premier replay de la partie), pour nommer les clips de la touche
+    pseudo_r6: Option<String>,
 }
 
 pub struct Etat {
@@ -253,6 +255,7 @@ fn demarrer(app: &AppHandle, etat: &Etat, profil: &crate::config::Profil, pid: u
         enregistreur: None,
         replays_vus: Vec::new(),
         debut_systeme: SystemTime::now(),
+        pseudo_r6: None,
     });
     if reglages.discord {
         demarrer_discord(etat, profil, boost);
@@ -439,6 +442,13 @@ fn surveiller_replays(app: &AppHandle, etat: &Etat, pid: u32) {
         let _ = thread::Builder::new().name("clip-auto".into()).spawn(move || {
             let Ok(octets) = std::fs::read(&fichier) else { return };
             let Ok(manche) = crate::replays_r6::lire(&octets) else { return };
+            if let Some(pseudo) = &manche.moi {
+                let etat = app.state::<Arc<Etat>>();
+                let mut session = etat.session.lock().unwrap();
+                if let Some(s) = session.as_mut().filter(|s| s.pid == pid) {
+                    s.pseudo_r6 = Some(pseudo.clone());
+                }
+            }
             let Some(titre) = crate::replays_r6::titre_clip(&manche) else { return };
             let depuis_ecriture = SystemTime::now().duration_since(modifie).map_or(0, |d| d.as_secs() as u32);
             let secondes = crate::replays_r6::duree_clip(&manche, depuis_ecriture);
@@ -455,13 +465,20 @@ pub fn touche_clips(app: &AppHandle) {
     use windows_sys::Win32::System::Diagnostics::Debug::MessageBeep;
     use windows_sys::Win32::UI::WindowsAndMessaging::{MB_ICONHAND, MB_OK};
     let etat = app.state::<Arc<Etat>>();
-    let infos = etat.session.lock().unwrap().as_ref().and_then(|s| s.enregistreur.as_ref().map(|e| (e.dossier.clone(), e.jeu.clone())));
-    let Some((dossier, jeu)) = infos else {
+    let infos = etat
+        .session
+        .lock()
+        .unwrap()
+        .as_ref()
+        .and_then(|s| s.enregistreur.as_ref().map(|e| (e.dossier.clone(), e.jeu.clone(), s.pseudo_r6.clone())));
+    let Some((dossier, jeu, pseudo)) = infos else {
         unsafe { MessageBeep(MB_ICONHAND) };
         return;
     };
     let duree = etat.stock.donnees.lock().unwrap().reglages.clips_duree_s.clamp(10, 180);
-    match crate::clips::sauver(&etat.stock, &dossier, &jeu, duree, None) {
+    // Dans R6, le compte joué est ajouté au nom : « Rainbow Six Siege · Pseudo 2026-11-17 21h42m05 »
+    let titre = pseudo.map(|p| format!("{jeu} · {p} {}", crate::clips::date_texte()));
+    match crate::clips::sauver(&etat.stock, &dossier, &jeu, duree, titre.as_deref()) {
         Ok(chemin) => {
             unsafe { MessageBeep(MB_OK) };
             let _ = app.emit("clip", chemin.to_string_lossy().to_string());
