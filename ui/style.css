@@ -964,3 +964,52 @@ main { position: relative; }
 }
 .nouveaute-icone svg { width: 46px; height: 46px; fill: none; stroke: #e6efff; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 0 8px rgba(92, 200, 255, .9)); }
 .nouveautes .boutons { justify-content: center; margin-top: 18px; }
+
+/* ---------- Clips ---------- */
+.clips-reglages { display: flex; flex-direction: column; gap: 16px; }
+.clips-interrupteur { align-items: center; }
+.clips-interrupteur strong { display: block; font-size: 16px; }
+.clips-interrupteur small { color: var(--discret); font-size: 13px; }
+.clips-interrupteur small.enregistre { color: var(--rouge); }
+.clips-interrupteur small.enregistre::before { content: "● "; animation: clignote 1.4s ease-in-out infinite; }
+@keyframes clignote { 50% { opacity: .25; } }
+.clips-installation small { color: var(--discret); font-size: 12px; }
+.clips-installation .barre { margin: 0 0 6px; }
+.clips-options { display: flex; gap: 28px; flex-wrap: wrap; align-items: center; transition: opacity .25s; }
+.clips-options.inactif { opacity: .45; }
+.clips-option { display: flex; align-items: center; gap: 12px; }
+.etiquette-option { color: var(--discret); font-size: 13px; }
+.choix-duree { display: flex; gap: 6px; }
+.choix-duree button { border-radius: 99px; padding: 6px 14px; font-size: 13px; }
+.choix-duree button.actif { background: var(--accent-fond); border-color: var(--accent); color: var(--accent-clair); }
+.touche-clavier {
+  min-width: 64px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: .02em;
+  background: linear-gradient(180deg, #2a3042, #1c2030); border: 1px solid #3a4157; border-bottom-width: 3px; border-radius: 9px; padding: 6px 14px;
+}
+.touche-clavier.ecoute { border-color: var(--accent-clair); color: var(--accent-clair); animation: eclair-pulse 1.4s ease-in-out infinite; font-weight: 500; }
+.clips-grille { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
+.clip { background: var(--carte); border: 1px solid var(--bordure); border-radius: 14px; overflow: hidden; animation: apparition .35s ease both; transition: border-color .25s, box-shadow .25s, transform .25s; }
+.clip:hover { border-color: rgba(92, 160, 255, .5); box-shadow: 0 0 24px rgba(47, 111, 237, .25); transform: translateY(-3px); }
+.clip::after { display: none; }
+.clip-visuel {
+  display: flex; align-items: center; justify-content: center; width: 100%; aspect-ratio: 16 / 9; padding: 0; border: 0; border-radius: 0;
+  background: #10131b center / cover no-repeat; position: relative;
+}
+.clip-visuel::after { display: none; }
+.clip-visuel:hover:not(:disabled) { box-shadow: none; }
+.clip-lecture {
+  width: 52px; height: 52px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  background: rgba(47, 111, 237, .85); box-shadow: 0 0 24px rgba(47, 111, 237, .7); opacity: 0; transform: scale(.7); transition: opacity .2s, transform .25s cubic-bezier(.2, 1.4, .4, 1);
+}
+.clip-lecture svg { width: 22px; height: 22px; fill: #fff; margin-left: 3px; }
+.clip:hover .clip-lecture, .clip-visuel:focus-visible .clip-lecture { opacity: 1; transform: none; }
+.clip-pied { display: flex; align-items: center; gap: 10px; padding: 10px 12px; }
+.clip-pied > div { min-width: 0; flex: 1; }
+.clip-pied strong { display: block; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.clip-pied small { color: var(--discret); font-size: 12px; }
+.clip-suppr { opacity: 0; transition: opacity .2s; }
+.clip:hover .clip-suppr, .clip-suppr:focus-visible { opacity: 1; }
+.clip-suppr:hover:not(:disabled) { color: var(--rouge); }
+.clips-vide { grid-column: 1 / -1; display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 40px 16px; color: var(--discret); text-align: center; }
+.clips-vide svg { width: 56px; height: 56px; fill: none; stroke: var(--accent-clair); stroke-width: 1.4; stroke-linejoin: round; filter: drop-shadow(0 0 10px rgba(92, 160, 255, .6)); animation: flotte 3s ease-in-out infinite; }
+kbd { font: 600 12px/1 inherit; padding: 3px 7px; border-radius: 6px; background: #232838; border: 1px solid #3a4157; border-bottom-width: 2px; color: var(--texte); }

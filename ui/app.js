@@ -83,6 +83,7 @@ document.querySelectorAll('button[data-page]').forEach((b) =>
     if (b.dataset.page === 'ecrans') chargerEcrans();
     if (b.dataset.page === 'pilotes') chargerPilotes();
     if (b.dataset.page === 'fps') chargerSessions();
+    if (b.dataset.page === 'clips') chargerClips();
     if (b.dataset.page === 'jeux') {
       chargerChoixFermer();
       chargerModesJeu();
@@ -2561,6 +2562,157 @@ $('#sessions').addEventListener('click', (e) => {
     $('#courbe-partie').scrollIntoView({ behavior: calme() ? 'auto' : 'smooth', block: 'nearest' });
   }
 });
+
+/* ---------- Clips ---------- */
+
+let clipsEtat = null;
+let clipsListe = [];
+let clipsInstallation = false;
+
+async function chargerClips() {
+  [clipsEtat, clipsListe] = await Promise.all([invoke('clips_etat').catch(() => null), invoke('clips_liste').catch(() => [])]);
+  afficherClips();
+}
+
+const taillePetite = (o) => (o >= Go ? `${(o / Go).toFixed(1).replace('.', ',')} Go` : `${Math.max(1, Math.round(o / 1024 ** 2))} Mo`);
+
+function afficherClips() {
+  if (!reglages) return;
+  const touche = reglages.clips_touche?.nom || 'F8';
+  $('#clips-actif').checked = reglages.clips;
+  $('#clips-touche').textContent = touche;
+  document.querySelectorAll('#clips-duree button').forEach((b) => b.classList.toggle('actif', Number(b.dataset.duree) === reglages.clips_duree_s));
+  const texte = $('#clips-etat-texte');
+  texte.classList.toggle('enregistre', !!(reglages.clips && clipsEtat?.enregistrement));
+  texte.textContent = !reglages.clips
+    ? 'Coupé'
+    : clipsInstallation
+      ? 'Installation…'
+      : clipsEtat?.enregistrement
+        ? `Enregistrement en cours · ${touche} pour garder le moment`
+        : `Prêt : appuie sur ${touche} en jeu`;
+  $('.clips-options').classList.toggle('inactif', !reglages.clips);
+  const grille = $('#clips-grille');
+  grille.innerHTML = '';
+  if (!clipsListe.length) {
+    grille.innerHTML = `<div class="clips-vide"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10.5l5-3v9l-5-3z"/></svg><span>${reglages.clips ? `En jeu, appuie sur <kbd>${esc(touche)}</kbd> pour garder les ${dureeTexte(reglages.clips_duree_s)} d'avant.` : 'Active l\'enregistrement pour garder tes meilleurs moments.'}</span></div>`;
+    return;
+  }
+  clipsListe.forEach((c, i) => {
+    const tuile = document.createElement('div');
+    tuile.className = 'clip';
+    tuile.style.animationDelay = `${Math.min(i, 12) * 40}ms`;
+    const visuel = document.createElement('button');
+    visuel.className = 'clip-visuel';
+    visuel.title = 'Regarder';
+    if (c.miniature) visuel.style.backgroundImage = `url("${c.miniature}")`;
+    visuel.innerHTML = `<span class="clip-lecture">${JOUER}</span>`;
+    visuel.addEventListener('click', () => appel('clips_ouvrir', { chemin: c.chemin }).catch(() => {}));
+    const pied = document.createElement('div');
+    pied.className = 'clip-pied';
+    const textes = document.createElement('div');
+    const nom = document.createElement('strong');
+    nom.textContent = c.nom;
+    const infos = document.createElement('small');
+    infos.textContent = `${c.jeu} · ${dateCourte(c.date)} · ${taillePetite(c.octets)}`;
+    textes.append(nom, infos);
+    const suppr = document.createElement('button');
+    suppr.className = 'petit discret-btn clip-suppr';
+    suppr.title = 'Supprimer';
+    suppr.setAttribute('aria-label', `Supprimer ${c.nom}`);
+    suppr.textContent = '✕';
+    suppr.addEventListener('click', async () => {
+      if (!(await confirmer('Supprimer ce clip', `<p>${esc(c.nom)}</p>`, 'Supprimer'))) return;
+      await appel('clips_supprimer', { chemin: c.chemin }).catch(() => {});
+      chargerClips();
+    });
+    pied.append(textes, suppr);
+    tuile.append(visuel, pied);
+    grille.append(tuile);
+  });
+}
+
+const dureeTexte = (s) => (s >= 60 ? `${s / 60} min` : `${s} s`);
+
+async function reglerClips(changements) {
+  const voulu = { actif: reglages.clips, dureeS: reglages.clips_duree_s, touche: reglages.clips_touche, ...changements };
+  try {
+    await appel('clips_regler', voulu);
+    Object.assign(reglages, { clips: voulu.actif, clips_duree_s: voulu.dureeS, clips_touche: voulu.touche });
+    return true;
+  } catch {
+    return false;
+  } finally {
+    afficherClips();
+  }
+}
+
+$('#clips-actif').addEventListener('change', async (e) => {
+  const actif = e.target.checked;
+  if (actif && !clipsEtat?.installe) {
+    clipsInstallation = true;
+    $('#clips-installation').hidden = false;
+    afficherClips();
+    try {
+      await invoke('clips_installer');
+      clipsEtat = await invoke('clips_etat');
+    } catch (err) {
+      toast(String(err), 8000);
+      e.target.checked = false;
+      return;
+    } finally {
+      clipsInstallation = false;
+      $('#clips-installation').hidden = true;
+    }
+  }
+  if (await reglerClips({ actif })) toast(actif ? `Clips activés : en jeu, ${reglages.clips_touche.nom} garde les ${dureeTexte(reglages.clips_duree_s)} d'avant.` : 'Clips coupés.', 5000);
+});
+
+listen('clips_installation', (e) => {
+  const { recu, total } = e.payload;
+  $('#clips-barre').style.width = `${Math.round((recu / total) * 100)}%`;
+  $('#clips-installation-texte').textContent = `Téléchargement de l'enregistreur… ${Math.round(recu / 1024 ** 2)} / ${Math.round(total / 1024 ** 2)} Mo`;
+});
+
+$('#clips-duree').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-duree]');
+  if (b) reglerClips({ dureeS: Number(b.dataset.duree) });
+});
+
+/** Touches utilisables seules (comme côté moteur) : F1–F24, Pause, Arrêt défil, Inser, Début, Fin, Page, pavé numérique */
+const toucheSeulePermise = (vk) => (vk >= 0x70 && vk <= 0x87) || [0x13, 0x91, 0x2d, 0x24, 0x23, 0x21, 0x22].includes(vk) || (vk >= 0x60 && vk <= 0x6f);
+
+$('#clips-touche').addEventListener('click', (e) => {
+  const bouton = e.currentTarget;
+  bouton.classList.add('ecoute');
+  bouton.textContent = 'Appuie sur une touche…';
+  const ecouter = async (ev) => {
+    if (['Shift', 'Control', 'Alt', 'Meta', 'AltGraph'].includes(ev.key)) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    window.removeEventListener('keydown', ecouter, true);
+    bouton.classList.remove('ecoute');
+    if (ev.key === 'Escape') return afficherClips();
+    const modificateurs = (ev.altKey ? 1 : 0) | (ev.ctrlKey ? 2 : 0) | (ev.shiftKey ? 4 : 0);
+    const vk = ev.keyCode;
+    if (!modificateurs && !toucheSeulePermise(vk)) {
+      toast('Choisis une touche F1 à F12, ou une touche avec Ctrl, Alt ou Maj : une lettre seule bloquerait ta frappe.', 7000);
+      return afficherClips();
+    }
+    const nomTouche = ev.code.startsWith('Numpad') ? `Pavé ${ev.code.slice(6)}` : ev.key.length === 1 ? ev.key.toUpperCase() : ev.key;
+    const nom = [ev.ctrlKey && 'Ctrl', ev.altKey && 'Alt', ev.shiftKey && 'Maj', nomTouche].filter(Boolean).join(' + ');
+    if (await reglerClips({ touche: { modificateurs, vk, nom } })) toast(`Touche des clips : ${nom}`);
+  };
+  window.addEventListener('keydown', ecouter, true);
+});
+
+$('#btn-clips-dossier').addEventListener('click', (e) => appel('clips_ouvrir', { chemin: null }, e.currentTarget).catch(() => {}));
+
+listen('clip', () => {
+  toast('Clip enregistré', 3000);
+  if ($('#page-clips').classList.contains('actif')) chargerClips();
+});
+listen('clip_erreur', (e) => toast(`Clip impossible : ${e.payload}`, 6000));
 
 /* ---------- Réglages et mises à jour ---------- */
 

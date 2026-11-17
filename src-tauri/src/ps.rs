@@ -42,8 +42,31 @@ pub fn executer(script: &str) -> Result<String, String> {
         Ok(String::from_utf8_lossy(&sortie.stdout).trim_start_matches('\u{feff}').trim().to_string())
     } else {
         let err = String::from_utf8_lossy(&sortie.stderr);
-        Err(err.lines().find(|l| !l.trim().is_empty()).unwrap_or("Erreur PowerShell").trim().to_string())
+        Err(message_erreur(&err))
     }
+}
+
+/// Première vraie ligne d'erreur. PowerShell écrit parfois ses erreurs en CLIXML (« #< CLIXML ») :
+/// on en extrait le texte des balises <S S="Error">.
+fn message_erreur(err: &str) -> String {
+    if err.trim_start().starts_with("#< CLIXML") {
+        let texte: String = err
+            .split("<S S=\"Error\">")
+            .skip(1)
+            .filter_map(|m| m.split("</S>").next())
+            .collect::<Vec<_>>()
+            .join("")
+            .replace("_x000D__x000A_", "\n")
+            .replace("&lt;", "<")
+            .replace("&gt;", ">")
+            .replace("&amp;", "&")
+            .replace("&apos;", "'")
+            .replace("&quot;", "\"");
+        if let Some(l) = texte.lines().map(str::trim).find(|l| !l.is_empty()) {
+            return l.to_string();
+        }
+    }
+    err.lines().map(str::trim).find(|l| !l.is_empty() && !l.starts_with("#< CLIXML")).unwrap_or("Erreur PowerShell").to_string()
 }
 
 pub fn json(script: &str) -> Result<serde_json::Value, String> {
@@ -57,6 +80,13 @@ pub fn chaine(texte: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn erreurs_clixml() {
+        let e = "#< CLIXML\r\n<Objs Version=\"1.1.0.1\"><Obj S=\"progress\" RefId=\"0\"></Obj><S S=\"Error\">Fichier FFmpeg corrompu_x000D__x000A_</S><S S=\"Error\">Au caractère Ligne:3_x000D__x000A_</S></Objs>";
+        assert_eq!(super::message_erreur(e), "Fichier FFmpeg corrompu");
+        assert_eq!(super::message_erreur("\r\nAccès refusé\r\n"), "Accès refusé");
+    }
+
     #[test]
     fn base64_standard() {
         assert_eq!(super::base64(b""), "");

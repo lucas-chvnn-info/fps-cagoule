@@ -33,6 +33,7 @@
         <button class="nav-groupe" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 9h10a4 4 0 0 1 4 4v1a3 3 0 0 1-5.4 1.8L14 14h-4l-1.6 1.8A3 3 0 0 1 3 14v-1a4 4 0 0 1 4-4z"/><path d="M8 11v3M6.5 12.5h3"/><circle cx="16" cy="12" r=".8"/></svg><span>Jeux</span><svg class="chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
         <div class="sous-menu"><div class="sous-menu-contenu">
             <button data-page="jeux"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 9h10a4 4 0 0 1 4 4v1a3 3 0 0 1-5.4 1.8L14 14h-4l-1.6 1.8A3 3 0 0 1 3 14v-1a4 4 0 0 1 4-4z"/><path d="M8 11v3M6.5 12.5h3"/><circle cx="16" cy="12" r=".8"/></svg><span>Mes jeux</span></button>
+            <button data-page="clips"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10.5l5-3v9l-5-3z"/></svg><span>Clips</span></button>
             <button data-page="fps"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg><span>Statistiques FPS</span></button>
         </div></div>
       </div>
@@ -316,6 +317,34 @@
           </div>
         </div>
       </div>
+    </section>
+
+    <!-- Clips -->
+    <section id="page-clips" class="page">
+      <header>
+        <h1>Clips</h1>
+        <div class="actions-entete"><button id="btn-clips-dossier">Ouvrir le dossier</button></div>
+      </header>
+      <div class="carte clips-reglages">
+        <label class="bascule clips-interrupteur"><input type="checkbox" id="clips-actif"><span></span><div><strong>Enregistrer mes parties</strong><small id="clips-etat-texte"></small></div></label>
+        <div id="clips-installation" class="clips-installation" hidden>
+          <div class="barre"><div id="clips-barre"></div></div>
+          <small id="clips-installation-texte">Téléchargement de l'enregistreur…</small>
+        </div>
+        <div class="clips-options">
+          <div class="clips-option">
+            <span class="etiquette-option">Durée gardée</span>
+            <div class="choix-duree" id="clips-duree">
+              <button data-duree="30">30 s</button><button data-duree="60">1 min</button><button data-duree="180">3 min</button>
+            </div>
+          </div>
+          <div class="clips-option">
+            <span class="etiquette-option">Touche</span>
+            <button id="clips-touche" class="touche-clavier" title="Clique puis appuie sur la touche voulue">F8</button>
+          </div>
+        </div>
+      </div>
+      <div id="clips-grille" class="clips-grille"></div>
     </section>
 
     <!-- Écrans -->
