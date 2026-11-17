@@ -502,9 +502,9 @@ pub fn liste(stock: &Stockage) -> Vec<TweakEtat> {
             };
             let attente = attentes.get(&t.id).map(|e| if e.annulation { "annulation" } else { "activation" });
             let annulable = sauvegardes.contains_key(&t.id);
-            // Réglages d'alimentation retirés de l'app (sans effet sur beaucoup de PC en veille moderne) :
-            // plus proposés, mais ceux déjà appliqués restent annulables par « Tout annuler »
-            let disponible = disponible && (t.categorie != "alimentation" || annulable);
+            // Réglages d'alimentation retirés de l'app (Windows ne les applique pas sur beaucoup de PC) :
+            // jamais proposés ni appliqués ; ceux appliqués avant restent annulables par « Tout annuler »
+            let disponible = disponible && t.categorie != "alimentation";
             TweakEtat { tweak: t.clone(), actif, annulable, disponible, attente }
         })
         .collect()
@@ -515,6 +515,9 @@ fn service_existe(t: &Tweak) -> bool {
 }
 
 fn appliquer_un(stock: &Stockage, t: &Tweak) -> Result<(), String> {
+    if t.categorie == "alimentation" {
+        return Err("Réglage d'alimentation retiré de FPS Cagoule : à régler dans Windows si besoin".into());
+    }
     // Ne jamais créer la clé d'un service absent : on change seulement son démarrage
     if t.special.as_deref() == Some("service") && !service_existe(t) {
         return Err("Ce service n'existe pas sur ton PC".into());

@@ -547,7 +547,7 @@ async function optimiserTout(max, bouton) {
   const redemarrage = a.some((t) => t.redemarrage);
   const ok = await confirmer(
     max ? 'Boost maximum' : 'Optimisation recommandée',
-    `<p>${a.length} réglage${a.length > 1 ? 's' : ''} vont être appliqués :</p><ul>${a.map((t) => `<li>${esc(t.titre)}</li>`).join('')}</ul>
+    `<p>${a.length > 1 ? `${a.length} réglages vont être appliqués` : '1 réglage va être appliqué'} :</p><ul>${a.map((t) => `<li>${esc(t.titre)}</li>`).join('')}</ul>
      ${max ? '<p>Le Boost maximum inclut des réglages plus agressifs : le PC chauffe et consomme davantage, et les applis du Store ne t\'enverront plus de notifications.</p>' : ''}
      ${reseau ? '<p class="alerte">La connexion internet va se couper quelques secondes.</p>' : ''}
      ${redemarrage ? '<p>Certains réglages prennent effet au prochain redémarrage.</p>' : ''}`,
