@@ -565,6 +565,17 @@ pub struct Clip {
     pub marqueurs: Vec<Marqueur>,
 }
 
+/// Nom montré dans la galerie : sans le « (2) » ajouté pour que deux clips du même nom puissent coexister
+pub fn nom_affiche(nom: &str) -> String {
+    if let Some(debut) = nom.strip_suffix(')').and_then(|n| n.rfind(" (").map(|i| (i, n))) {
+        let (i, n) = debut;
+        if n[i + 2..].chars().all(|c| c.is_ascii_digit()) && i + 2 < n.len() {
+            return n[..i].to_string();
+        }
+    }
+    nom.to_string()
+}
+
 /// Vidéos .mp4 d'un dossier et de ses sous-dossiers (4 niveaux), avec le jeu :
 /// celui qui contient la vidéo (Clips\R6\…, ou Medal\Clips\R6\… recopié tel quel), « Autres » à la racine
 fn videos(racine: &Path) -> Vec<(PathBuf, String)> {
@@ -616,7 +627,7 @@ pub fn liste(stock: &Stockage, fini: impl FnOnce() + Send + 'static) -> Vec<Clip
                 sans_miniature.push(p.clone());
             }
             clips.push(Clip {
-                nom: p.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default(),
+                nom: p.file_stem().map(|s| nom_affiche(&s.to_string_lossy())).unwrap_or_default(),
                 jeu,
                 date: m.modified().ok().and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map_or(0, |d| d.as_secs()),
                 octets: m.len(),
@@ -858,6 +869,14 @@ mod tests {
             }
             Err(e) => println!("Capture de l'écran indisponible sur ce PC : {e}"),
         }
+    }
+
+    #[test]
+    fn noms_sans_numero_de_doublon() {
+        assert_eq!(nom_affiche("4K · Kali · Kanal (5)"), "4K · Kali · Kanal");
+        assert_eq!(nom_affiche("4K · Kali · Kanal"), "4K · Kali · Kanal");
+        assert_eq!(nom_affiche("Partie (finale)"), "Partie (finale)");
+        assert_eq!(nom_affiche("Clip ()"), "Clip ()");
     }
 
     #[test]
