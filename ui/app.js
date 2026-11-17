@@ -2892,6 +2892,10 @@ listen('clip', () => {
   if ($('#page-clips').classList.contains('actif')) chargerClips();
 });
 listen('clip_erreur', (e) => toast(`Clip impossible : ${e.payload}`, 6000));
+// Miniatures faites pour des vidéos ajoutées à la main : on rafraîchit la galerie
+listen('clips_miniatures', () => {
+  if ($('#page-clips').classList.contains('actif')) chargerClips();
+});
 listen('clip_secours', () => toast('Dossier des clips injoignable (serveur éteint ?) : clip gardé dans Vidéos\\FPS Cagoule.', 7000));
 
 /* ---------- Éditeur de clips ---------- */

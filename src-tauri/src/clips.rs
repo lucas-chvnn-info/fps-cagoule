@@ -468,15 +468,21 @@ pub fn ajouter_marqueurs(stock: &Stockage, clip: &Path, nouveaux: &[Marqueur]) {
 }
 
 fn miniature(stock: &Stockage, clip: &Path) {
-    let dossier = miniatures(stock);
-    let _ = fs::create_dir_all(&dossier);
-    let _ = Command::new(ffmpeg(stock))
+    miniature_vers(&ffmpeg(stock), &miniatures(stock), clip);
+}
+
+/// Image du clip à 1 s (ffmpeg.exe, dossier des miniatures) ; vrai si elle a été faite
+fn miniature_vers(ffmpeg: &Path, dossier: &Path, clip: &Path) -> bool {
+    let _ = fs::create_dir_all(dossier);
+    let sortie = dossier.join(cle_miniature(clip));
+    let _ = Command::new(ffmpeg)
         .args(["-hide_banner", "-loglevel", "error", "-y", "-ss", "1", "-i"])
         .arg(clip)
         .args(["-frames:v", "1", "-vf", "scale=480:-2", "-q:v", "4"])
-        .arg(dossier.join(cle_miniature(clip)))
+        .arg(&sortie)
         .creation_flags(CREATE_NO_WINDOW)
         .status();
+    sortie.is_file()
 }
 
 #[derive(Serialize)]
@@ -491,23 +497,59 @@ pub struct Clip {
     pub marqueurs: Vec<Marqueur>,
 }
 
-/// Clips du dossier Vidéos\FPS Cagoule, du plus récent au plus ancien
-pub fn liste(stock: &Stockage) -> Vec<Clip> {
-    let mut clips = Vec::new();
-    for racine in dossiers_clips(stock) {
-    let Ok(jeux) = fs::read_dir(racine) else { continue };
-    for jeu in jeux.flatten().filter(|e| e.path().is_dir()) {
-        let Ok(fichiers) = fs::read_dir(jeu.path()) else { continue };
-        for f in fichiers.flatten() {
-            let p = f.path();
-            if !p.extension().is_some_and(|x| x.eq_ignore_ascii_case("mp4")) {
+/// Vidéos .mp4 d'un dossier et de ses sous-dossiers (4 niveaux), avec le jeu :
+/// celui qui contient la vidéo (Clips\R6\…, ou Medal\Clips\R6\… recopié tel quel), « Autres » à la racine
+fn videos(racine: &Path) -> Vec<(PathBuf, String)> {
+    let mut trouves = Vec::new();
+    let mut pile = vec![(racine.to_path_buf(), 0u8, None::<String>)];
+    let mut vus = 0usize;
+    while let Some((d, profondeur, jeu)) = pile.pop() {
+        let Ok(entrees) = fs::read_dir(&d) else { continue };
+        for e in entrees.flatten() {
+            vus += 1;
+            if vus > 20_000 {
+                return trouves;
+            }
+            let nom = e.file_name().to_string_lossy().to_string();
+            if nom.starts_with('.') || nom.starts_with('$') {
                 continue;
             }
-            let Ok(m) = f.metadata() else { continue };
+            let p = e.path();
+            if e.file_type().is_ok_and(|t| t.is_dir()) {
+                if profondeur < 4 {
+                    pile.push((p, profondeur + 1, Some(nom)));
+                }
+            } else if p.extension().is_some_and(|x| x.eq_ignore_ascii_case("mp4")) {
+                trouves.push((p, jeu.clone().unwrap_or_else(|| "Autres".into())));
+            }
+        }
+    }
+    trouves
+}
+
+static MINIATURES_EN_COURS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+/// Vidéos dont la miniature a déjà été tentée (fichier abîmé…) : on n'y revient pas
+static MINIATURES_ESSAYEES: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+
+/// Clips des dossiers des clips, du plus récent au plus ancien.
+/// Les miniatures manquantes (vidéos copiées à la main, Medal…) sont faites en fond, puis `fini` est appelé.
+pub fn liste(stock: &Stockage, fini: impl FnOnce() + Send + 'static) -> Vec<Clip> {
+    let mut clips = Vec::new();
+    let mut sans_miniature = Vec::new();
+    let mut deja = std::collections::HashSet::new();
+    for racine in dossiers_clips(stock) {
+        for (p, jeu) in videos(&racine) {
+            if !deja.insert(chemin_simple(&p).to_lowercase()) {
+                continue;
+            }
+            let Ok(m) = fs::metadata(&p) else { continue };
             let image = fs::read(miniatures(stock).join(cle_miniature(&p))).ok();
+            if image.is_none() && !MINIATURES_ESSAYEES.lock().unwrap().contains(&chemin_simple(&p)) {
+                sans_miniature.push(p.clone());
+            }
             clips.push(Clip {
                 nom: p.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default(),
-                jeu: jeu.file_name().to_string_lossy().to_string(),
+                jeu,
                 date: m.modified().ok().and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map_or(0, |d| d.as_secs()),
                 octets: m.len(),
                 miniature: image.map(|o| format!("data:image/jpeg;base64,{}", crate::ps::base64(&o))),
@@ -516,8 +558,23 @@ pub fn liste(stock: &Stockage) -> Vec<Clip> {
             });
         }
     }
-    }
     clips.sort_by(|a, b| b.date.cmp(&a.date));
+    use std::sync::atomic::Ordering;
+    if !sans_miniature.is_empty() && installe(stock) && !MINIATURES_EN_COURS.swap(true, Ordering::SeqCst) {
+        let (outil, dossier) = (ffmpeg(stock), miniatures(stock));
+        let _ = std::thread::Builder::new().name("miniatures".into()).spawn(move || {
+            // Les plus récentes d'abord, 60 par passage pour rester léger
+            let mut faites = 0;
+            for p in sans_miniature.iter().take(60) {
+                MINIATURES_ESSAYEES.lock().unwrap().push(chemin_simple(p));
+                faites += miniature_vers(&outil, &dossier, p) as usize;
+            }
+            MINIATURES_EN_COURS.store(false, Ordering::SeqCst);
+            if faites > 0 {
+                fini();
+            }
+        });
+    }
     clips
 }
 
@@ -706,7 +763,7 @@ mod tests {
         let infos = String::from_utf8_lossy(&sortie.stderr).to_string();
         println!("{}", infos.lines().filter(|l| l.contains("Duration") || l.contains("Stream")).collect::<Vec<_>>().join("\n"));
         assert!(infos.contains("Video: h264") && infos.contains("Audio: aac"), "{infos}");
-        assert!(liste(&stock).iter().any(|c| Path::new(&c.chemin) == clip && c.miniature.is_some()), "miniature absente");
+        assert!(liste(&stock, || {}).iter().any(|c| Path::new(&c.chemin) == clip && c.miniature.is_some()), "miniature absente");
         // Montage : deux passages gardés, repère déplacé
         ajouter_marqueurs(&stock, &clip, &[Marqueur { t: 3.0, genre: "kill".into(), detail: "x".into(), headshot: true }]);
         let montage = exporter(&stock, &clip.to_string_lossy(), &[(0.0, 1.0), (2.5, 4.0)], |_| {}).expect("export du montage");
@@ -722,6 +779,21 @@ mod tests {
             }
             Err(e) => println!("Capture de l'écran indisponible sur ce PC : {e}"),
         }
+    }
+
+    #[test]
+    fn videos_dans_les_sous_dossiers() {
+        let d = std::env::temp_dir().join("fps-cagoule-test-videos");
+        let _ = fs::remove_dir_all(&d);
+        for f in ["racine.mp4", r"Rainbow Six Siege\a.mp4", r"Medal\Clips\R6\b.MP4", r".cache\c.mp4", r"Rainbow Six Siege\notes.txt"] {
+            let p = d.join(f);
+            fs::create_dir_all(p.parent().unwrap()).unwrap();
+            fs::write(p, b"x").unwrap();
+        }
+        let mut v: Vec<(String, String)> = videos(&d).into_iter().map(|(p, j)| (p.file_name().unwrap().to_string_lossy().to_string(), j)).collect();
+        v.sort();
+        assert_eq!(v, [("a.mp4".into(), "Rainbow Six Siege".into()), ("b.MP4".into(), "R6".into()), ("racine.mp4".into(), "Autres".into())]);
+        let _ = fs::remove_dir_all(&d);
     }
 
     #[test]

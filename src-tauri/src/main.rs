@@ -587,7 +587,10 @@ fn clips_regler(app: AppHandle, actif: bool, duree_s: u32, touche: config::Touch
 
 #[tauri::command(async)]
 fn clips_liste(app: AppHandle) -> Vec<clips::Clip> {
-    clips::liste(&etat(&app).stock)
+    let app2 = app.clone();
+    clips::liste(&etat(&app).stock, move || {
+        let _ = app2.emit("clips_miniatures", ());
+    })
 }
 
 #[tauri::command(async)]
