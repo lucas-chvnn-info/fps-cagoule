@@ -444,7 +444,7 @@ pub fn lire(fichier: &[u8]) -> Result<Manche, String> {
 fn lire_paquets(b: &[u8], m: &mut Manche, profils: bool) {
     let motifs: [&[u8]; 4] = [JOUEUR, CHANGEMENT_OPERATEUR, CHRONO, KILLFEED];
     let mut chrono = 0u32;
-    // Temps de jeu écoulé : on ajoute chaque descente du chrono ; quand il remonte (désamorceur posé), on continue
+    // Temps de jeu écoulé : on ajoute chaque seconde où le chrono descend ; ses sauts ne comptent pas
     let mut ecoule = 0u32;
     let mut precedent: Option<u32> = None;
     let mut joueurs_lus = 0;
@@ -465,8 +465,10 @@ fn lire_paquets(b: &[u8], m: &mut Manche, profils: bool) {
             }
             2 => {
                 if let Some(t) = c.u32() {
+                    // Seulement les vraies secondes du chrono : ni sa remise à 0 en fin de manche,
+                    // ni ses sauts (début de l'action, désamorceur posé)
                     if let Some(p) = precedent {
-                        if t < p && p - t <= 30 {
+                        if t < p && p - t <= 2 {
                             ecoule += p - t;
                         }
                     }
@@ -575,7 +577,8 @@ fn lire_kill(c: &mut Curseur, m: &mut Manche, chrono: u32, ecoule: u32) -> Optio
 
 /// Délai supposé entre le dernier chrono de la manche et l'écriture du replay (à confirmer sur de vraies parties)
 /// Écart entre le dernier mouvement du chrono (fin de la manche) et l'heure de fin écrite dans le replay
-pub const FIN_APRES_CHRONO_S: f64 = 4.0;
+/// (4 à 5 s pour 168 manches sur 181)
+pub const FIN_APRES_CHRONO_S: f64 = 4.5;
 
 /// Sans heure de fin dans l'en-tête : la fin de la manche est prise ~2 s avant l'écriture du fichier
 pub const DECALAGE_ECRITURE_S: f64 = 2.0;
@@ -586,7 +589,7 @@ pub fn instant(m: &Manche, ecoule: u32, ecriture: std::time::SystemTime) -> Opti
     use std::time::{Duration, UNIX_EPOCH};
     let recul = m.ecoule_fin.saturating_sub(ecoule) as f64;
     if m.fin_ms > 0 {
-        // L'heure de fin tombe ~4 s après le dernier mouvement du chrono (mesuré sur 170 manches)
+        // L'heure de fin tombe ~4,5 s après le dernier mouvement du chrono (mesuré sur 181 manches)
         let recul = recul + FIN_APRES_CHRONO_S;
         (UNIX_EPOCH + Duration::from_millis(m.fin_ms)).checked_sub(Duration::from_secs_f64(recul))
     } else {
@@ -749,7 +752,7 @@ mod tests {
         m.fin_ms = 1_000_000_000 - 10_000;
         assert_eq!(duree_clip(&m, ecriture, ecriture + Duration::from_secs(3)), 90 + 4 + 10 + 3 + 15);
         let t = instant(&m, m.kills[1].ecoule, ecriture).unwrap();
-        assert_eq!(t, UNIX_EPOCH + Duration::from_millis(m.fin_ms) - Duration::from_secs(60 + 4));
+        assert_eq!(t, UNIX_EPOCH + Duration::from_millis(m.fin_ms) - Duration::from_millis(64_500));
     }
 
     #[test]
