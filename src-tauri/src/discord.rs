@@ -10,7 +10,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 /// Identifiant de l'application Discord « FPS Cagoule » (portail développeur Discord). Vide = statut désactivé.
-pub const ID_APPLI: &str = "";
+pub const ID_APPLI: &str = "1572171800748761138";
 const LOGO: &str = "https://raw.githubusercontent.com/lucas-chvnn-info/fps-cagoule/main/ui/logo.png";
 const SITE: &str = "https://github.com/lucas-chvnn-info/fps-cagoule/releases/latest";
 /// Discord accepte 5 changements de statut toutes les 20 s : on reste bien en dessous
