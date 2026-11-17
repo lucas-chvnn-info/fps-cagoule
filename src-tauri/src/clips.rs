@@ -523,9 +523,26 @@ fn marqueurs_voisins(clip: &Path) -> PathBuf {
     clip.parent().unwrap_or(Path::new("")).join(".fps-cagoule").join(nom)
 }
 
+/// Repères du clip : ceux du PC ou ceux rangés à côté du clip, les plus récents l'emportent
+/// (des repères corrigés posés à côté du clip remplacent d'anciens repères du PC)
 pub fn marqueurs(stock: &Stockage, clip: &Path) -> Vec<Marqueur> {
-    let lire = |f: PathBuf| fs::read_to_string(f).ok().and_then(|t| serde_json::from_str::<Vec<Marqueur>>(&t).ok());
-    lire(fichier_marqueurs(stock, clip)).or_else(|| lire(marqueurs_voisins(clip))).unwrap_or_default()
+    let lire = |f: &Path| {
+        let date = fs::metadata(f).and_then(|m| m.modified()).ok()?;
+        let liste = fs::read_to_string(f).ok().and_then(|t| serde_json::from_str::<Vec<Marqueur>>(&t).ok())?;
+        Some((date, liste))
+    };
+    match (lire(&fichier_marqueurs(stock, clip)), lire(&marqueurs_voisins(clip))) {
+        (Some((dl, l)), Some((dv, v))) => {
+            if dv > dl {
+                v
+            } else {
+                l
+            }
+        }
+        (Some((_, l)), None) => l,
+        (None, Some((_, v))) => v,
+        (None, None) => vec![],
+    }
 }
 
 /// Ajoute des repères au clip (sans doublon à moins d'une demi-seconde du même genre)
