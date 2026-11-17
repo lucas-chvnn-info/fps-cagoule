@@ -3964,6 +3964,10 @@ const ICONES_NOUVEAUTES = {
 };
 
 const NOUVEAUTES = {
+  '0.26.6': [
+    { icone: 'discord', titre: 'Partage tes clips', texte: 'Le bouton 🔗 met ton clip en ligne sur ton site et copie le lien. Avec un webhook, il est posté direct dans ton salon Discord.' },
+    { icone: 'clips', titre: 'Le son, à ton goût', texte: 'Règle le volume dans le lecteur (molette ou ↑ ↓, M pour couper). Il est retenu pour les prochains clips.' },
+  ],
   '0.26.5': [
     { icone: 'clips', titre: 'Clips auto réparés', texte: 'Les replays de R6 sont maintenant trouvés dans le dossier du jeu : tes 2K à ACE se gardent tout seuls, avec Solid Snake, Noor et les nouvelles maps.' },
     { icone: 'montage', titre: 'Un vrai montage', texte: 'Plein écran (F), passage de 0:20 à 0:30 à retirer ou à garder seul, et « Remplacer l\'original » pour raccourcir un clip.' },
