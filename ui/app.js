@@ -2684,9 +2684,11 @@ function tuileClip(c, i) {
   const textes = document.createElement('div');
   const nom = document.createElement('strong');
   nom.textContent = c.nom;
+  nom.title = c.nom;
   const infos = document.createElement('small');
   const d = new Date(c.date * 1000);
-  infos.textContent = `${c.jeu} · ${d.toLocaleDateString('fr-CH', { day: '2-digit', month: '2-digit' })} ${d.toLocaleTimeString('fr-CH', { hour: '2-digit', minute: '2-digit' })} · ${taillePetite(c.octets)}`;
+  // Dans le dossier d'un jeu, son nom est déjà en haut : pas besoin de le répéter sur chaque clip
+  infos.textContent = `${vueClips.jeu ? '' : `${c.jeu} · `}${d.toLocaleDateString('fr-CH', { day: '2-digit', month: '2-digit' })} ${d.toLocaleTimeString('fr-CH', { hour: '2-digit', minute: '2-digit' })} · ${taillePetite(c.octets)}`;
   textes.append(nom, infos);
   const suppr = document.createElement('button');
   suppr.className = 'petit discret-btn clip-suppr';
