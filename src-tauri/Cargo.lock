@@ -1074,7 +1074,7 @@ dependencies = [
 
 [[package]]
 name = "fps-cagoule"
-version = "0.26.2"
+version = "0.26.3"
 dependencies = [
  "ruzstd",
  "serde",
