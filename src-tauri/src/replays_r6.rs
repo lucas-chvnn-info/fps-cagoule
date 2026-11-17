@@ -203,12 +203,18 @@ pub struct Kill {
     pub chrono: u32,
     /// Chrono de la mise à terre (KO) quand la victime a d'abord été mise à terre
     pub ko: Option<u32>,
+    /// Secondes de jeu écoulées au moment de la mort (et de la mise à terre) : contrairement au chrono,
+    /// elles ne repartent pas de 0:45 quand le désamorceur est posé
+    pub ecoule: u32,
+    pub ko_ecoule: Option<u32>,
 }
 
 /// Moment de la manche à marquer sur la vidéo
 #[derive(Serialize, Clone, Debug, PartialEq)]
 pub struct Evenement {
     pub chrono: u32,
+    /// Secondes de jeu écoulées
+    pub ecoule: u32,
     /// « kill », « ko » ou « mort »
     pub genre: &'static str,
     /// Victime (kill, KO) ou tueur (mort)
@@ -229,6 +235,10 @@ pub struct Manche {
     pub kills: Vec<Kill>,
     /// Chrono à la fin de l'enregistrement de la manche
     pub chrono_fin: u32,
+    /// Secondes de jeu écoulées à la fin de l'enregistrement
+    pub ecoule_fin: u32,
+    /// Fin de la manche (ms depuis 1970, horloge du PC), écrite dans l'en-tête du replay ; 0 si absente
+    pub fin_ms: u64,
 }
 
 impl Manche {
@@ -245,15 +255,14 @@ impl Manche {
         for k in &self.kills {
             if &k.tueur == moi {
                 if let Some(ko) = k.ko {
-                    e.push(Evenement { chrono: ko, genre: "ko", detail: k.victime.clone(), headshot: false });
+                    e.push(Evenement { chrono: ko, ecoule: k.ko_ecoule.unwrap_or(k.ecoule), genre: "ko", detail: k.victime.clone(), headshot: false });
                 }
-                e.push(Evenement { chrono: k.chrono, genre: "kill", detail: k.victime.clone(), headshot: k.headshot });
+                e.push(Evenement { chrono: k.chrono, ecoule: k.ecoule, genre: "kill", detail: k.victime.clone(), headshot: k.headshot });
             } else if &k.victime == moi {
-                e.push(Evenement { chrono: k.chrono, genre: "mort", detail: k.tueur.clone(), headshot: k.headshot });
+                e.push(Evenement { chrono: k.chrono, ecoule: k.ecoule, genre: "mort", detail: k.tueur.clone(), headshot: k.headshot });
             }
         }
-        // Le chrono descend : le premier moment a le plus grand chrono
-        e.sort_by(|a, b| b.chrono.cmp(&a.chrono));
+        e.sort_by_key(|x| x.ecoule);
         e
     }
 
@@ -384,6 +393,14 @@ pub fn lire(fichier: &[u8]) -> Result<Manche, String> {
         let fin = k == "teamscore1";
         proprietes.push((k, v));
         if fin {
+            // « endtime » (fin de la manche) suit parfois : lu seulement s'il est là
+            let mut essai = Curseur { b: c.b, pos: c.pos };
+            if let (Some(k2), Some(v2)) = (essai.texte_entete(), essai.texte_entete()) {
+                if k2 == "endtime" {
+                    proprietes.push((k2, v2));
+                    c.pos = essai.pos;
+                }
+            }
             break;
         }
     }
@@ -405,7 +422,10 @@ pub fn lire(fichier: &[u8]) -> Result<Manche, String> {
         joueurs,
         kills: Vec::new(),
         chrono_fin: 0,
+        ecoule_fin: 0,
+        fin_ms: 0,
     };
+    manche.fin_ms = prop("endtime").and_then(|v| v.parse().ok()).unwrap_or(0);
     let donnees = decompresser(&fichier[c.pos..])?;
     lire_paquets(&donnees, &mut manche, !profil_moi.is_empty());
     manche.joueurs.retain(|j| !j.pseudo.is_empty());
@@ -424,6 +444,9 @@ pub fn lire(fichier: &[u8]) -> Result<Manche, String> {
 fn lire_paquets(b: &[u8], m: &mut Manche, profils: bool) {
     let motifs: [&[u8]; 4] = [JOUEUR, CHANGEMENT_OPERATEUR, CHRONO, KILLFEED];
     let mut chrono = 0u32;
+    // Temps de jeu écoulé : on ajoute chaque descente du chrono ; quand il remonte (désamorceur posé), on continue
+    let mut ecoule = 0u32;
+    let mut precedent: Option<u32> = None;
     let mut joueurs_lus = 0;
     let mut i = 0;
     while i < b.len() {
@@ -442,12 +465,19 @@ fn lire_paquets(b: &[u8], m: &mut Manche, profils: bool) {
             }
             2 => {
                 if let Some(t) = c.u32() {
+                    if let Some(p) = precedent {
+                        if t < p && p - t <= 30 {
+                            ecoule += p - t;
+                        }
+                    }
+                    precedent = Some(t);
                     chrono = t;
                     m.chrono_fin = t;
+                    m.ecoule_fin = ecoule;
                 }
             }
             _ => {
-                let _ = lire_kill(&mut c, m, chrono);
+                let _ = lire_kill(&mut c, m, chrono, ecoule);
             }
         }
         i += 1;
@@ -511,7 +541,7 @@ fn lire_changement(c: &mut Curseur, m: &mut Manche) -> Option<()> {
     Some(())
 }
 
-fn lire_kill(c: &mut Curseur, m: &mut Manche, chrono: u32) -> Option<()> {
+fn lire_kill(c: &mut Curseur, m: &mut Manche, chrono: u32, ecoule: u32) -> Option<()> {
     if m.code < Y9S1_UPDATE3 {
         return None;
     }
@@ -530,37 +560,48 @@ fn lire_kill(c: &mut Curseur, m: &mut Manche, chrono: u32) -> Option<()> {
     // Même victime une seconde fois : la première était une mise à terre (KO), celle-ci l'achève.
     // Le kill reste à celui qui l'a mise à terre (règle du jeu) ; un paquet en double (même chrono) est ignoré.
     match m.kills.iter_mut().find(|k| k.victime == victime) {
-        Some(k) if k.chrono != chrono && k.ko.is_none() => {
+        Some(k) if k.ecoule != ecoule && k.ko.is_none() => {
             k.ko = Some(k.chrono);
+            k.ko_ecoule = Some(k.ecoule);
             k.chrono = chrono;
+            k.ecoule = ecoule;
             k.headshot |= headshot;
         }
         Some(_) => {}
-        None => m.kills.push(Kill { tueur, victime, headshot, chrono, ko: None }),
+        None => m.kills.push(Kill { tueur, victime, headshot, chrono, ko: None, ecoule, ko_ecoule: None }),
     }
     Some(())
 }
 
 /// Délai supposé entre le dernier chrono de la manche et l'écriture du replay (à confirmer sur de vraies parties)
+/// Écart entre le dernier mouvement du chrono (fin de la manche) et l'heure de fin écrite dans le replay
+pub const FIN_APRES_CHRONO_S: f64 = 4.0;
+
+/// Sans heure de fin dans l'en-tête : la fin de la manche est prise ~2 s avant l'écriture du fichier
 pub const DECALAGE_ECRITURE_S: f64 = 2.0;
 
-/// Instant réel d'un moment de la manche, d'après la date d'écriture du replay. None si le chrono est passé
-/// au compte à rebours du défuseur entre-temps (les deux chronos ne se comparent pas).
-pub fn instant(m: &Manche, chrono: u32, ecriture: std::time::SystemTime) -> Option<std::time::SystemTime> {
-    if chrono < m.chrono_fin {
-        return None;
+/// Instant réel d'un moment de la manche (`ecoule` : secondes de jeu écoulées), d'après l'heure de fin
+/// de la manche écrite dans le replay, sinon d'après la date d'écriture du fichier
+pub fn instant(m: &Manche, ecoule: u32, ecriture: std::time::SystemTime) -> Option<std::time::SystemTime> {
+    use std::time::{Duration, UNIX_EPOCH};
+    let recul = m.ecoule_fin.saturating_sub(ecoule) as f64;
+    if m.fin_ms > 0 {
+        // L'heure de fin tombe ~4 s après le dernier mouvement du chrono (mesuré sur 170 manches)
+        let recul = recul + FIN_APRES_CHRONO_S;
+        (UNIX_EPOCH + Duration::from_millis(m.fin_ms)).checked_sub(Duration::from_secs_f64(recul))
+    } else {
+        ecriture.checked_sub(Duration::from_secs_f64(recul + DECALAGE_ECRITURE_S))
     }
-    let recul = (chrono - m.chrono_fin) as f64 + DECALAGE_ECRITURE_S;
-    ecriture.checked_sub(std::time::Duration::from_secs_f64(recul))
 }
 
-/// Secondes à garder pour couvrir tous mes kills de la manche : du premier kill moins 15 s jusqu'à la fin,
-/// plus le temps écoulé depuis l'écriture du replay. Si le chrono est passé au compte à rebours du défuseur,
-/// l'écart n'est plus calculable : on garde 2 min.
-pub fn duree_clip(m: &Manche, depuis_ecriture_s: u32) -> u32 {
-    let premier = m.mes_kills().first().map_or(0, |k| k.chrono);
-    let ecart = if premier >= m.chrono_fin { premier - m.chrono_fin } else { 105 };
-    (ecart + 15 + 8 + depuis_ecriture_s).clamp(20, 240)
+/// Durée du clip automatique pour qu'il commence 15 s avant le premier kill (`maintenant` : moment de la sauvegarde)
+pub fn duree_clip(m: &Manche, ecriture: std::time::SystemTime, maintenant: std::time::SystemTime) -> u32 {
+    let premier = m.mes_kills().iter().map(|k| k.ko_ecoule.unwrap_or(k.ecoule)).min();
+    let depuis = premier
+        .and_then(|e| instant(m, e, ecriture))
+        .and_then(|t| maintenant.duration_since(t).ok())
+        .map_or(120, |d| d.as_secs() as u32);
+    (depuis + 15).clamp(20, 240)
 }
 
 /// Chemin des replays réglé dans un GameSettings.ini (ligne dont la clé parle de « replay » et la valeur est un dossier)
@@ -665,8 +706,10 @@ mod tests {
             manche: 5,
             moi: Some("Cagoule".into()),
             joueurs: vec![Joueur { pseudo: "Cagoule".into(), equipe: 0, operateur_id: op, operateur: nom_operateur(op).map(String::from), profil: String::new(), id_entete: 0, id_dissect: vec![], id_ui: 0, role_entete: String::new() }],
-            kills: kills.iter().enumerate().map(|(i, (t, c))| Kill { tueur: t.to_string(), victime: format!("ennemi{i}"), headshot: false, chrono: *c, ko: None }).collect(),
+            kills: kills.iter().enumerate().map(|(i, (t, c))| Kill { tueur: t.to_string(), victime: format!("ennemi{i}"), headshot: false, chrono: *c, ko: None, ecoule: 180 - c, ko_ecoule: None }).collect(),
             chrono_fin,
+            ecoule_fin: 180 - chrono_fin,
+            fin_ms: 0,
         }
     }
 
@@ -688,6 +731,7 @@ mod tests {
         let mut m = manche(&[("Cagoule", 150), ("Ennemi", 90)], 0, 0);
         m.kills[1].victime = "Cagoule".into();
         m.kills[0].ko = Some(160);
+        m.kills[0].ko_ecoule = Some(20);
         let e = m.mes_evenements();
         assert_eq!(e.iter().map(|x| (x.genre, x.chrono)).collect::<Vec<_>>(), vec![("ko", 160), ("kill", 150), ("mort", 90)]);
         assert_eq!(e[2].detail, "Ennemi");
@@ -695,10 +739,17 @@ mod tests {
 
     #[test]
     fn duree_des_clips() {
-        // Premier kill à 2:30, fin à 1:00 : 90 s + 15 s avant + 8 s de marge + 3 s depuis l'écriture
-        assert_eq!(duree_clip(&manche(&[("Cagoule", 150), ("Cagoule", 120)], 0, 60), 3), 116);
-        // Chrono du défuseur après une pose : 2 min par défaut
-        assert_eq!(duree_clip(&manche(&[("Cagoule", 30), ("Cagoule", 20)], 0, 40), 0), 128);
+        use std::time::{Duration, UNIX_EPOCH};
+        // Premier kill à 2:30, fin à 1:00 : 90 s de jeu, fichier écrit 2 s après, clip sauvé 3 s plus tard
+        let ecriture = UNIX_EPOCH + Duration::from_secs(1_000_000);
+        let m = manche(&[("Cagoule", 150), ("Cagoule", 120)], 0, 60);
+        assert_eq!(duree_clip(&m, ecriture, ecriture + Duration::from_secs(3)), 90 + 2 + 3 + 15);
+        // Avec l'heure de fin écrite dans le replay : elle fait foi
+        let mut m = m;
+        m.fin_ms = 1_000_000_000 - 10_000;
+        assert_eq!(duree_clip(&m, ecriture, ecriture + Duration::from_secs(3)), 90 + 4 + 10 + 3 + 15);
+        let t = instant(&m, m.kills[1].ecoule, ecriture).unwrap();
+        assert_eq!(t, UNIX_EPOCH + Duration::from_millis(m.fin_ms) - Duration::from_secs(60 + 4));
     }
 
     #[test]

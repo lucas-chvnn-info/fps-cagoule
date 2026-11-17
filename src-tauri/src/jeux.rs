@@ -522,8 +522,7 @@ fn surveiller_replays(app: &AppHandle, etat: &Etat, pid: u32) {
             if !etat.stock.donnees.lock().unwrap().reglages.clips_auto_kills.contains(&kills) {
                 return;
             }
-            let depuis_ecriture = SystemTime::now().duration_since(modifie).map_or(0, |d| d.as_secs() as u32);
-            let secondes = crate::replays_r6::duree_clip(&manche, depuis_ecriture);
+            let secondes = crate::replays_r6::duree_clip(&manche, modifie, SystemTime::now());
             let fin = SystemTime::now();
             if let Ok(chemin) = crate::clips::sauver(&etat.stock, &tampon, &jeu, secondes, Some(&titre)) {
                 crate::clips::ajouter_marqueurs(&etat.stock, &chemin, &reperes_manche(&manche, modifie, fin, secondes));
@@ -540,7 +539,7 @@ fn reperes_manche(manche: &crate::replays_r6::Manche, ecriture: SystemTime, fin:
         .mes_evenements()
         .into_iter()
         .filter_map(|e| {
-            let quand = crate::replays_r6::instant(manche, e.chrono, ecriture)?;
+            let quand = crate::replays_r6::instant(manche, e.ecoule, ecriture)?;
             let t = quand.duration_since(debut).ok()?.as_secs_f64();
             (t <= secondes as f64).then(|| crate::clips::Marqueur { t, genre: e.genre.into(), detail: e.detail, headshot: e.headshot })
         })
