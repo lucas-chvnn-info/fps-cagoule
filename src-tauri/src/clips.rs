@@ -18,9 +18,9 @@ const FFMPEG_URL: &str = "https://github.com/GyanD/codexffmpeg/releases/download
 const FFMPEG_SHA256: &str = "60f467265b1e312373dbcd92200c2618a74850f98d3d078e94296bb3fa2047ba";
 const FFMPEG_TAILLE: u64 = 114_768_076;
 const FFMPEG_DANS_ZIP: &str = "ffmpeg-9.0.2-essentials_build/bin/ffmpeg.exe";
-/// Durée d'un morceau ; le tampon garde 3 min + une marge, quelle que soit la durée choisie
+/// Durée d'un morceau ; le tampon garde 4 min + une marge (une manche entière pour les clips automatiques)
 const MORCEAU_S: u32 = 2;
-const MORCEAUX: u32 = 180 / MORCEAU_S + 4;
+const MORCEAUX: u32 = 240 / MORCEAU_S + 4;
 /// Taille d'un paquet MPEG-TS : un morceau en cours d'écriture est coupé au dernier paquet complet
 const PAQUET_TS: usize = 188;
 
@@ -474,7 +474,7 @@ mod tests {
         let texte = a.join(" ");
         assert!(texte.contains("-f f32le -ar 48000 -ac 2 -i pipe:0"));
         assert!(texte.contains("[1:v]setpts=(RTCTIME-1000000)/(1000000*TB)[v]"));
-        assert!(texte.contains("h264_nvenc") && texte.contains("-segment_wrap 94"));
+        assert!(texte.contains("h264_nvenc") && texte.contains("-segment_wrap 124"));
         assert!(a.last().unwrap().ends_with(r"m%03d.ts"));
     }
 }

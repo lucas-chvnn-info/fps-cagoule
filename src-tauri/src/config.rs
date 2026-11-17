@@ -37,6 +37,8 @@ pub struct Reglages {
     /// Durée sauvegardée par la touche (secondes : 30, 60 ou 180)
     pub clips_duree_s: u32,
     pub clips_touche: Touche,
+    /// Clips automatiques dans Rainbow Six Siege (2K, 3K, 4K, ACE), lus dans les replays du jeu
+    pub clips_auto: bool,
 }
 
 /// Raccourci clavier (modificateurs MOD_ALT 1, MOD_CONTROL 2, MOD_SHIFT 4 ; code de touche virtuelle Windows)
@@ -66,7 +68,7 @@ pub fn applis_fond_par_defaut() -> Vec<String> {
 
 impl Default for Reglages {
     fn default() -> Self {
-        Self { boost_auto: true, boost_max: false, mesure_fps: true, overlay: false, maj_auto: true, couleurs_en_jeu: false, fermer_applis: vec![], assistant_fait: false, mode_simple: false, oc_protection: true, priorite_basse: true, priorite_basse_applis: applis_fond_par_defaut(), discord: true, clips: false, clips_duree_s: 30, clips_touche: Touche::default() }
+        Self { boost_auto: true, boost_max: false, mesure_fps: true, overlay: false, maj_auto: true, couleurs_en_jeu: false, fermer_applis: vec![], assistant_fait: false, mode_simple: false, oc_protection: true, priorite_basse: true, priorite_basse_applis: applis_fond_par_defaut(), discord: true, clips: false, clips_duree_s: 30, clips_touche: Touche::default(), clips_auto: true }
     }
 }
 

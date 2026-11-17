@@ -1293,6 +1293,7 @@ function afficherReglages() {
   $('#couleurs-en-jeu').checked = reglages.couleurs_en_jeu;
   $('#priorite-basse').checked = reglages.priorite_basse;
   $('#discord').checked = reglages.discord;
+  $('#clips-auto').checked = reglages.clips_auto;
   $('#ligne-discord').hidden = !etat.discord;
   $('#fond-liste').innerHTML = reglages.priorite_basse_applis.length
     ? reglages.priorite_basse_applis.map((a, i) => `<span class="puce">${esc(a)}<button data-retirer="${i}" title="Retirer">✕</button></span>`).join('')
@@ -1302,7 +1303,7 @@ function afficherReglages() {
     : '<span class="discret">Aucun programme.</span>';
 }
 
-for (const [id, champ] of [['#boost-auto', 'boost_auto'], ['#boost-max', 'boost_max'], ['#mesure-fps', 'mesure_fps'], ['#overlay', 'overlay'], ['#maj-auto', 'maj_auto'], ['#couleurs-en-jeu', 'couleurs_en_jeu'], ['#priorite-basse', 'priorite_basse'], ['#discord', 'discord']]) {
+for (const [id, champ] of [['#boost-auto', 'boost_auto'], ['#boost-max', 'boost_max'], ['#mesure-fps', 'mesure_fps'], ['#overlay', 'overlay'], ['#maj-auto', 'maj_auto'], ['#couleurs-en-jeu', 'couleurs_en_jeu'], ['#priorite-basse', 'priorite_basse'], ['#discord', 'discord'], ['#clips-auto', 'clips_auto']]) {
   $(id).addEventListener('change', (e) => {
     reglages[champ] = e.target.checked;
     sauverReglages();
@@ -3318,6 +3319,9 @@ const ICONES_NOUVEAUTES = {
 };
 
 const NOUVEAUTES = {
+  '0.26.0': [
+    { icone: 'clips', titre: 'Clips automatiques dans R6', texte: 'Tes 2K, 3K, 4K et ACE sont gardés tout seuls, nommés comme « 3K · Ace · Clubhouse ». Laisse le Match Replay activé dans R6.' },
+  ],
   '0.25.0': [
     { icone: 'clips', titre: 'Tes clips, comme Medal', texte: 'Jeux → Clips : active l\'enregistrement, choisis ta touche et la durée. En jeu, elle garde les 30 s, 1 min ou 3 min d\'avant.' },
   ],

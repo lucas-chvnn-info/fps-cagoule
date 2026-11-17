@@ -82,6 +82,10 @@ fn type_image(octets: &[u8]) -> Option<&'static str> {
     }
 }
 
+pub(crate) fn decoder_base64_pub(texte: &str) -> Option<Vec<u8>> {
+    decoder_base64(texte)
+}
+
 fn decoder_base64(texte: &str) -> Option<Vec<u8>> {
     let mut sortie = Vec::with_capacity(texte.len() * 3 / 4);
     let (mut acc, mut bits) = (0u32, 0u32);

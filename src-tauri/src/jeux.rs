@@ -37,6 +37,9 @@ pub struct EnCours {
     presence: Option<crate::discord::Presence>,
     /// Enregistrement pour les clips (arrêté et tampon effacé quand il est lâché)
     pub enregistreur: Option<crate::clips::Enregistreur>,
+    /// Replays de manches de R6 déjà traités pour les clips automatiques
+    replays_vus: Vec<PathBuf>,
+    debut_systeme: SystemTime,
 }
 
 pub struct Etat {
@@ -99,6 +102,7 @@ fn verifier(app: &AppHandle) -> bool {
             suivre_temperature(app, &etat);
             maj_discord(&etat);
             surveiller_clips(app, &etat, pid);
+            surveiller_replays(app, &etat, pid);
             abaisser_fond(&etat, &procs);
             true
         }
@@ -247,6 +251,8 @@ fn demarrer(app: &AppHandle, etat: &Etat, profil: &crate::config::Profil, pid: u
         vus: Vec::new(),
         presence: None,
         enregistreur: None,
+        replays_vus: Vec::new(),
+        debut_systeme: SystemTime::now(),
     });
     if reglages.discord {
         demarrer_discord(etat, profil, boost);
@@ -403,6 +409,45 @@ fn surveiller_clips(app: &AppHandle, etat: &Etat, pid: u32) {
             s.enregistreur = Some(enregistreur);
         }
     });
+}
+
+/// Clips automatiques dans R6 : à chaque fin de manche, le replay (.rec) est lu ; 2 kills ou plus du joueur
+/// donnent un clip « 3K · Ace · Clubhouse » qui part 15 s avant le premier kill
+fn surveiller_replays(app: &AppHandle, etat: &Etat, pid: u32) {
+    if !etat.stock.donnees.lock().unwrap().reglages.clips_auto {
+        return;
+    }
+    let infos = {
+        let session = etat.session.lock().unwrap();
+        session.as_ref().filter(|s| s.exe.to_lowercase().starts_with("rainbowsix")).and_then(|s| {
+            s.enregistreur.as_ref().map(|e| (s.debut_systeme, s.replays_vus.clone(), e.dossier.clone(), e.jeu.clone()))
+        })
+    };
+    let Some((depuis, vus, tampon, jeu)) = infos else { return };
+    use windows_sys::Win32::UI::Shell::FOLDERID_Documents;
+    let Some(documents) = crate::jeux_config::dossier_connu(&FOLDERID_Documents) else { return };
+    for (fichier, modifie) in crate::replays_r6::manches_recentes(&documents, depuis) {
+        // Fichier encore en cours d'écriture : on attendra le prochain passage
+        let age = SystemTime::now().duration_since(modifie).unwrap_or_default();
+        if vus.contains(&fichier) || age < Duration::from_secs(4) {
+            continue;
+        }
+        if let Some(s) = etat.session.lock().unwrap().as_mut().filter(|s| s.pid == pid) {
+            s.replays_vus.push(fichier.clone());
+        }
+        let (app, tampon, jeu) = (app.clone(), tampon.clone(), jeu.clone());
+        let _ = thread::Builder::new().name("clip-auto".into()).spawn(move || {
+            let Ok(octets) = std::fs::read(&fichier) else { return };
+            let Ok(manche) = crate::replays_r6::lire(&octets) else { return };
+            let Some(titre) = crate::replays_r6::titre_clip(&manche) else { return };
+            let depuis_ecriture = SystemTime::now().duration_since(modifie).map_or(0, |d| d.as_secs() as u32);
+            let secondes = crate::replays_r6::duree_clip(&manche, depuis_ecriture);
+            let etat = app.state::<Arc<Etat>>();
+            if let Ok(chemin) = crate::clips::sauver(&etat.stock, &tampon, &jeu, secondes, Some(&titre)) {
+                let _ = app.emit("clip", chemin.to_string_lossy().to_string());
+            }
+        });
+    }
 }
 
 /// Touche des clips : sauvegarde les dernières secondes de la partie en cours

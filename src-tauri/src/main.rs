@@ -28,6 +28,7 @@ mod programmes;
 mod ps;
 mod raccourci;
 mod rampe;
+mod replays_r6;
 mod reseau;
 mod stats;
 mod steam_comptes;
