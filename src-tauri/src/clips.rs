@@ -399,9 +399,11 @@ mod tests {
     /// Vrai FFmpeg sur le PC Windows de GitHub : téléchargement vérifié, enregistrement avec son, clip sauvegardé
     #[test]
     fn ffmpeg_reel() {
-        let stock = Stockage::ouvrir(std::env::temp_dir().join("fps-cagoule-test-clips"));
+        // Hors du dossier temporaire : le test du nettoyage le vide en même temps
+        let racine = Path::new(env!("CARGO_MANIFEST_DIR")).join("target").join("test-clips");
+        let stock = Stockage::ouvrir(racine.join("donnees"));
         installer(&stock, |_, _| {}).expect("installation de FFmpeg");
-        let dossier = std::env::temp_dir().join("fps-cagoule-test-tampon");
+        let dossier = racine.join("tampon");
         let _ = fs::remove_dir_all(&dossier);
         fs::create_dir_all(&dossier).unwrap();
         // Image de test + silence envoyé comme le ferait la capture du son
