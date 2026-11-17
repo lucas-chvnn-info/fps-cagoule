@@ -856,3 +856,18 @@ label.bouton:hover { background: #1b2336; border-color: rgba(92, 160, 255, .55);
 .sous-menu button svg { width: 16px; height: 16px; }
 .sous-menu button.actif::before { left: -21px; }
 body.simple .groupe-nav[data-avance] { display: none; }
+
+/* Réglages : roue dentée en haut à droite */
+main { position: relative; }
+.page > header { padding-right: 58px; }
+.bouton-coin {
+  position: fixed; top: 30px; right: 34px; z-index: 5; width: 44px; height: 44px; padding: 0; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(24, 27, 36, .75); border: 1px solid var(--bordure); backdrop-filter: blur(8px);
+}
+.bouton-coin svg { width: 22px; height: 22px; fill: none; stroke: #c9d3e8; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; transition: transform .6s cubic-bezier(.2, .8, .3, 1), stroke .2s; }
+.bouton-coin:hover:not(:disabled) { background: #1b2336; }
+.bouton-coin:hover svg { transform: rotate(120deg); stroke: var(--bleu); filter: drop-shadow(0 0 6px rgba(92, 200, 255, .8)); }
+.bouton-coin::after { border-radius: 50%; }
+.bouton-coin.actif { border-color: rgba(111, 157, 255, .7); background: linear-gradient(135deg, rgba(47, 111, 237, .35), rgba(111, 59, 245, .25)); box-shadow: 0 0 20px rgba(47, 111, 237, .5); }
+.bouton-coin.actif svg { stroke: #fff; animation: tourne 8s linear infinite; }

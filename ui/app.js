@@ -54,9 +54,9 @@ document.querySelectorAll('.nav-groupe').forEach((b) =>
   })
 );
 
-document.querySelectorAll('nav button[data-page]').forEach((b) =>
+document.querySelectorAll('button[data-page]').forEach((b) =>
   b.addEventListener('click', () => {
-    document.querySelectorAll('nav button[data-page], .page').forEach((e) => e.classList.remove('actif'));
+    document.querySelectorAll('button[data-page], .page').forEach((e) => e.classList.remove('actif'));
     b.classList.add('actif');
     ouvrirGroupe(b.closest('.groupe-nav'));
     document.querySelectorAll('.groupe-nav').forEach((g) => g.classList.toggle('contient-actif', g.contains(b)));
@@ -92,7 +92,7 @@ document.querySelectorAll('nav button[data-page]').forEach((b) =>
 );
 
 function allerA(page) {
-  document.querySelector(`nav [data-page="${page}"]`).click();
+  document.querySelector(`button[data-page="${page}"]`).click();
 }
 
 /* ---------- Analyse et score ---------- */
@@ -2532,7 +2532,7 @@ function appliquerMode() {
   document.body.classList.toggle('simple', simple);
   $('#btn-mode').textContent = simple ? 'Afficher tous les outils' : 'Simplifier le menu';
   $('#btn-mode-reglages').textContent = simple ? 'Passer en mode complet' : 'Passer en mode simple';
-  if (simple && document.querySelector('nav button[data-page].actif')?.hasAttribute('data-avance')) allerA('accueil');
+  if (simple && document.querySelector('button[data-page].actif')?.hasAttribute('data-avance')) allerA('accueil');
   if (simple && categorieChoisie === 'risque') choisirCategorie('');
 }
 
@@ -2966,7 +2966,7 @@ async function init() {
 }
 
 // Icône du menu devant le titre de chaque page
-document.querySelectorAll('nav button[data-page]').forEach((b) => {
+document.querySelectorAll('button[data-page]').forEach((b) => {
   const h1 = document.querySelector(`#page-${b.dataset.page} > header h1`);
   const svg = b.querySelector('svg');
   if (!h1 || !svg) return;
