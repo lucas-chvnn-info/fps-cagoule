@@ -54,7 +54,6 @@
         </div></div>
       </div>
     </nav>
-    <button id="btn-mode" class="mode-interface" title="Changer d'interface"></button>
     <div class="conso" title="Ressources utilisées par FPS Cagoule elle-même">
       <span class="etiquette">FPS Cagoule utilise</span>
       <span id="conso">…</span>
@@ -91,7 +90,7 @@
             <p id="jeu-temp" class="discret" hidden></p>
             <ul id="jeu-actions" class="liste-actions"></ul>
           </div>
-        </div></div>
+        </div>
       </div>
       <div class="carte">
         <div class="entete-diagnostic">
@@ -126,7 +125,7 @@
           <h2>Test de ping</h2>
           <button id="btn-ping" class="principal">Lancer le test</button>
           <div id="ping-resultats" class="ping-resultats"></div>
-        </div></div>
+        </div>
       </div>
       <div class="carte" id="carte-dns">
         <div class="entete-diagnostic"><h2>Serveur DNS</h2><button class="petit principal" id="btn-dns">Trouver le plus rapide</button></div>
@@ -138,7 +137,7 @@
         <div id="zone-souris" class="zone-souris">
           <div><span id="souris-hz">–</span><small>Hz</small></div>
           <div><span id="souris-ms">–</span><small>ms entre deux positions</small></div>
-        </div></div>
+        </div>
       </div>
     </section>
 
@@ -184,7 +183,7 @@
           <button class="principal" id="btn-recommande">Optimisation recommandée</button>
           <button class="principal max" id="btn-max">Boost maximum</button>
           <button id="btn-tout-annuler">Tout annuler</button>
-        </div></div>
+        </div>
       </div>
       <div id="filtres-categories" class="filtres-categories" role="tablist" aria-label="Catégories d'optimisations"></div>
       <section class="categorie" data-categorie="windows">
@@ -249,7 +248,7 @@
           <h2>Applis préinstallées de Windows <span id="nb-applis" class="discret"></span></h2>
           <ul id="applis-liste" class="liste-applis"><li class="discret">Chargement…</li></ul>
           <button class="principal" id="btn-applis" disabled>Désinstaller la sélection</button>
-        </div></div>
+        </div>
       </div>
       <div class="carte">
         <h2>Désinstaller des programmes <span id="nb-programmes" class="discret"></span></h2>
@@ -274,7 +273,7 @@
           <select id="classe-peripheriques"><option value="">Toutes les catégories</option></select>
           <label class="case"><input type="checkbox" id="problemes-peripheriques"> Problèmes et mises à jour seulement</label>
           <label class="case"><input type="checkbox" id="systeme-peripheriques"> Composants internes de Windows</label>
-        </div></div>
+        </div>
       </div>
       <table class="tableau" id="peripheriques">
         <thead><tr><th>Appareil</th><th>Pilote</th><th>État</th><th></th></tr></thead>
@@ -315,7 +314,7 @@
             <div id="fermer-liste" class="puces"></div>
             <div class="ligne-form"><select id="fermer-choix"><option value="">Ajouter un programme ouvert…</option></select><button id="btn-fermer-ajout" class="petit">Ajouter</button></div>
           </div>
-        </div></div>
+        </div>
       </div>
     </section>
 
@@ -349,7 +348,7 @@
             <button id="btn-amd-usine" class="discret-btn">Remettre d'usine</button>
             <button id="btn-amd-adrenalin" hidden>Ouvrir AMD Adrenalin</button>
           </div>
-        </div></div>
+        </div>
       </div>
       <div id="oc-contenu" hidden>
         <p id="oc-plantage" class="carte alerte" hidden>Ton PC s'est arrêté brutalement pendant une partie avec l'overclocking : FPS Cagoule l'a désactivé par sécurité. Choisis un réglage plus bas.</p>
@@ -379,7 +378,7 @@
           </div>
           <div class="barre" id="oc-barre-zone" hidden><div id="oc-barre"></div></div>
           <canvas id="oc-canvas" width="1920" height="1080" hidden></canvas>
-        </div></div>
+        </div>
       </div>
     </section>
 
@@ -402,25 +401,22 @@
         <label class="bascule"><input type="checkbox" id="maj-auto"><span></span> Mises à jour automatiques</label>
       </div>
       <div class="carte ligne-carte">
-        <h2>Interface</h2>
-        <div class="boutons">
-          <button id="btn-mode-reglages"></button>
-          <button id="btn-assistant">Relancer l'assistant</button>
-        </div></div>
+        <h2>Assistant de départ</h2>
+        <button id="btn-assistant">Relancer l'assistant</button>
       </div>
       <div class="carte ligne-carte">
         <h2>Partager mes réglages avec un pote</h2>
         <div class="boutons">
           <button class="principal" id="btn-exporter">Copier mon code</button>
           <button id="btn-importer">Coller un code</button>
-        </div></div>
+        </div>
       </div>
       <div class="carte ligne-carte">
         <div><h2>Mises à jour</h2><p id="maj-texte" class="discret"></p></div>
         <div class="boutons">
           <button id="btn-maj">Rechercher</button>
           <button id="btn-maj-installer" class="principal" hidden>Installer maintenant</button>
-        </div></div>
+        </div>
       </div>
       <div class="carte ligne-carte">
         <h2>Tout remettre comme avant</h2>

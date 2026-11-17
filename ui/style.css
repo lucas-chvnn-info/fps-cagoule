@@ -478,8 +478,6 @@ button.chargement::before {
 body.simple nav [data-avance],
 body.simple .categorie[data-categorie="risque"],
 body.simple #filtres-categories [data-cat="risque"] { display: none; }
-.mode-interface { margin: 14px 0 10px; background: none; border: 1px dashed var(--bordure); color: var(--discret); font-size: 12px; padding: 8px 10px; border-radius: 10px; }
-.mode-interface:hover:not(:disabled) { color: var(--texte); border-color: var(--accent); }
 
 /* Alertes de l'accueil */
 .alertes { display: flex; flex-direction: column; gap: 10px; }

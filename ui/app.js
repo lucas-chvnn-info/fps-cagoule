@@ -2525,25 +2525,11 @@ $('#btn-bios-redemarrer').addEventListener('click', async (e) => {
   } catch {}
 });
 
-/* ---------- Mode simple ---------- */
+/* ---------- Mode simple (retiré : le menu en catégories suffit) ---------- */
 
 function appliquerMode() {
-  const simple = !!reglages?.mode_simple;
-  document.body.classList.toggle('simple', simple);
-  $('#btn-mode').textContent = simple ? 'Afficher tous les outils' : 'Simplifier le menu';
-  $('#btn-mode-reglages').textContent = simple ? 'Passer en mode complet' : 'Passer en mode simple';
-  if (simple && document.querySelector('button[data-page].actif')?.hasAttribute('data-avance')) allerA('accueil');
-  if (simple && categorieChoisie === 'risque') choisirCategorie('');
+  document.body.classList.remove('simple');
 }
-
-async function changerMode() {
-  reglages.mode_simple = !reglages.mode_simple;
-  await sauverReglages();
-  appliquerMode();
-  toast(reglages.mode_simple ? 'Mode simple : seulement l\'essentiel dans le menu.' : 'Mode complet : tous les outils sont affichés.');
-}
-$('#btn-mode').addEventListener('click', changerMode);
-$('#btn-mode-reglages').addEventListener('click', changerMode);
 
 /* ---------- Alertes de l'accueil ---------- */
 
@@ -2730,13 +2716,13 @@ $('#btn-tout-remettre').addEventListener('click', async (e) => {
 
 /* ---------- Assistant de premier lancement ---------- */
 
-const assistant = { ancien: false, etape: 0, niveau: 'sur', jeux: true, nettoyer: true, demarrage: true, simple: true, jeuxTrouves: null, fini: false };
+const assistant = { ancien: false, etape: 0, niveau: 'sur', jeux: true, nettoyer: true, demarrage: true, jeuxTrouves: null, fini: false };
 
 const ETAPES_ASSISTANT = [
   {
     html: () => `<h2 id="assistant-titre">Bienvenue dans FPS Cagoule</h2>
-      <p>En 4 questions, FPS Cagoule règle ton PC pour jouer : optimisations de Windows, boost automatique de tes jeux, nettoyage.</p>
-      <p class="discret">Tout est réversible : FPS Cagoule garde les réglages d'origine, crée un point de restauration Windows avant de toucher quoi que ce soit, et « Tout remettre comme avant » (dans Réglages) annule tout.</p>`,
+      <p>3 étapes pour régler ton PC pour jouer.</p>
+      <p class="discret">Tout reste annulable.</p>`,
   },
   {
     html: () => `<h2 id="assistant-titre">Jusqu'où on va ?</h2>
@@ -2750,21 +2736,12 @@ const ETAPES_ASSISTANT = [
     html: () => {
       const jeux = (assistant.jeuxTrouves || []).filter((j) => j.fichiers && j.reglages.length && !j.optimise);
       return `<h2 id="assistant-titre">Tes jeux et ton PC</h2>
-        <p class="discret">FPS Cagoule repère tout seul tes jeux quand tu les lances et les boost (priorité, carte graphique, alimentation). Tout revient à la normale après la partie.</p>
         <div class="interrupteurs">
           ${jeux.length ? bascule('jeux', `Optimiser les réglages dans ${jeux.map((j) => esc(j.nom)).join(', ')}`, 'V-Sync, flou et effets lourds coupés, distance d\'affichage gardée. Ferme ces jeux avant.') : ''}
           ${bascule('nettoyer', 'Nettoyer les fichiers inutiles', 'Fichiers temporaires, caches et rapports d\'erreurs.')}
           ${bascule('demarrage', 'Lancer FPS Cagoule avec Windows', 'Indispensable pour le boost automatique. Il reste discret : quelques Mo de mémoire.')}
         </div>`;
     },
-  },
-  {
-    html: () => `<h2 id="assistant-titre">Quelle interface ?</h2>
-      <div class="choix-cartes">
-        ${choix('simple', true, 'Simple (conseillé)', 'Juste l\'essentiel : accueil, optimisations, nettoyage, mes jeux et statistiques.')}
-        ${choix('simple', false, 'Complète', 'Tous les outils : tests, benchmark, pilotes, écrans et overclocking.')}
-      </div>
-      <p class="discret petit-texte">Tu pourras changer à tout moment en bas du menu.</p>`,
   },
   { html: () => `<h2 id="assistant-titre">On y va</h2><ul id="assistant-progression" class="etapes assistant-progression"></ul><p id="assistant-fin" class="discret"></p>` },
 ];
@@ -2786,7 +2763,7 @@ function afficherAssistant() {
 }
 
 function ouvrirAssistant() {
-  Object.assign(assistant, { etape: 0, fini: false, simple: reglages.assistant_fait || assistant.ancien ? !!reglages.mode_simple : true });
+  Object.assign(assistant, { etape: 0, fini: false });
   invoke('jeux_configs')
     .then((j) => {
       assistant.jeuxTrouves = j;
@@ -2865,7 +2842,7 @@ async function executerAssistant() {
   await etape('Boost automatique de tes jeux', async () => {
     reglages.boost_auto = true;
     reglages.boost_max = assistant.niveau === 'max';
-    reglages.mode_simple = assistant.simple;
+    reglages.mode_simple = false;
     await sauverReglages();
     afficherReglages();
     appliquerMode();
