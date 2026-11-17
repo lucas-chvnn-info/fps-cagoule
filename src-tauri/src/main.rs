@@ -465,12 +465,14 @@ struct EtatClips {
     personnalise: bool,
     /// Une partie est enregistrée en ce moment
     enregistrement: bool,
+    /// Partie en cours mais enregistrement impossible : pourquoi
+    probleme: Option<String>,
 }
 
 #[tauri::command]
 fn clips_etat(app: AppHandle) -> EtatClips {
     let e = etat(&app);
-    let enregistrement = e.session.lock().unwrap().as_ref().is_some_and(|s| s.enregistreur.is_some());
+    let (enregistrement, probleme) = e.session.lock().unwrap().as_ref().map_or((false, None), |s| (s.enregistreur.is_some(), s.clips_erreur.clone()));
     let dossier = clips::dossier_clips(&e.stock);
     EtatClips {
         installe: clips::installe(&e.stock),
@@ -478,6 +480,7 @@ fn clips_etat(app: AppHandle) -> EtatClips {
         personnalise: dossier != clips::dossier_defaut(),
         dossier: dossier.to_string_lossy().into(),
         enregistrement,
+        probleme,
     }
 }
 

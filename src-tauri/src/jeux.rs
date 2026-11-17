@@ -44,6 +44,10 @@ pub struct EnCours {
     pseudo_r6: Option<String>,
     /// Clips faits à la touche pendant la partie : (fichier, fin, durée en s), pour y ajouter les repères des kills
     clips_manuels: Vec<(PathBuf, SystemTime, u32)>,
+    /// Démarrage de l'enregistrement déjà tenté pour cette partie
+    clips_lances: bool,
+    /// Pourquoi l'enregistrement n'a pas pu démarrer
+    pub clips_erreur: Option<String>,
 }
 
 pub struct Etat {
@@ -105,6 +109,7 @@ fn verifier(app: &AppHandle) -> bool {
             entretenir_memoire(&etat);
             suivre_temperature(app, &etat);
             maj_discord(&etat);
+            lancer_clips_si_besoin(app, &etat, pid);
             surveiller_clips(app, &etat, pid);
             surveiller_replays(app, &etat, pid);
             abaisser_fond(&etat, &procs);
@@ -259,6 +264,8 @@ fn demarrer(app: &AppHandle, etat: &Etat, profil: &crate::config::Profil, pid: u
         debut_systeme: SystemTime::now(),
         pseudo_r6: None,
         clips_manuels: Vec::new(),
+        clips_lances: false,
+        clips_erreur: None,
     });
     if reglages.discord {
         demarrer_discord(etat, profil, boost);
@@ -302,9 +309,7 @@ fn demarrer(app: &AppHandle, etat: &Etat, profil: &crate::config::Profil, pid: u
         crate::fenetres::ouvrir_overlay(app);
     }
     // Après le changement de résolution du jeu : la capture démarre sur le bon mode d'écran
-    if reglages.clips && crate::clips::installe(&etat.stock) {
-        demarrer_clips(app, pid, &profil.nom);
-    }
+    lancer_clips_si_besoin(app, etat, pid);
     crate::fenetres::infobulle(app, &format!("FPS Cagoule : {}{}", profil.nom, if boost { " boosté" } else { "" }));
     let _ = app.emit("jeu", etat.info_jeu());
 }
@@ -362,6 +367,25 @@ pub fn terminer(app: &AppHandle, etat: &Etat) {
 }
 
 /// Démarre l'enregistrement à côté (FFmpeg met quelques secondes à confirmer qu'il tourne)
+/// Démarre l'enregistrement une fois par partie, dès que les clips sont activés et FFmpeg installé
+/// (aussi quand ils sont activés en pleine partie)
+fn lancer_clips_si_besoin(app: &AppHandle, etat: &Etat, pid: u32) {
+    if !etat.stock.donnees.lock().unwrap().reglages.clips || !crate::clips::installe(&etat.stock) {
+        return;
+    }
+    let jeu = {
+        let mut session = etat.session.lock().unwrap();
+        match session.as_mut().filter(|s| s.pid == pid && !s.clips_lances && s.enregistreur.is_none()) {
+            Some(s) => {
+                s.clips_lances = true;
+                s.profil.clone()
+            }
+            None => return,
+        }
+    };
+    demarrer_clips(app, pid, &jeu);
+}
+
 fn demarrer_clips(app: &AppHandle, pid: u32, jeu: &str) {
     let app = app.clone();
     let jeu = jeu.to_string();
@@ -378,20 +402,25 @@ fn demarrer_clips(app: &AppHandle, pid: u32, jeu: &str) {
                 }));
                 s.enregistreur = Some(e);
             }
-            (Some(s), Err(e)) if s.pid == pid => s.actions.push(e),
+            (Some(s), Err(e)) if s.pid == pid => {
+                s.clips_erreur = Some(e.clone());
+                s.actions.push(e);
+            }
             _ => {}
         }
     });
 }
 
-/// L'enregistrement s'est arrêté (le jeu a changé la résolution ou passé en plein écran) : on le relance
-/// en arrière-plan, 8 fois au plus par partie
+/// L'enregistrement s'est arrêté, ou l'image ne vient plus (le jeu a changé la résolution ou passé en plein écran) :
+/// on le relance en arrière-plan, 30 fois au plus par partie
+const RELANCES_MAX: u32 = 30;
+
 fn surveiller_clips(app: &AppHandle, etat: &Etat, pid: u32) {
     let mort = {
         let mut session = etat.session.lock().unwrap();
         match session.as_mut() {
             Some(s) => {
-                let arrete = s.enregistreur.as_mut().is_some_and(|e| !e.vivant() && e.relances < 8);
+                let arrete = s.enregistreur.as_mut().is_some_and(|e| e.relances < RELANCES_MAX && (!e.vivant() || e.image_figee()));
                 if arrete {
                     s.enregistreur.take()
                 } else {
@@ -408,8 +437,13 @@ fn surveiller_clips(app: &AppHandle, etat: &Etat, pid: u32) {
         let r = enregistreur.relancer(&etat.stock);
         let mut session = etat.session.lock().unwrap();
         if let Some(s) = session.as_mut().filter(|s| s.pid == pid) {
-            if r.is_err() && enregistreur.relances >= 8 {
-                s.actions.push("Clips : l'enregistrement n'a pas pu reprendre".into());
+            if enregistreur.relances >= RELANCES_MAX || r.is_err() {
+                let detail = enregistreur.derniere_erreur.lock().unwrap().clone().or(r.err()).unwrap_or_else(|| "pas d'image".into());
+                let message = format!("la capture de l'écran s'arrête sans cesse ({detail})");
+                s.actions.push(format!("Clips : {message}"));
+                s.clips_erreur = Some(message);
+            } else {
+                s.clips_erreur = None;
             }
             // Même raté, il est remis en place : la surveillance réessaiera au prochain passage
             s.enregistreur = Some(enregistreur);
@@ -517,6 +551,7 @@ pub fn touche_clips(app: &AppHandle) {
         .and_then(|s| s.enregistreur.as_ref().map(|e| (e.dossier.clone(), e.jeu.clone(), s.pseudo_r6.clone())));
     let Some((dossier, jeu, pseudo)) = infos else {
         unsafe { MessageBeep(MB_ICONHAND) };
+        let _ = app.emit("clip_erreur", pourquoi_pas_de_clip(&etat));
         return;
     };
     let duree = etat.stock.donnees.lock().unwrap().reglages.clips_duree_s.clamp(10, 180);
@@ -534,6 +569,21 @@ pub fn touche_clips(app: &AppHandle) {
             unsafe { MessageBeep(MB_ICONHAND) };
             let _ = app.emit("clip_erreur", e);
         }
+    }
+}
+
+/// Explication quand la touche des clips ne peut rien garder
+fn pourquoi_pas_de_clip(etat: &Etat) -> String {
+    let actif = etat.stock.donnees.lock().unwrap().reglages.clips;
+    let session = etat.session.lock().unwrap();
+    match session.as_ref() {
+        None => "aucun jeu détecté. La touche marche pendant une partie d'un jeu de ta liste.".into(),
+        Some(_) if !actif => "les clips sont coupés : active « Enregistrer mes parties » dans Clips.".into(),
+        Some(_) if !crate::clips::installe(&etat.stock) => "l'outil d'enregistrement n'est pas installé : ouvre Clips pour l'installer.".into(),
+        Some(s) => match &s.clips_erreur {
+            Some(e) => format!("l'enregistrement n'a pas pu démarrer ({e})."),
+            None => "l'enregistrement démarre, réessaie dans quelques secondes.".into(),
+        },
     }
 }
 

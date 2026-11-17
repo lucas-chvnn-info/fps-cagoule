@@ -13,6 +13,7 @@ use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::sync::{Arc, Mutex};
 
 const FFMPEG_URL: &str = "https://github.com/GyanD/codexffmpeg/releases/download/9.0.2/ffmpeg-9.0.2-essentials_build.zip";
 const FFMPEG_SHA256: &str = "60f467265b1e312373dbcd92200c2618a74850f98d3d078e94296bb3fa2047ba";
@@ -251,6 +252,13 @@ pub struct Enregistreur {
     base_us: i64,
     /// Redémarrages pendant la partie (changement de résolution, plein écran…)
     pub relances: u32,
+    /// Morceau le plus récent vu à la dernière surveillance, et depuis quand c'est lui
+    dernier_morceau: Option<PathBuf>,
+    depuis: Instant,
+    /// Image arrêtée : le dernier morceau ne contient plus que du son
+    fige: bool,
+    /// Dernier message d'erreur de FFmpeg (capture d'écran perdue…)
+    pub derniere_erreur: Arc<Mutex<Option<String>>>,
 }
 
 impl Enregistreur {
@@ -259,12 +267,36 @@ impl Enregistreur {
         matches!(self.enfant.try_wait(), Ok(None))
     }
 
+    /// L'image ne vient plus : Windows coupe la capture d'écran quand le jeu passe en plein écran
+    /// ou change de résolution, et FFmpeg continue avec le son seul. On le voit au tampon :
+    /// un nouveau morceau arrive toutes les 2 s tant qu'il y a des images, sinon le même grossit.
+    pub fn image_figee(&mut self) -> bool {
+        let recent = morceaux_recents(&self.dossier, 0).pop();
+        if recent.is_some() && recent != self.dernier_morceau {
+            self.dernier_morceau = recent;
+            self.depuis = Instant::now();
+            return false;
+        }
+        let limite = if recent.is_none() { 15 } else { 4 * MORCEAU_S as u64 };
+        self.fige = self.depuis.elapsed() > Duration::from_secs(limite);
+        self.fige
+    }
+
     /// Relance FFmpeg après un arrêt (la capture d'écran s'arrête quand la résolution change)
     pub fn relancer(&mut self, stock: &Stockage) -> Result<(), String> {
         let _ = self.enfant.kill();
         let _ = self.enfant.wait();
         self.relances += 1;
-        let (enfant, son) = lancer_ffmpeg(stock, self.encodeur, self.qualite, &self.dossier, self.base_us)?;
+        // Morceau sans image (que du son) : inutilisable dans un clip
+        if self.fige {
+            if let Some(p) = self.dernier_morceau.take() {
+                let _ = fs::remove_file(p);
+            }
+        }
+        self.fige = false;
+        self.dernier_morceau = None;
+        self.depuis = Instant::now();
+        let (enfant, son) = lancer_ffmpeg(stock, self.encodeur, self.qualite, &self.dossier, self.base_us, &self.derniere_erreur)?;
         self.enfant = enfant;
         self._son = son;
         Ok(())
@@ -279,7 +311,14 @@ impl Drop for Enregistreur {
     }
 }
 
-fn lancer_ffmpeg(stock: &Stockage, encodeur: Encodeur, qualite: Qualite, dossier: &Path, base_us: i64) -> Result<(Child, Option<crate::audio::Capture>), String> {
+fn lancer_ffmpeg(
+    stock: &Stockage,
+    encodeur: Encodeur,
+    qualite: Qualite,
+    dossier: &Path,
+    base_us: i64,
+    derniere_erreur: &Arc<Mutex<Option<String>>>,
+) -> Result<(Child, Option<crate::audio::Capture>), String> {
     let son = crate::audio::ouvrir().ok();
     let args = arguments(&source_ecran(qualite.ips), son.as_ref().map(|(f, _)| *f), encodeur, qualite, base_us, dossier);
     let mut enfant = Command::new(ffmpeg(stock))
@@ -306,9 +345,17 @@ fn lancer_ffmpeg(stock: &Stockage, encodeur: Encodeur, qualite: Qualite, dossier
         }
         std::thread::sleep(Duration::from_millis(200));
     }
-    // Les messages d'erreur ne sont plus lus : on évite que FFmpeg se bloque sur un tuyau plein
-    if let Some(mut e) = enfant.stderr.take() {
-        std::thread::spawn(move || std::io::copy(&mut e, &mut std::io::sink()));
+    // Messages d'erreur lus au fil de l'eau (FFmpeg ne se bloque pas sur un tuyau plein) : on garde le dernier
+    if let Some(e) = enfant.stderr.take() {
+        let derniere = derniere_erreur.clone();
+        std::thread::spawn(move || {
+            use std::io::BufRead;
+            for ligne in std::io::BufReader::new(e).lines().map_while(Result::ok) {
+                if !ligne.trim().is_empty() {
+                    *derniere.lock().unwrap() = Some(ligne.trim().chars().take(200).collect());
+                }
+            }
+        });
     }
     Ok((enfant, capture))
 }
@@ -324,9 +371,25 @@ pub fn demarrer(stock: &Stockage, jeu: &str) -> Result<Enregistreur, String> {
         let r = &stock.donnees.lock().unwrap().reglages;
         Qualite::depuis(&r.clips_qualite, r.clips_ips)
     };
+    let derniere_erreur = Arc::new(Mutex::new(None));
     for encodeur in [encodeur_conseille(), Encodeur::Logiciel] {
-        match lancer_ffmpeg(stock, encodeur, qualite, &dossier, base_us) {
-            Ok((enfant, son)) => return Ok(Enregistreur { enfant, _son: son, dossier, jeu: jeu.into(), encodeur, qualite, base_us, relances: 0 }),
+        match lancer_ffmpeg(stock, encodeur, qualite, &dossier, base_us, &derniere_erreur) {
+            Ok((enfant, son)) => {
+                return Ok(Enregistreur {
+                    enfant,
+                    _son: son,
+                    dossier,
+                    jeu: jeu.into(),
+                    encodeur,
+                    qualite,
+                    base_us,
+                    relances: 0,
+                    dernier_morceau: None,
+                    depuis: Instant::now(),
+                    fige: false,
+                    derniere_erreur,
+                })
+            }
             Err(e) => erreurs.push(e),
         }
         if encodeur == Encodeur::Logiciel {
@@ -398,7 +461,7 @@ pub fn sauver(stock: &Stockage, dossier_tampon: &Path, jeu: &str, secondes: u32,
     let statut = Command::new(ffmpeg(stock))
         .args(["-hide_banner", "-loglevel", "error", "-y", "-sseof", &format!("-{secondes}"), "-i"])
         .arg(&brut)
-        .args(["-c", "copy", "-bsf:a", "aac_adtstoasc", "-movflags", "+faststart"])
+        .args(["-t", &secondes.to_string(), "-c", "copy", "-bsf:a", "aac_adtstoasc", "-movflags", "+faststart"])
         .arg(&sortie)
         .creation_flags(CREATE_NO_WINDOW)
         .status()
@@ -406,6 +469,11 @@ pub fn sauver(stock: &Stockage, dossier_tampon: &Path, jeu: &str, secondes: u32,
     let _ = fs::remove_file(&brut);
     if !statut.success() || !sortie.is_file() {
         return Err("Le clip n'a pas pu être créé".into());
+    }
+    // Sans image (capture d'écran coupée par Windows) : pas de clip « que du son »
+    if !a_de_l_image(stock, &sortie) {
+        let _ = fs::remove_file(&sortie);
+        return Err("l'image du jeu n'a pas été capturée (la capture redémarre, réessaie dans quelques secondes)".into());
     }
     miniature(stock, &sortie);
     Ok(sortie)
@@ -594,6 +662,17 @@ pub fn supprimer(stock: &Stockage, chemin: &str) -> Result<(), String> {
     let _ = fs::remove_file(miniatures(stock).join(cle_miniature(Path::new(chemin))));
     let _ = fs::remove_file(fichier_marqueurs(stock, Path::new(chemin)));
     fs::remove_file(p).map_err(|e| e.to_string())
+}
+
+/// Le clip a-t-il une piste vidéo
+fn a_de_l_image(stock: &Stockage, clip: &Path) -> bool {
+    Command::new(ffmpeg(stock))
+        .arg("-i")
+        .arg(clip)
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stderr).contains("Video:"))
+        .unwrap_or(false)
 }
 
 /// Le clip a-t-il une piste son (le PC peut ne pas avoir de sortie audio)

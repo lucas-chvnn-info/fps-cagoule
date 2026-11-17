@@ -2593,7 +2593,9 @@ function afficherClips() {
       ? 'Installation…'
       : clipsEtat?.enregistrement
         ? `Enregistrement en cours · ${touche} pour garder le moment`
-        : `Prêt : appuie sur ${touche} en jeu`;
+        : clipsEtat?.probleme
+          ? `Enregistrement impossible : ${clipsEtat.probleme}`
+          : `Prêt : appuie sur ${touche} en jeu`;
   document.querySelectorAll('.clips-options').forEach((o) => o.classList.toggle('inactif', !reglages.clips));
   document.querySelectorAll('#clips-qualite button').forEach((b) => b.classList.toggle('actif', b.dataset.qualite === (reglages.clips_qualite || 'haute')));
   document.querySelectorAll('#clips-ips button').forEach((b) => b.classList.toggle('actif', Number(b.dataset.ips) === (reglages.clips_ips || 60)));
@@ -2891,7 +2893,7 @@ listen('clip', () => {
   toast('Clip enregistré', 3000);
   if ($('#page-clips').classList.contains('actif')) chargerClips();
 });
-listen('clip_erreur', (e) => toast(`Clip impossible : ${e.payload}`, 6000));
+listen('clip_erreur', (e) => toast(`Pas de clip : ${e.payload}`, 9000));
 // Miniatures faites pour des vidéos ajoutées à la main : on rafraîchit la galerie
 listen('clips_miniatures', () => {
   if ($('#page-clips').classList.contains('actif')) chargerClips();
