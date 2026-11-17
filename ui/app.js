@@ -2572,6 +2572,8 @@ let clipsInstallation = false;
 
 async function chargerClips() {
   [clipsEtat, clipsListe] = await Promise.all([invoke('clips_etat').catch(() => null), invoke('clips_liste').catch(() => [])]);
+  // Images des jeux pour les dossiers de la galerie
+  if (!vignettes.size) vignettes = new Map((await invoke('jeux_cartes').catch(() => [])).map((c) => [c.nom, c]));
   afficherClips();
 }
 
@@ -2604,49 +2606,114 @@ function afficherClips() {
   const grille = $('#clips-grille');
   grille.innerHTML = '';
   if (!clipsListe.length) {
+    $('#clips-outils').hidden = true;
     grille.innerHTML = `<div class="clips-vide"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10.5l5-3v9l-5-3z"/></svg><span>${reglages.clips ? `En jeu, appuie sur <kbd>${esc(touche)}</kbd> pour garder les ${dureeTexte(reglages.clips_duree_s)} d'avant.` : 'Active l\'enregistrement pour garder tes meilleurs moments.'}</span></div>`;
     return;
   }
-  clipsListe.forEach((c, i) => {
-    const tuile = document.createElement('div');
-    tuile.className = 'clip';
-    tuile.style.animationDelay = `${Math.min(i, 12) * 40}ms`;
-    const visuel = document.createElement('button');
-    visuel.className = 'clip-visuel';
-    visuel.title = 'Regarder et monter';
-    if (c.miniature) visuel.style.backgroundImage = `url("${c.miniature}")`;
-    const compte = (g) => c.marqueurs.filter((m) => m.genre === g).length;
-    const resume = [['kill', compte('kill')], ['ko', compte('ko')], ['mort', compte('mort')]].filter(([, n]) => n);
-    visuel.innerHTML = `<span class="clip-lecture">${JOUER}</span>${
-      resume.length
-        ? `<span class="clip-reperes">${resume.map(([g, n]) => `<span class="pastille-repere ${g}" title="${n} ${NOMS_REPERES[g]}${n > 1 && g !== 'ko' ? 's' : ''}">${n}</span>`).join('')}</span>`
-        : ''
-    }`;
-    visuel.addEventListener('click', () => ouvrirEditeur(c));
-    const pied = document.createElement('div');
-    pied.className = 'clip-pied';
-    const textes = document.createElement('div');
-    const nom = document.createElement('strong');
-    nom.textContent = c.nom;
-    const infos = document.createElement('small');
-    const d = new Date(c.date * 1000);
-    infos.textContent = `${c.jeu} · ${d.toLocaleDateString('fr-CH', { day: '2-digit', month: '2-digit' })} ${d.toLocaleTimeString('fr-CH', { hour: '2-digit', minute: '2-digit' })} · ${taillePetite(c.octets)}`;
-    textes.append(nom, infos);
-    const suppr = document.createElement('button');
-    suppr.className = 'petit discret-btn clip-suppr';
-    suppr.title = 'Supprimer';
-    suppr.setAttribute('aria-label', `Supprimer ${c.nom}`);
-    suppr.textContent = '✕';
-    suppr.addEventListener('click', async () => {
-      if (!(await confirmer('Supprimer ce clip', `<p>${esc(c.nom)}</p>`, 'Supprimer'))) return;
-      await appel('clips_supprimer', { chemin: c.chemin }).catch(() => {});
-      chargerClips();
-    });
-    pied.append(textes, suppr);
-    tuile.append(visuel, pied);
-    grille.append(tuile);
-  });
+  $('#clips-outils').hidden = false;
+  const recherche = vueClips.recherche.trim().toLowerCase();
+  const filtres = (c) => (!vueClips.filtre || genreClip(c) === vueClips.filtre) && (!recherche || `${c.nom} ${c.jeu}`.toLowerCase().includes(recherche));
+  document.querySelectorAll('#clips-filtres button').forEach((b) => b.classList.toggle('actif', b.dataset.filtre === vueClips.filtre));
+  // Accueil de la galerie : un dossier par jeu (sauf pendant une recherche ou un filtre)
+  if (!vueClips.jeu && !recherche && !vueClips.filtre) {
+    $('#clips-fil').innerHTML = `<strong>Tous les jeux</strong><span class="discret">${clipsListe.length} clip${clipsListe.length > 1 ? 's' : ''}</span>`;
+    const jeux = [...new Set(clipsListe.map((c) => c.jeu))];
+    jeux.forEach((jeu, i) => grille.append(dossierJeu(jeu, clipsListe.filter((c) => c.jeu === jeu), i)));
+    return;
+  }
+  const visibles = clipsListe.filter((c) => (!vueClips.jeu || c.jeu === vueClips.jeu) && filtres(c));
+  $('#clips-fil').innerHTML = `<button class="petit discret-btn" data-retour>← Tous les jeux</button><strong>${esc(vueClips.jeu || 'Résultats')}</strong><span class="discret">${visibles.length} clip${visibles.length > 1 ? 's' : ''}</span>`;
+  if (!visibles.length) {
+    grille.innerHTML = '<div class="clips-vide"><span>Aucun clip ne correspond.</span></div>';
+    return;
+  }
+  visibles.forEach((c, i) => grille.append(tuileClip(c, i)));
 }
+
+/** Type de multi-kill d'après le nom du clip (« 3K · Ace · … ») */
+const genreClip = (c) => c.nom.match(/^(2K|3K|4K|ACE)\b/)?.[1] || '';
+
+/** Dossier d'un jeu : image du jeu (ou de son dernier clip) et nombre de clips */
+function dossierJeu(jeu, clips, i) {
+  const tuile = document.createElement('button');
+  tuile.className = 'dossier-jeu';
+  tuile.style.animationDelay = `${Math.min(i, 12) * 50}ms`;
+  const v = vignettes.get(jeu);
+  const image = v?.image && v.genre !== 'icone' ? v.image : clips.find((c) => c.miniature)?.miniature;
+  const fond = document.createElement('span');
+  fond.className = 'dossier-image';
+  if (image) fond.style.backgroundImage = `url("${image}")`;
+  const multi = ['ACE', '4K', '3K', '2K'].map((g) => [g, clips.filter((c) => genreClip(c) === g).length]).filter(([, n]) => n);
+  const pied = document.createElement('span');
+  pied.className = 'dossier-pied';
+  pied.innerHTML = `<strong></strong><small>${clips.length} clip${clips.length > 1 ? 's' : ''}${multi.length ? ' · ' + multi.map(([g, n]) => `${n} ${g}`).join(' · ') : ''}</small>`;
+  pied.querySelector('strong').textContent = jeu;
+  tuile.append(fond, pied);
+  tuile.addEventListener('click', () => {
+    vueClips.jeu = jeu;
+    afficherClips();
+  });
+  return tuile;
+}
+
+function tuileClip(c, i) {
+  const tuile = document.createElement('div');
+  tuile.className = 'clip';
+  tuile.style.animationDelay = `${Math.min(i, 12) * 40}ms`;
+  const visuel = document.createElement('button');
+  visuel.className = 'clip-visuel';
+  visuel.title = 'Regarder et monter';
+  if (c.miniature) visuel.style.backgroundImage = `url("${c.miniature}")`;
+  const compte = (g) => c.marqueurs.filter((m) => m.genre === g).length;
+  const resume = [['kill', compte('kill')], ['ko', compte('ko')], ['mort', compte('mort')]].filter(([, n]) => n);
+  visuel.innerHTML = `<span class="clip-lecture">${JOUER}</span>${
+    resume.length
+      ? `<span class="clip-reperes">${resume.map(([g, n]) => `<span class="pastille-repere ${g}" title="${n} ${NOMS_REPERES[g]}${n > 1 && g !== 'ko' ? 's' : ''}">${n}</span>`).join('')}</span>`
+      : ''
+  }`;
+  visuel.addEventListener('click', () => ouvrirEditeur(c));
+  const pied = document.createElement('div');
+  pied.className = 'clip-pied';
+  const textes = document.createElement('div');
+  const nom = document.createElement('strong');
+  nom.textContent = c.nom;
+  const infos = document.createElement('small');
+  const d = new Date(c.date * 1000);
+  infos.textContent = `${c.jeu} · ${d.toLocaleDateString('fr-CH', { day: '2-digit', month: '2-digit' })} ${d.toLocaleTimeString('fr-CH', { hour: '2-digit', minute: '2-digit' })} · ${taillePetite(c.octets)}`;
+  textes.append(nom, infos);
+  const suppr = document.createElement('button');
+  suppr.className = 'petit discret-btn clip-suppr';
+  suppr.title = 'Supprimer';
+  suppr.setAttribute('aria-label', `Supprimer ${c.nom}`);
+  suppr.textContent = '✕';
+  suppr.addEventListener('click', async () => {
+    if (!(await confirmer('Supprimer ce clip', `<p>${esc(c.nom)}</p>`, 'Supprimer'))) return;
+    await appel('clips_supprimer', { chemin: c.chemin }).catch(() => {});
+    chargerClips();
+  });
+  pied.append(textes, suppr);
+  tuile.append(visuel, pied);
+  return tuile;
+}
+
+const vueClips = { jeu: null, filtre: '', recherche: '' };
+
+$('#clips-recherche').addEventListener('input', (e) => {
+  vueClips.recherche = e.target.value;
+  afficherClips();
+});
+$('#clips-filtres').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-filtre]');
+  if (!b) return;
+  vueClips.filtre = vueClips.filtre === b.dataset.filtre ? '' : b.dataset.filtre;
+  afficherClips();
+});
+$('#clips-fil').addEventListener('click', (e) => {
+  if (!e.target.closest('[data-retour]')) return;
+  Object.assign(vueClips, { jeu: null, filtre: '', recherche: '' });
+  $('#clips-recherche').value = '';
+  afficherClips();
+});
 
 const dureeTexte = (s) => (s >= 60 ? `${s / 60} min` : `${s} s`);
 
@@ -3568,7 +3635,7 @@ const ICONES_NOUVEAUTES = {
 const NOUVEAUTES = {
   '0.26.0': [
     { icone: 'clips', titre: 'Clips automatiques dans R6', texte: 'Tes 2K, 3K, 4K ou ACE (au choix) sont gardés tout seuls : « 3K · Ace · Clubhouse · TonPseudo ». Laisse le Match Replay activé dans R6.' },
-    { icone: 'montage', titre: 'Monte tes clips', texte: 'Clique sur un clip : coupe, retire des passages et exporte. Tes kills, KO et morts sont marqués sur la timeline.' },
+    { icone: 'montage', titre: 'Monte tes clips', texte: 'Tes clips sont rangés par jeu, avec une recherche et des filtres 2K à ACE. Clique sur un clip pour le couper : tes kills, KO et morts sont marqués sur la timeline.' },
     { icone: 'dossier', titre: 'Clips sur ton serveur', texte: 'Choisis le dossier des clips, même un dossier réseau. Serveur éteint ? Le clip reste sur ton PC.' },
   ],
   '0.25.0': [

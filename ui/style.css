@@ -1071,3 +1071,27 @@ kbd { font: 600 12px/1 inherit; padding: 3px 7px; border-radius: 6px; background
 .ed-espace { flex: 1; }
 .ed-progression small { color: var(--discret); font-size: 12px; }
 .ed-progression .barre { margin: 0 0 4px; }
+
+/* Galerie des clips : dossiers par jeu, recherche et filtres */
+.clips-outils { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.clips-fil { display: flex; align-items: center; gap: 10px; margin-right: auto; min-width: 0; }
+.clips-fil strong { font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.clips-fil .discret { font-size: 13px; white-space: nowrap; }
+.recherche { display: flex; align-items: center; gap: 8px; padding: 0 12px; border-radius: 10px; background: var(--fond); border: 1px solid var(--bordure); transition: border-color .2s, box-shadow .2s; }
+.recherche:focus-within { border-color: var(--accent-clair); box-shadow: 0 0 14px rgba(47, 111, 237, .3); }
+.recherche svg { width: 16px; height: 16px; flex-shrink: 0; fill: none; stroke: var(--discret); stroke-width: 2; stroke-linecap: round; }
+.recherche input { border: 0; background: none; padding: 8px 0; width: 210px; outline: none; }
+.recherche input:focus { outline: none; }
+.dossier-jeu {
+  position: relative; display: flex; flex-direction: column; padding: 0; text-align: left; overflow: hidden; border-radius: 14px;
+  background: var(--carte); animation: apparition .35s ease both; transition: transform .25s, box-shadow .25s, border-color .25s;
+}
+.dossier-jeu:hover:not(:disabled) { transform: translateY(-3px); box-shadow: 0 0 24px rgba(47, 111, 237, .3); background: var(--carte); }
+.dossier-image { display: block; aspect-ratio: 16 / 9; background: linear-gradient(135deg, #1b2236, #10131b) center / cover no-repeat; position: relative; }
+.dossier-image::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, transparent 50%, rgba(10, 12, 18, .7)); }
+/* Effet « dossier » : deux cartes empilées derrière */
+.dossier-jeu::before { content: ""; position: absolute; inset: 6px 10px auto; height: 10px; border-radius: 10px 10px 0 0; background: rgba(111, 157, 255, .25); z-index: -1; }
+.dossier-pied { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; }
+.dossier-pied strong { font-size: 14.5px; }
+.dossier-pied small { color: var(--discret); font-size: 12px; }
+.clip-pied small { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
