@@ -532,18 +532,45 @@ pub fn duree_clip(m: &Manche, depuis_ecriture_s: u32) -> u32 {
     (ecart + 15 + 8 + depuis_ecriture_s).clamp(20, 240)
 }
 
-/// Dossiers « MatchReplay » de Rainbow Six Siege (un par compte Ubisoft) sous Documents\My Games
-pub fn dossiers_replays(documents: &std::path::Path) -> Vec<std::path::PathBuf> {
+/// Chemin des replays réglé dans un GameSettings.ini (ligne dont la clé parle de « replay » et la valeur est un dossier)
+pub fn chemin_replay_ini(texte: &str) -> Option<std::path::PathBuf> {
+    texte.lines().find_map(|l| {
+        let (cle, valeur) = l.split_once('=')?;
+        let valeur = valeur.trim().trim_matches('"');
+        let dossier = valeur.len() > 3 && (valeur.as_bytes()[1] == b':' || valeur.starts_with("\\\\"));
+        (cle.to_lowercase().contains("replay") && dossier).then(|| std::path::PathBuf::from(valeur))
+    })
+}
+
+/// Dossiers « MatchReplay » de Rainbow Six Siege. R6 les range dans son dossier d'installation
+/// (…\Tom Clancy's Rainbow Six Siege\MatchReplay, même lancé par Steam il peut utiliser celui d'Ubisoft Connect),
+/// ou dans le dossier réglé dans le jeu. `exe_jeu` : exécutable de la partie en cours, `installs` : jeux Ubisoft installés.
+pub fn dossiers_replays(documents: &std::path::Path, exe_jeu: Option<&std::path::Path>, installs: &[std::path::PathBuf]) -> Vec<std::path::PathBuf> {
+    let mut candidats = Vec::new();
+    // À côté de l'exécutable du jeu, ou un peu plus haut
+    if let Some(exe) = exe_jeu {
+        candidats.extend(exe.ancestors().skip(1).take(3).map(|d| d.join("MatchReplay")));
+    }
+    for d in installs.iter().filter(|d| d.to_string_lossy().to_lowercase().contains("rainbow six")) {
+        candidats.push(d.join("MatchReplay"));
+    }
+    // Comptes Ubisoft sous Documents : dossier réglé dans GameSettings.ini, ou ancien emplacement
     let racine = documents.join("My Games").join("Rainbow Six - Siege");
-    std::fs::read_dir(racine)
-        .map(|l| l.flatten().map(|e| e.path().join("MatchReplay")).filter(|p| p.is_dir()).collect())
-        .unwrap_or_default()
+    for compte in std::fs::read_dir(racine).map(|l| l.flatten().map(|e| e.path()).collect::<Vec<_>>()).unwrap_or_default() {
+        if let Some(d) = std::fs::read_to_string(compte.join("GameSettings.ini")).ok().as_deref().and_then(chemin_replay_ini) {
+            candidats.push(d.join("MatchReplay"));
+            candidats.push(d);
+        }
+        candidats.push(compte.join("MatchReplay"));
+    }
+    let mut vus = std::collections::HashSet::new();
+    candidats.into_iter().filter(|d| d.is_dir() && vus.insert(d.to_string_lossy().to_lowercase())).collect()
 }
 
 /// Replays des manches (.rec) modifiés après `depuis`, avec leur date de modification
-pub fn manches_recentes(documents: &std::path::Path, depuis: std::time::SystemTime) -> Vec<(std::path::PathBuf, std::time::SystemTime)> {
+pub fn manches_recentes(dossiers: &[std::path::PathBuf], depuis: std::time::SystemTime) -> Vec<(std::path::PathBuf, std::time::SystemTime)> {
     let mut liste = Vec::new();
-    for d in dossiers_replays(documents) {
+    for d in dossiers {
         let Ok(parties) = std::fs::read_dir(d) else { continue };
         for partie in parties.flatten().filter(|e| e.path().is_dir()) {
             let Ok(m) = partie.metadata().and_then(|m| m.modified()) else { continue };
@@ -584,6 +611,20 @@ pub fn titre_clip(m: &Manche) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dossier_des_replays() {
+        assert_eq!(chemin_replay_ini("[DISPLAY]\nFPSLimit=0\nMatchReplayPath=D:\\Replays R6\n"), Some(std::path::PathBuf::from(r"D:\Replays R6")));
+        assert_eq!(chemin_replay_ini("ReplayFolder=\"\\\\nas\\r6\""), Some(std::path::PathBuf::from(r"\\nas\r6")));
+        assert_eq!(chemin_replay_ini("EnableReplay=1\nPath=C:\\x"), None);
+        // Dossier à côté de l'exécutable du jeu
+        let jeu = std::env::temp_dir().join("fps-cagoule-test-r6");
+        let _ = std::fs::remove_dir_all(&jeu);
+        std::fs::create_dir_all(jeu.join("MatchReplay").join("Match-2026-11-17")).unwrap();
+        let trouves = dossiers_replays(&jeu.join("pas-de-documents"), Some(&jeu.join("RainbowSix.exe")), &[]);
+        assert_eq!(trouves, vec![jeu.join("MatchReplay")]);
+        let _ = std::fs::remove_dir_all(&jeu);
+    }
 
     fn manche(kills: &[(&str, u32)], op: u64, chrono_fin: u32) -> Manche {
         Manche {

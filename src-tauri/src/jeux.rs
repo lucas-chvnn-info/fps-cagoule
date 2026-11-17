@@ -44,6 +44,8 @@ pub struct EnCours {
     pseudo_r6: Option<String>,
     /// Clips faits à la touche pendant la partie : (fichier, fin, durée en s), pour y ajouter les repères des kills
     clips_manuels: Vec<(PathBuf, SystemTime, u32)>,
+    /// Dossiers « MatchReplay » de R6 trouvés pour cette partie
+    dossiers_replays: Vec<PathBuf>,
     /// Démarrage de l'enregistrement déjà tenté pour cette partie
     clips_lances: bool,
     /// Pourquoi l'enregistrement n'a pas pu démarrer
@@ -266,6 +268,7 @@ fn demarrer(app: &AppHandle, etat: &Etat, profil: &crate::config::Profil, pid: u
         clips_manuels: Vec::new(),
         clips_lances: false,
         clips_erreur: None,
+        dossiers_replays: Vec::new(),
     });
     if reglages.discord {
         demarrer_discord(etat, profil, boost);
@@ -464,9 +467,23 @@ fn surveiller_replays(app: &AppHandle, etat: &Etat, pid: u32) {
         })
     };
     let Some((depuis, vus, tampon, jeu)) = infos else { return };
-    use windows_sys::Win32::UI::Shell::FOLDERID_Documents;
-    let Some(documents) = crate::jeux_config::dossier_connu(&FOLDERID_Documents) else { return };
-    for (fichier, modifie) in crate::replays_r6::manches_recentes(&documents, depuis) {
+    // Dossiers des replays cherchés une fois par partie (puis tant qu'aucun n'existe : R6 le crée à la première manche)
+    let dossiers = {
+        let deja = etat.session.lock().unwrap().as_ref().map(|s| s.dossiers_replays.clone()).unwrap_or_default();
+        if deja.is_empty() {
+            use windows_sys::Win32::UI::Shell::FOLDERID_Documents;
+            let Some(documents) = crate::jeux_config::dossier_connu(&FOLDERID_Documents) else { return };
+            let exe = systeme::chemin_exe(pid).map(PathBuf::from);
+            let trouves = crate::replays_r6::dossiers_replays(&documents, exe.as_deref(), &crate::bibliotheques::dossiers_ubisoft());
+            if let Some(s) = etat.session.lock().unwrap().as_mut().filter(|s| s.pid == pid) {
+                s.dossiers_replays = trouves.clone();
+            }
+            trouves
+        } else {
+            deja
+        }
+    };
+    for (fichier, modifie) in crate::replays_r6::manches_recentes(&dossiers, depuis) {
         // Fichier encore en cours d'écriture : on attendra le prochain passage
         let age = SystemTime::now().duration_since(modifie).unwrap_or_default();
         if vus.contains(&fichier) || age < Duration::from_secs(4) {

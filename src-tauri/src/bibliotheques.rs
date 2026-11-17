@@ -244,6 +244,19 @@ fn gog(avec_exes: bool) -> Vec<JeuTrouve> {
         .collect()
 }
 
+/// Dossiers d'installation des jeux Ubisoft Connect (lecture du registre, sans parcourir les disques)
+pub fn dossiers_ubisoft() -> Vec<PathBuf> {
+    let Ok(installs) = RegKey::predef(HKEY_LOCAL_MACHINE).open_subkey_with_flags(r"SOFTWARE\WOW6432Node\Ubisoft\Launcher\Installs", KEY_READ) else { return vec![] };
+    installs
+        .enum_keys()
+        .flatten()
+        .filter_map(|id| {
+            let dossier: String = installs.open_subkey_with_flags(&id, KEY_READ).ok()?.get_value("InstallDir").ok()?;
+            Some(PathBuf::from(dossier.replace('/', "\\")))
+        })
+        .collect()
+}
+
 fn ubisoft(avec_exes: bool) -> Vec<JeuTrouve> {
     let Ok(installs) = RegKey::predef(HKEY_LOCAL_MACHINE).open_subkey_with_flags(r"SOFTWARE\WOW6432Node\Ubisoft\Launcher\Installs", KEY_READ) else { return vec![] };
     installs
