@@ -2603,6 +2603,7 @@ function afficherClips() {
   const debit = ({ standard: 12, haute: 20, ultra: 40 }[reglages.clips_qualite] || 20) * ((reglages.clips_ips || 60) >= 120 ? 1.5 : 1);
   $('#clips-poids').textContent = `≈ ${Math.round((debit * 60) / 8 + 1)} Mo par minute`;
   document.querySelectorAll('#clips-kills button').forEach((b) => b.classList.toggle('actif', (reglages.clips_auto_kills || []).includes(Number(b.dataset.kills))));
+  afficherPartage();
   if (clipsEtat) {
     $('#clips-dossier-chemin').textContent = clipsEtat.dossier;
     $('#clips-dossier-chemin').title = clipsEtat.dossier;
@@ -2700,10 +2701,74 @@ function tuileClip(c, i) {
     await appel('clips_supprimer', { chemin: c.chemin }).catch(() => {});
     chargerClips();
   });
-  pied.append(textes, suppr);
+  const partager = document.createElement('button');
+  partager.className = `petit discret-btn clip-partager${c.lien ? ' actif' : ''}`;
+  partager.title = c.lien ? 'Partagé : copier le lien' : 'Partager (copie un lien)';
+  partager.setAttribute('aria-label', partager.title);
+  partager.innerHTML = ICONE_LIEN;
+  partager.addEventListener('click', async () => {
+    await partagerClip(c, partager);
+    partager.classList.toggle('actif', !!c.lien);
+  });
+  pied.append(textes, partager, suppr);
   tuile.append(visuel, pied);
   return tuile;
 }
+
+/* ---------- Partage des clips par un lien (dossier publié par ton site, ex. clips.lucas-chvnn.ch) ---------- */
+const ICONE_LIEN = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1 1"/><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1-1"/></svg>';
+const partageRegle = () => !!(reglages?.partage_dossier && reglages?.partage_url);
+
+async function copierLien(lien) {
+  try {
+    await navigator.clipboard.writeText(lien);
+    toast(`Lien copié : ${lien}`, 5000);
+  } catch {
+    toast(lien, 9000);
+  }
+}
+
+async function partagerClip(c, bouton) {
+  if (!partageRegle()) {
+    editerPartage(true);
+    $('#partage-dossier').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return toast('Règle d\'abord où partager tes clips.');
+  }
+  if (c.lien) return copierLien(c.lien);
+  if (!c.lien) toast('Préparation du lien…', 4000);
+  try {
+    c.lien = await appel('clips_partager', { chemin: c.chemin, titre: c.nom }, bouton);
+    await copierLien(c.lien);
+  } catch {}
+}
+
+function afficherPartage() {
+  $('#partage-resume').textContent = partageRegle() ? reglages.partage_url : 'Pas encore réglé';
+}
+function editerPartage(ouvrir) {
+  $('#partage-edition').hidden = !ouvrir;
+  $('.clips-partage').hidden = ouvrir;
+  if (ouvrir) {
+    $('#partage-dossier').value = reglages.partage_dossier || '';
+    $('#partage-url').value = reglages.partage_url || '';
+    $('#partage-dossier').focus();
+  }
+}
+$('#btn-partage-regler').addEventListener('click', () => editerPartage(true));
+$('#btn-partage-annuler').addEventListener('click', () => editerPartage(false));
+$('#btn-partage-valider').addEventListener('click', async (e) => {
+  const dossier = $('#partage-dossier').value.trim().replace(/^"|"$/g, '') || null;
+  const url = $('#partage-url').value.trim().replace(/\/+$/, '') || null;
+  try {
+    const r = await appel('partage_regler', { dossier, url }, e.currentTarget);
+    reglages.partage_dossier = r[0];
+    reglages.partage_url = r[1];
+    editerPartage(false);
+    afficherPartage();
+    toast(partageRegle() ? 'Partage prêt : clique sur 🔗 sur un clip.' : 'Partage coupé.');
+    chargerClips();
+  } catch {}
+});
 
 const vueClips = { jeu: null, filtre: '', recherche: '' };
 
@@ -2915,9 +2980,29 @@ const video = $('#ed-video');
 
 const horloge = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
+function majPartageEditeur() {
+  $('#ed-partager').title = ed.clip?.lien ? 'Copier le lien du clip' : 'Copier un lien vers ce clip';
+  $('#ed-partager').lastChild.textContent = ed.clip?.lien ? ' Copier le lien' : ' Partager';
+  $('#ed-plus-partager').hidden = !ed.clip?.lien;
+}
+$('#ed-partager').addEventListener('click', async (e) => {
+  await partagerClip(ed.clip, e.currentTarget);
+  majPartageEditeur();
+});
+$('#ed-plus-partager').addEventListener('click', async (e) => {
+  try {
+    await appel('clips_ne_plus_partager', { chemin: ed.clip.chemin }, e.currentTarget);
+    ed.clip.lien = null;
+    majPartageEditeur();
+    toast('Le lien ne marche plus.');
+    chargerClips();
+  } catch {}
+});
+
 function ouvrirEditeur(c) {
   Object.assign(ed, { clip: c, duree: 0, passages: [], choisi: -1, historique: [], zone: null });
   $('#editeur-titre').textContent = c.nom;
+  majPartageEditeur();
   $('#ed-progression').hidden = true;
   video.src = window.__TAURI__.core.convertFileSrc(c.chemin);
   $('#editeur').hidden = false;

@@ -561,6 +561,51 @@ fn miniature_vers(ffmpeg: &Path, dossier: &Path, clip: &Path) -> bool {
     sortie.is_file()
 }
 
+/// Copie du clip lisible partout sur le web (navigateurs, Discord) : H.264 tel quel, sinon (HEVC de Medal…)
+/// réencodé en H.264. Une seule piste son, et l'index en tête pour démarrer avant la fin du téléchargement.
+pub fn version_web(stock: &Stockage, source: &Path, sortie: &Path) -> Result<(), String> {
+    let infos = Command::new(ffmpeg(stock)).arg("-i").arg(source).creation_flags(CREATE_NO_WINDOW).output().map_err(|e| e.to_string())?;
+    let infos = String::from_utf8_lossy(&infos.stderr);
+    let h264 = infos.contains("Video: h264");
+    let son = infos.contains("Audio:");
+    let mut erreur = String::new();
+    for encodeur in [encodeur_conseille(), Encodeur::Logiciel] {
+        let video: Vec<&str> = match (h264, encodeur) {
+            (true, _) => vec!["-c:v", "copy"],
+            (_, Encodeur::Nvidia) => vec!["-c:v", "h264_nvenc", "-preset", "p5", "-rc", "vbr", "-cq", "23", "-b:v", "0"],
+            (_, Encodeur::Amd) => vec!["-c:v", "h264_amf", "-quality", "quality", "-rc", "cqp", "-qp_i", "22", "-qp_p", "24"],
+            (_, Encodeur::Intel) => vec!["-c:v", "h264_qsv", "-global_quality", "23", "-pix_fmt", "nv12"],
+            (_, Encodeur::Logiciel) => vec!["-c:v", "libx264", "-preset", "veryfast", "-crf", "22", "-pix_fmt", "yuv420p"],
+        };
+        let mut cmd = Command::new(ffmpeg(stock));
+        cmd.args(["-hide_banner", "-loglevel", "error", "-y", "-i"]).arg(source).args(["-map", "0:v:0"]);
+        if son {
+            cmd.args(["-map", "0:a:0", "-c:a", "aac", "-b:a", "160k"]);
+        }
+        let r = cmd.args(&video).args(["-movflags", "+faststart"]).arg(sortie).creation_flags(CREATE_NO_WINDOW).output().map_err(|e| e.to_string())?;
+        if r.status.success() && sortie.is_file() {
+            return Ok(());
+        }
+        let _ = fs::remove_file(sortie);
+        erreur = String::from_utf8_lossy(&r.stderr).lines().last().unwrap_or("").to_string();
+        if h264 || encodeur == Encodeur::Logiciel {
+            break;
+        }
+    }
+    Err(format!("Copie du clip impossible : {erreur}"))
+}
+
+/// Grande image du clip pour l'aperçu des liens (Discord…)
+pub fn image_partage(stock: &Stockage, source: &Path, sortie: &Path) {
+    let _ = Command::new(ffmpeg(stock))
+        .args(["-hide_banner", "-loglevel", "error", "-y", "-ss", "1", "-i"])
+        .arg(source)
+        .args(["-frames:v", "1", "-vf", "scale=1280:-2", "-q:v", "3"])
+        .arg(sortie)
+        .creation_flags(CREATE_NO_WINDOW)
+        .status();
+}
+
 #[derive(Serialize)]
 pub struct Clip {
     pub chemin: String,
@@ -571,6 +616,8 @@ pub struct Clip {
     pub octets: u64,
     pub miniature: Option<String>,
     pub marqueurs: Vec<Marqueur>,
+    /// Lien public si le clip est partagé
+    pub lien: Option<String>,
 }
 
 /// Nom montré dans la galerie : sans le « (2) » ajouté pour que deux clips du même nom puissent coexister
@@ -641,6 +688,7 @@ pub fn liste(stock: &Stockage, fini: impl FnOnce() + Send + 'static) -> Vec<Clip
                 octets: m.len(),
                 miniature: image.map(|o| format!("data:image/jpeg;base64,{}", crate::ps::base64(&o))),
                 marqueurs: marqueurs(stock, &p),
+                lien: crate::liens::lien(stock, &p),
                 chemin: p.to_string_lossy().to_string(),
             });
         }

@@ -22,6 +22,7 @@ mod jeux;
 mod jeux_config;
 mod nettoyage;
 mod nvidia;
+mod liens;
 mod partage;
 mod pilotes;
 mod maj;
@@ -529,6 +530,43 @@ fn clips_dossier_regler(app: AppHandle, dossier: Option<String>, identifiant: Op
     Ok(dossier)
 }
 
+/// Règle le partage : dossier publié par le site (vérifié en écriture) et adresse publique. Vides = partage coupé.
+#[tauri::command(async)]
+fn partage_regler(app: AppHandle, dossier: Option<String>, url: Option<String>) -> Res<(Option<String>, Option<String>)> {
+    let dossier = dossier.map(|d| partage::resoudre(d.trim())).filter(|d| !d.is_empty());
+    let url = url.map(|u| u.trim().trim_end_matches('/').to_string()).filter(|u| !u.is_empty());
+    if let (Some(d), Some(u)) = (&dossier, &url) {
+        if !(u.starts_with("https://") || u.starts_with("http://")) {
+            return Err("L'adresse du site doit commencer par https://".into());
+        }
+        if clips::essai_ecriture(std::path::Path::new(d)).is_err() {
+            return Err("Impossible d'écrire dans ce dossier de partage.".into());
+        }
+    } else if dossier.is_some() != url.is_some() {
+        return Err("Il faut le dossier et l'adresse du site.".into());
+    }
+    let e = etat(&app);
+    {
+        let mut d = e.stock.donnees.lock().unwrap();
+        d.reglages.partage_dossier = dossier.clone();
+        d.reglages.partage_url = url.clone();
+    }
+    e.stock.sauver();
+    Ok((dossier, url))
+}
+
+/// Partage le clip par un lien (copié dans le dossier publié) ; renvoie le lien
+#[tauri::command(async)]
+fn clips_partager(app: AppHandle, chemin: String, titre: String) -> Res<String> {
+    liens::partager(&etat(&app).stock, &chemin, &titre)
+}
+
+/// Retire le clip du web
+#[tauri::command(async)]
+fn clips_ne_plus_partager(app: AppHandle, chemin: String) -> Res<()> {
+    liens::retirer(&etat(&app).stock, &chemin)
+}
+
 #[derive(Serialize, Clone)]
 struct ProgressionExport {
     fraction: f64,
@@ -610,6 +648,8 @@ fn clips_ouvrir(app: AppHandle, chemin: Option<String>) -> Res<()> {
 
 #[tauri::command(async)]
 fn clips_supprimer(app: AppHandle, chemin: String) -> Res<()> {
+    // Un clip supprimé ne reste pas en ligne
+    let _ = liens::retirer(&etat(&app).stock, &chemin);
     clips::supprimer(&etat(&app).stock, &chemin)
 }
 
@@ -875,6 +915,9 @@ fn main() {
             clips_parcourir,
             clips_dossier_regler,
             clips_exporter,
+            clips_partager,
+            partage_regler,
+            clips_ne_plus_partager,
             comptes_steam,
             jeu_image_effacer,
             amd_etat,

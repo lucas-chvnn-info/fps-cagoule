@@ -47,6 +47,9 @@ pub struct Reglages {
     pub clips_qualite: String,
     /// Images par seconde des clips : 60 ou 120
     pub clips_ips: u32,
+    /// Partage des clips : dossier publié sur le web (ex. \\serveur\fichiers\Partages) et son adresse publique
+    pub partage_dossier: Option<String>,
+    pub partage_url: Option<String>,
 }
 
 /// Raccourci clavier (modificateurs MOD_ALT 1, MOD_CONTROL 2, MOD_SHIFT 4 ; code de touche virtuelle Windows)
@@ -76,7 +79,7 @@ pub fn applis_fond_par_defaut() -> Vec<String> {
 
 impl Default for Reglages {
     fn default() -> Self {
-        Self { boost_auto: true, boost_max: false, mesure_fps: true, overlay: false, maj_auto: true, couleurs_en_jeu: false, fermer_applis: vec![], assistant_fait: false, mode_simple: false, oc_protection: true, priorite_basse: true, priorite_basse_applis: applis_fond_par_defaut(), discord: true, clips: false, clips_duree_s: 30, clips_touche: Touche::default(), clips_auto: true, clips_auto_kills: vec![2, 3, 4, 5], clips_dossier: None, clips_qualite: "haute".into(), clips_ips: 60 }
+        Self { boost_auto: true, boost_max: false, mesure_fps: true, overlay: false, maj_auto: true, couleurs_en_jeu: false, fermer_applis: vec![], assistant_fait: false, mode_simple: false, oc_protection: true, priorite_basse: true, priorite_basse_applis: applis_fond_par_defaut(), discord: true, clips: false, clips_duree_s: 30, clips_touche: Touche::default(), clips_auto: true, clips_auto_kills: vec![2, 3, 4, 5], clips_dossier: None, clips_qualite: "haute".into(), clips_ips: 60, partage_dossier: None, partage_url: None }
     }
 }
 
@@ -172,6 +175,8 @@ pub struct Donnees {
     pub alerte_temp: Option<AlerteTemp>,
     /// Serveurs DNS d'origine des cartes réseau changées par l'app
     pub dns_avant: Vec<DnsAvant>,
+    /// Clips partagés : chemin du clip (minuscules) → identifiant du lien
+    pub partages: HashMap<String, String>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -219,6 +224,7 @@ impl Default for Donnees {
             oc_baisse_auto: None,
             alerte_temp: None,
             dns_avant: Vec::new(),
+            partages: HashMap::new(),
         }
     }
 }

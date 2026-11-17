@@ -381,6 +381,18 @@
           <input id="clips-mdp" type="password" autocomplete="current-password" placeholder="Mot de passe" aria-label="Mot de passe du serveur">
           <button id="btn-clips-connexion" class="petit principal">Se connecter</button>
         </div>
+        <div class="clips-dossier clips-partage">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1 1"/><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1-1"/></svg>
+          <span class="etiquette-option">Partage</span>
+          <span id="partage-resume" class="chemin-dossier"></span>
+          <button id="btn-partage-regler" class="petit">Régler</button>
+        </div>
+        <div id="partage-edition" class="clips-dossier-edition" hidden>
+          <input id="partage-dossier" type="text" spellcheck="false" placeholder="\\192.168.1.204\fichiers\Partages" aria-label="Dossier publié sur le web" title="Dossier que ton site web publie">
+          <input id="partage-url" type="text" spellcheck="false" placeholder="https://clips.lucas-chvnn.ch" aria-label="Adresse du site" title="Adresse publique de ce dossier">
+          <button id="btn-partage-valider" class="petit principal">Valider</button>
+          <button id="btn-partage-annuler" class="petit discret-btn">Annuler</button>
+        </div>
       </div>
       <div id="clips-outils" class="clips-outils" hidden>
         <div id="clips-fil" class="clips-fil"></div>
@@ -521,6 +533,8 @@
       <div class="editeur-entete">
         <h2 id="editeur-titre"></h2>
         <div class="boutons">
+          <button id="ed-partager" class="petit" title="Copier un lien vers ce clip"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1 1"/><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1-1"/></svg> Partager</button>
+          <button id="ed-plus-partager" class="petit discret-btn" hidden title="Le lien ne marchera plus">Ne plus partager</button>
           <button id="ed-plein" class="petit" title="Plein écran (F)" aria-label="Plein écran"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
           <button id="ed-externe" class="petit">Ouvrir dans Windows</button>
           <button id="ed-fermer" class="petit discret-btn" aria-label="Fermer">✕</button>

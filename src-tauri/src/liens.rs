@@ -1,0 +1,145 @@
+// Partage des clips par un lien : le clip est copié dans un dossier publié sur le web (ex. le serveur de la maison,
+// servi par Caddy), avec une petite page qui le lit et l'affiche en aperçu dans Discord.
+
+use crate::clips;
+use crate::config::Stockage;
+use std::fs;
+use std::path::{Path, PathBuf};
+
+fn cle(clip: &Path) -> String {
+    clips::chemin_simple(clip).to_lowercase()
+}
+
+/// Dossier et adresse du partage, s'ils sont réglés
+fn reglage(stock: &Stockage) -> Option<(PathBuf, String)> {
+    let r = &stock.donnees.lock().unwrap().reglages;
+    let dossier = r.partage_dossier.clone().filter(|d| !d.trim().is_empty())?;
+    let url = r.partage_url.clone().filter(|u| !u.trim().is_empty())?;
+    Some((PathBuf::from(crate::partage::resoudre(dossier.trim())), url.trim().trim_end_matches('/').to_string()))
+}
+
+/// Lien du clip s'il est partagé
+pub fn lien(stock: &Stockage, clip: &Path) -> Option<String> {
+    let id = stock.donnees.lock().unwrap().partages.get(&cle(clip)).cloned()?;
+    let (_, url) = reglage(stock)?;
+    Some(format!("{url}/{id}"))
+}
+
+/// Identifiant difficile à deviner (10 caractères, chiffres et minuscules)
+fn identifiant() -> String {
+    use std::collections::hash_map::RandomState;
+    use std::hash::{BuildHasher, Hasher};
+    let mut h = RandomState::new().build_hasher();
+    h.write_u128(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos()));
+    let mut n = h.finish() ^ (RandomState::new().build_hasher().finish() << 1);
+    let alphabet = b"0123456789abcdefghijkmnpqrstuvwxyz";
+    (0..10)
+        .map(|_| {
+            let c = alphabet[(n % alphabet.len() as u64) as usize] as char;
+            n /= alphabet.len() as u64;
+            c
+        })
+        .collect()
+}
+
+fn echapper(t: &str) -> String {
+    t.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
+}
+
+/// Page du lien : lecteur, et balises lues par Discord pour montrer la vidéo dans la conversation
+pub fn page(titre: &str, url: &str, id: &str) -> String {
+    let t = echapper(titre);
+    format!(
+        r##"<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{t} · FPS Cagoule</title>
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#2f6fed">
+<meta property="og:site_name" content="FPS Cagoule">
+<meta property="og:title" content="{t}">
+<meta property="og:type" content="video.other">
+<meta property="og:url" content="{url}/{id}">
+<meta property="og:image" content="{url}/{id}.jpg">
+<meta property="og:video" content="{url}/{id}.mp4">
+<meta property="og:video:secure_url" content="{url}/{id}.mp4">
+<meta property="og:video:type" content="video/mp4">
+<meta property="og:video:width" content="1280">
+<meta property="og:video:height" content="720">
+<meta name="twitter:card" content="summary_large_image">
+<style>
+  :root {{ color-scheme: dark; }}
+  body {{ margin: 0; min-height: 100vh; display: grid; place-items: center; background: radial-gradient(circle at 50% 0, #14213d, #0b0d12 60%); color: #e8ecf5; font: 15px/1.4 system-ui, sans-serif; }}
+  main {{ width: min(1280px, 100% - 32px); }}
+  video {{ width: 100%; border-radius: 14px; background: #000; box-shadow: 0 0 40px rgba(47, 111, 237, .35); display: block; }}
+  h1 {{ font-size: 20px; margin: 16px 0 4px; }}
+  p {{ margin: 0; color: #8b93a7; font-size: 13px; }}
+</style>
+</head>
+<body>
+<main>
+  <video src="{id}.mp4" poster="{id}.jpg" controls autoplay muted playsinline></video>
+  <h1>{t}</h1>
+  <p>Partagé avec FPS Cagoule</p>
+</main>
+</body>
+</html>
+"##
+    )
+}
+
+/// Partage le clip (ou redonne son lien s'il l'est déjà). Renvoie le lien.
+pub fn partager(stock: &Stockage, chemin: &str, titre: &str) -> Result<String, String> {
+    let source = clips::clip_valide(stock, chemin)?;
+    let (dossier, url) = reglage(stock).ok_or("Règle d'abord le partage : dossier publié et adresse du site.")?;
+    if let Some(id) = stock.donnees.lock().unwrap().partages.get(&cle(&source)).cloned() {
+        if dossier.join(format!("{id}.mp4")).is_file() {
+            return Ok(format!("{url}/{id}"));
+        }
+    }
+    fs::create_dir_all(&dossier).map_err(|_| "Dossier de partage injoignable (serveur éteint ?).".to_string())?;
+    let id = identifiant();
+    // Copie sous un nom provisoire : le lien ne marche qu'une fois la vidéo complète
+    let provisoire = dossier.join(format!(".{id}.mp4"));
+    if let Err(e) = clips::version_web(stock, &source, &provisoire) {
+        let _ = fs::remove_file(&provisoire);
+        return Err(e);
+    }
+    clips::image_partage(stock, &source, &dossier.join(format!("{id}.jpg")));
+    fs::write(dossier.join(format!("{id}.html")), page(titre, &url, &id)).map_err(|e| e.to_string())?;
+    fs::rename(&provisoire, dossier.join(format!("{id}.mp4"))).map_err(|e| e.to_string())?;
+    stock.donnees.lock().unwrap().partages.insert(cle(&source), id.clone());
+    stock.sauver();
+    Ok(format!("{url}/{id}"))
+}
+
+/// Retire le clip du web : le lien ne marche plus
+pub fn retirer(stock: &Stockage, chemin: &str) -> Result<(), String> {
+    let source = clips::clip_valide(stock, chemin)?;
+    let id = stock.donnees.lock().unwrap().partages.remove(&cle(&source));
+    stock.sauver();
+    if let (Some(id), Some((dossier, _))) = (id, reglage(stock)) {
+        for ext in ["mp4", "jpg", "html"] {
+            let _ = fs::remove_file(dossier.join(format!("{id}.{ext}")));
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn identifiants_et_page() {
+        let (a, b) = (identifiant(), identifiant());
+        assert_eq!(a.len(), 10);
+        assert_ne!(a, b);
+        assert!(a.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit()));
+        let p = page("3K · Kaid · <Oregon>", "https://clips.exemple.ch", "abc");
+        assert!(p.contains(r#"content="https://clips.exemple.ch/abc.mp4""#));
+        assert!(p.contains("3K · Kaid · &lt;Oregon&gt;"));
+    }
+}
