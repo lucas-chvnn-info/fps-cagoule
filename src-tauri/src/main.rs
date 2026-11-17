@@ -458,6 +458,10 @@ fn appliquer_touche(e: &Etat) -> bool {
 struct EtatClips {
     installe: bool,
     dossier: String,
+    /// Le dossier choisi est joignable (serveur allumé…)
+    accessible: bool,
+    /// Dossier choisi par l'utilisateur (sinon Vidéos\FPS Cagoule)
+    personnalise: bool,
     /// Une partie est enregistrée en ce moment
     enregistrement: bool,
 }
@@ -466,7 +470,62 @@ struct EtatClips {
 fn clips_etat(app: AppHandle) -> EtatClips {
     let e = etat(&app);
     let enregistrement = e.session.lock().unwrap().as_ref().is_some_and(|s| s.enregistreur.is_some());
-    EtatClips { installe: clips::installe(&e.stock), dossier: clips::dossier_clips().to_string_lossy().into(), enregistrement }
+    let dossier = clips::dossier_clips(&e.stock);
+    EtatClips {
+        installe: clips::installe(&e.stock),
+        accessible: clips::accessible(&dossier),
+        personnalise: dossier != clips::dossier_defaut(),
+        dossier: dossier.to_string_lossy().into(),
+        enregistrement,
+    }
+}
+
+/// Autorise l'interface à lire les vidéos des dossiers des clips (lecteur de l'éditeur)
+fn autoriser_dossiers_clips(app: &AppHandle) {
+    let e = etat(app);
+    for d in clips::dossiers_clips(&e.stock) {
+        let _ = app.asset_protocol_scope().allow_directory(&d, true);
+    }
+}
+
+/// Ouvre la fenêtre de choix d'un dossier et le garde s'il accepte l'écriture
+#[tauri::command(async)]
+fn clips_choisir_dossier(app: AppHandle) -> Res<Option<String>> {
+    let e = etat(&app);
+    let Some(choix) = clips::choisir_dossier(&clips::dossier_clips(&e.stock)) else { return Ok(None) };
+    clips_dossier_regler(app, Some(choix.clone()))?;
+    Ok(Some(choix))
+}
+
+/// Dossier des clips (None = Vidéos\FPS Cagoule)
+#[tauri::command(async)]
+fn clips_dossier_regler(app: AppHandle, dossier: Option<String>) -> Res<()> {
+    if let Some(d) = &dossier {
+        if !clips::accessible(std::path::Path::new(d)) {
+            return Err("Impossible d'écrire dans ce dossier (serveur éteint, droits…). Choisis-en un autre.".into());
+        }
+    }
+    let e = etat(&app);
+    e.stock.donnees.lock().unwrap().reglages.clips_dossier = dossier;
+    e.stock.sauver();
+    autoriser_dossiers_clips(&app);
+    Ok(())
+}
+
+#[derive(Serialize, Clone)]
+struct ProgressionExport {
+    fraction: f64,
+}
+
+/// Exporte le montage d'un clip (passages gardés, en secondes)
+#[tauri::command(async)]
+fn clips_exporter(app: AppHandle, chemin: String, morceaux: Vec<(f64, f64)>) -> Res<String> {
+    let e = etat(&app);
+    let app2 = app.clone();
+    let sortie = clips::exporter(&e.stock, &chemin, &morceaux, move |fraction| {
+        let _ = app2.emit("clips_export", ProgressionExport { fraction });
+    })?;
+    Ok(sortie.to_string_lossy().into())
 }
 
 #[derive(Serialize, Clone)]
@@ -518,11 +577,11 @@ fn clips_liste(app: AppHandle) -> Vec<clips::Clip> {
 }
 
 #[tauri::command(async)]
-fn clips_ouvrir(chemin: Option<String>) -> Res<()> {
+fn clips_ouvrir(app: AppHandle, chemin: Option<String>) -> Res<()> {
     match chemin {
-        Some(c) => lancement::ouvrir(&clips::clip_valide(&c)?.to_string_lossy(), "", None),
+        Some(c) => lancement::ouvrir(&clips::clip_valide(&etat(&app).stock, &c)?.to_string_lossy(), "", None),
         None => {
-            let d = clips::dossier_clips();
+            let d = clips::dossier_clips(&etat(&app).stock);
             let _ = std::fs::create_dir_all(&d);
             lancement::ouvrir(&d.to_string_lossy(), "", None)
         }
@@ -758,6 +817,7 @@ fn main() {
             let e = app.state::<Arc<Etat>>().inner().clone();
             *e.raccourci.lock().unwrap() = raccourci;
             appliquer_touche(&e);
+            autoriser_dossiers_clips(app.handle());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -792,6 +852,9 @@ fn main() {
             clips_liste,
             clips_ouvrir,
             clips_supprimer,
+            clips_choisir_dossier,
+            clips_dossier_regler,
+            clips_exporter,
             comptes_steam,
             jeu_image_effacer,
             amd_etat,

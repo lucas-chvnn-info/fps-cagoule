@@ -6,7 +6,7 @@
 use crate::config::Stockage;
 use crate::gpu;
 use crate::systeme::CREATE_NO_WINDOW;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::{Read, Write};
 use std::os::windows::process::CommandExt;
@@ -36,8 +36,45 @@ pub fn installe(stock: &Stockage) -> bool {
     ffmpeg(stock).is_file()
 }
 
-/// Dossier des clips : Vidéos\FPS Cagoule
-pub fn dossier_clips() -> PathBuf {
+/// Dossier des clips choisi par l'utilisateur, sinon Vidéos\FPS Cagoule
+pub fn dossier_clips(stock: &Stockage) -> PathBuf {
+    stock.donnees.lock().unwrap().reglages.clips_dossier.clone().filter(|d| !d.trim().is_empty()).map(PathBuf::from).unwrap_or_else(dossier_defaut)
+}
+
+/// Dossiers où chercher les clips : celui choisi et Vidéos\FPS Cagoule (clips d'avant un changement, ou de secours)
+pub fn dossiers_clips(stock: &Stockage) -> Vec<PathBuf> {
+    let mut l = vec![dossier_clips(stock)];
+    let defaut = dossier_defaut();
+    if !l.contains(&defaut) {
+        l.push(defaut);
+    }
+    l
+}
+
+/// Le dossier accepte l'écriture (dossier réseau joignable…)
+pub fn accessible(dossier: &Path) -> bool {
+    let essai = dossier.join(".fps-cagoule-essai");
+    let ok = fs::create_dir_all(dossier).is_ok() && fs::write(&essai, b"ok").is_ok();
+    let _ = fs::remove_file(essai);
+    ok
+}
+
+/// Fenêtre Windows de choix d'un dossier (dossiers réseau compris)
+pub fn choisir_dossier(depart: &Path) -> Option<String> {
+    let script = format!(
+        r#"Add-Type -AssemblyName System.Windows.Forms
+$f = New-Object System.Windows.Forms.FolderBrowserDialog
+$f.Description = 'Dossier des clips de FPS Cagoule'
+$f.ShowNewFolderButton = $true
+$f.SelectedPath = {}
+$haut = New-Object System.Windows.Forms.Form -Property @{{ TopMost = $true }}
+if ($f.ShowDialog($haut) -eq 'OK') {{ $f.SelectedPath }}"#,
+        crate::ps::chaine(&depart.to_string_lossy())
+    );
+    crate::ps::executer(&script).ok().map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
+}
+
+pub fn dossier_defaut() -> PathBuf {
     use windows_sys::Win32::UI::Shell::FOLDERID_Videos;
     crate::jeux_config::dossier_connu(&FOLDERID_Videos)
         .unwrap_or_else(|| PathBuf::from(std::env::var("USERPROFILE").unwrap_or_default()).join("Videos"))
@@ -309,8 +346,12 @@ pub fn sauver(stock: &Stockage, dossier_tampon: &Path, jeu: &str, secondes: u32,
             }
         }
     }
-    let dossier_jeu = dossier_clips().join(nom_fichier(jeu));
-    fs::create_dir_all(&dossier_jeu).map_err(|e| e.to_string())?;
+    // Dossier choisi (serveur…) ; s'il est injoignable, le clip reste sur le PC
+    let mut dossier_jeu = dossier_clips(stock).join(nom_fichier(jeu));
+    if fs::create_dir_all(&dossier_jeu).is_err() {
+        dossier_jeu = dossier_defaut().join(nom_fichier(jeu));
+        fs::create_dir_all(&dossier_jeu).map_err(|e| e.to_string())?;
+    }
     let nom = nom_fichier(&titre.map(String::from).unwrap_or_else(|| format!("{jeu} {}", date_texte())));
     let mut sortie = dossier_jeu.join(format!("{nom}.mp4"));
     let mut n = 2;
@@ -334,13 +375,50 @@ pub fn sauver(stock: &Stockage, dossier_tampon: &Path, jeu: &str, secondes: u32,
     Ok(sortie)
 }
 
-fn cle_miniature(clip: &Path) -> String {
+fn cle_clip(clip: &Path, extension: &str) -> String {
     // Nom stable par chemin de clip
     let mut h: u64 = 1469598103934665603;
     for b in clip.to_string_lossy().to_lowercase().bytes() {
         h = (h ^ b as u64).wrapping_mul(1099511628211);
     }
-    format!("{h:016x}.jpg")
+    format!("{h:016x}.{extension}")
+}
+
+fn cle_miniature(clip: &Path) -> String {
+    cle_clip(clip, "jpg")
+}
+
+/// Repère sur la vidéo : kill, KO ou mort, à `t` secondes du début du clip
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct Marqueur {
+    pub t: f64,
+    pub genre: String,
+    pub detail: String,
+    pub headshot: bool,
+}
+
+fn fichier_marqueurs(stock: &Stockage, clip: &Path) -> PathBuf {
+    stock.dossier().join("clips-infos").join(cle_clip(clip, "json"))
+}
+
+pub fn marqueurs(stock: &Stockage, clip: &Path) -> Vec<Marqueur> {
+    fs::read_to_string(fichier_marqueurs(stock, clip)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+}
+
+/// Ajoute des repères au clip (sans doublon à moins d'une demi-seconde du même genre)
+pub fn ajouter_marqueurs(stock: &Stockage, clip: &Path, nouveaux: &[Marqueur]) {
+    let mut liste = marqueurs(stock, clip);
+    for m in nouveaux {
+        if !liste.iter().any(|x| x.genre == m.genre && (x.t - m.t).abs() < 0.5) {
+            liste.push(m.clone());
+        }
+    }
+    liste.sort_by(|a, b| a.t.total_cmp(&b.t));
+    let f = fichier_marqueurs(stock, clip);
+    let _ = fs::create_dir_all(f.parent().unwrap());
+    if let Ok(t) = serde_json::to_string(&liste) {
+        let _ = fs::write(f, t);
+    }
 }
 
 fn miniature(stock: &Stockage, clip: &Path) {
@@ -364,12 +442,14 @@ pub struct Clip {
     pub date: u64,
     pub octets: u64,
     pub miniature: Option<String>,
+    pub marqueurs: Vec<Marqueur>,
 }
 
 /// Clips du dossier Vidéos\FPS Cagoule, du plus récent au plus ancien
 pub fn liste(stock: &Stockage) -> Vec<Clip> {
     let mut clips = Vec::new();
-    let Ok(jeux) = fs::read_dir(dossier_clips()) else { return clips };
+    for racine in dossiers_clips(stock) {
+    let Ok(jeux) = fs::read_dir(racine) else { continue };
     for jeu in jeux.flatten().filter(|e| e.path().is_dir()) {
         let Ok(fichiers) = fs::read_dir(jeu.path()) else { continue };
         for f in fichiers.flatten() {
@@ -385,19 +465,21 @@ pub fn liste(stock: &Stockage) -> Vec<Clip> {
                 date: m.modified().ok().and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map_or(0, |d| d.as_secs()),
                 octets: m.len(),
                 miniature: image.map(|o| format!("data:image/jpeg;base64,{}", crate::ps::base64(&o))),
+                marqueurs: marqueurs(stock, &p),
                 chemin: p.to_string_lossy().to_string(),
             });
         }
+    }
     }
     clips.sort_by(|a, b| b.date.cmp(&a.date));
     clips
 }
 
-/// Chemin d'un clip venu de l'interface, accepté seulement s'il est dans Vidéos\FPS Cagoule
-pub fn clip_valide(chemin: &str) -> Result<PathBuf, String> {
+/// Chemin d'un clip venu de l'interface, accepté seulement s'il est dans un dossier des clips
+pub fn clip_valide(stock: &Stockage, chemin: &str) -> Result<PathBuf, String> {
     let p = fs::canonicalize(chemin).map_err(|_| "Clip introuvable".to_string())?;
-    let racine = fs::canonicalize(dossier_clips()).map_err(|_| "Dossier des clips introuvable".to_string())?;
-    if p.starts_with(&racine) && p.extension().is_some_and(|x| x.eq_ignore_ascii_case("mp4")) {
+    let dans_un_dossier = dossiers_clips(stock).iter().filter_map(|d| fs::canonicalize(d).ok()).any(|r| p.starts_with(r));
+    if dans_un_dossier && p.extension().is_some_and(|x| x.eq_ignore_ascii_case("mp4")) {
         Ok(p)
     } else {
         Err("Chemin refusé".into())
@@ -405,9 +487,133 @@ pub fn clip_valide(chemin: &str) -> Result<PathBuf, String> {
 }
 
 pub fn supprimer(stock: &Stockage, chemin: &str) -> Result<(), String> {
-    let p = clip_valide(chemin)?;
+    let p = clip_valide(stock, chemin)?;
     let _ = fs::remove_file(miniatures(stock).join(cle_miniature(Path::new(chemin))));
+    let _ = fs::remove_file(fichier_marqueurs(stock, Path::new(chemin)));
     fs::remove_file(p).map_err(|e| e.to_string())
+}
+
+/// Le clip a-t-il une piste son (le PC peut ne pas avoir de sortie audio)
+fn a_du_son(stock: &Stockage, clip: &Path) -> bool {
+    Command::new(ffmpeg(stock))
+        .arg("-i")
+        .arg(clip)
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stderr).contains("Audio:"))
+        .unwrap_or(false)
+}
+
+/// Filtre FFmpeg qui garde les morceaux [début, fin] (en secondes) et les recolle
+pub fn filtre_montage(morceaux: &[(f64, f64)], son: bool) -> String {
+    let mut f = String::new();
+    for (i, (a, b)) in morceaux.iter().enumerate() {
+        f.push_str(&format!("[0:v]trim=start={a:.3}:end={b:.3},setpts=PTS-STARTPTS[v{i}];"));
+        if son {
+            f.push_str(&format!("[0:a]atrim=start={a:.3}:end={b:.3},asetpts=PTS-STARTPTS[a{i}];"));
+        }
+    }
+    for i in 0..morceaux.len() {
+        f.push_str(&format!("[v{i}]"));
+        if son {
+            f.push_str(&format!("[a{i}]"));
+        }
+    }
+    f.push_str(&format!("concat=n={}:v=1:a={}[v]", morceaux.len(), u8::from(son)));
+    if son {
+        f.push_str("[a]");
+    }
+    f
+}
+
+/// Position d'un repère après le montage (None s'il tombe dans un passage retiré)
+pub fn deplacer_repere(t: f64, morceaux: &[(f64, f64)]) -> Option<f64> {
+    let mut avant = 0.0;
+    for (a, b) in morceaux {
+        if t >= *a && t <= *b {
+            return Some(avant + t - a);
+        }
+        avant += b - a;
+    }
+    None
+}
+
+/// Exporte le montage (morceaux gardés) dans un nouveau fichier « … (montage).mp4 ». `progression(0..1)`.
+pub fn exporter(stock: &Stockage, chemin: &str, morceaux: &[(f64, f64)], progression: impl Fn(f64)) -> Result<PathBuf, String> {
+    let source = clip_valide(stock, chemin)?;
+    let mut m: Vec<(f64, f64)> = morceaux.iter().copied().filter(|(a, b)| b - a >= 0.2 && *a >= 0.0).collect();
+    m.sort_by(|x, y| x.0.total_cmp(&y.0));
+    if m.is_empty() {
+        return Err("Garde au moins un passage".into());
+    }
+    let total: f64 = m.iter().map(|(a, b)| b - a).sum();
+    let son = a_du_son(stock, &source);
+    let nom = source.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "clip".into());
+    let dossier = source.parent().ok_or("Dossier introuvable")?;
+    let mut sortie = dossier.join(format!("{nom} (montage).mp4"));
+    let mut n = 2;
+    while sortie.exists() {
+        sortie = dossier.join(format!("{nom} (montage {n}).mp4"));
+        n += 1;
+    }
+    let mut derniere_erreur = String::new();
+    for encodeur in [encodeur_conseille(), Encodeur::Logiciel] {
+        let video: Vec<&str> = match encodeur {
+            Encodeur::Nvidia => vec!["-c:v", "h264_nvenc", "-preset", "p5", "-rc", "vbr", "-cq", "21", "-b:v", "0"],
+            Encodeur::Amd => vec!["-c:v", "h264_amf", "-quality", "quality", "-rc", "cqp", "-qp_i", "20", "-qp_p", "22"],
+            Encodeur::Intel => vec!["-c:v", "h264_qsv", "-global_quality", "21", "-pix_fmt", "nv12"],
+            Encodeur::Logiciel => vec!["-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p"],
+        };
+        let mut cmd = Command::new(ffmpeg(stock));
+        cmd.args(["-hide_banner", "-loglevel", "error", "-y", "-nostats", "-progress", "pipe:1", "-i"])
+            .arg(&source)
+            .args(["-filter_complex", &filtre_montage(&m, son), "-map", "[v]"]);
+        if son {
+            cmd.args(["-map", "[a]", "-c:a", "aac", "-b:a", "160k"]);
+        }
+        let mut enfant = cmd
+            .args(&video)
+            .args(["-movflags", "+faststart"])
+            .arg(&sortie)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .creation_flags(CREATE_NO_WINDOW)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+        // Progression : FFmpeg écrit « out_time_us=… » sur sa sortie
+        if let Some(out) = enfant.stdout.take() {
+            use std::io::BufRead;
+            for ligne in std::io::BufReader::new(out).lines().map_while(Result::ok) {
+                if let Some(us) = ligne.strip_prefix("out_time_us=").and_then(|v| v.trim().parse::<f64>().ok()) {
+                    progression((us / 1e6 / total).clamp(0.0, 1.0));
+                }
+            }
+        }
+        let mut erreur = String::new();
+        if let Some(mut e) = enfant.stderr.take() {
+            let _ = e.read_to_string(&mut erreur);
+        }
+        let ok = enfant.wait().map(|s| s.success()).unwrap_or(false);
+        if ok && sortie.is_file() {
+            progression(1.0);
+            miniature(stock, &sortie);
+            let reperes: Vec<Marqueur> = marqueurs(stock, &source)
+                .into_iter()
+                .filter_map(|mut r| deplacer_repere(r.t, &m).map(|t| {
+                    r.t = t;
+                    r
+                }))
+                .collect();
+            ajouter_marqueurs(stock, &sortie, &reperes);
+            return Ok(sortie);
+        }
+        let _ = fs::remove_file(&sortie);
+        derniere_erreur = erreur.lines().last().unwrap_or("").to_string();
+        if encodeur == Encodeur::Logiciel {
+            break;
+        }
+    }
+    Err(format!("Export impossible : {derniere_erreur}"))
 }
 
 #[cfg(test)]
@@ -455,6 +661,11 @@ mod tests {
         println!("{}", infos.lines().filter(|l| l.contains("Duration") || l.contains("Stream")).collect::<Vec<_>>().join("\n"));
         assert!(infos.contains("Video: h264") && infos.contains("Audio: aac"), "{infos}");
         assert!(liste(&stock).iter().any(|c| Path::new(&c.chemin) == clip && c.miniature.is_some()), "miniature absente");
+        // Montage : deux passages gardés, repère déplacé
+        ajouter_marqueurs(&stock, &clip, &[Marqueur { t: 3.0, genre: "kill".into(), detail: "x".into(), headshot: true }]);
+        let montage = exporter(&stock, &clip.to_string_lossy(), &[(0.0, 1.0), (2.5, 4.0)], |_| {}).expect("export du montage");
+        assert_eq!(marqueurs(&stock, &montage).first().map(|m| m.t), Some(1.5));
+        supprimer(&stock, &montage.to_string_lossy()).unwrap();
         supprimer(&stock, &clip.to_string_lossy()).unwrap();
         let _ = fs::remove_dir_all(&dossier);
         // Vraie capture de l'écran : le PC de GitHub n'a pas forcément de bureau utilisable, on affiche seulement le résultat
@@ -465,6 +676,17 @@ mod tests {
             }
             Err(e) => println!("Capture de l'écran indisponible sur ce PC : {e}"),
         }
+    }
+
+    #[test]
+    fn montage() {
+        let m = [(0.0, 5.0), (8.0, 10.5)];
+        assert_eq!(
+            filtre_montage(&m, true),
+            "[0:v]trim=start=0.000:end=5.000,setpts=PTS-STARTPTS[v0];[0:a]atrim=start=0.000:end=5.000,asetpts=PTS-STARTPTS[a0];[0:v]trim=start=8.000:end=10.500,setpts=PTS-STARTPTS[v1];[0:a]atrim=start=8.000:end=10.500,asetpts=PTS-STARTPTS[a1];[v0][a0][v1][a1]concat=n=2:v=1:a=1[v][a]"
+        );
+        assert_eq!(deplacer_repere(9.0, &m), Some(6.0));
+        assert_eq!(deplacer_repere(6.0, &m), None);
     }
 
     #[test]

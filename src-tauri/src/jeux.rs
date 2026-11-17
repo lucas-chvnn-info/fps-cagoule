@@ -42,6 +42,8 @@ pub struct EnCours {
     debut_systeme: SystemTime,
     /// Compte Ubisoft qui joue (lu dans le premier replay de la partie), pour nommer les clips de la touche
     pseudo_r6: Option<String>,
+    /// Clips faits à la touche pendant la partie : (fichier, fin, durée en s), pour y ajouter les repères des kills
+    clips_manuels: Vec<(PathBuf, SystemTime, u32)>,
 }
 
 pub struct Etat {
@@ -256,6 +258,7 @@ fn demarrer(app: &AppHandle, etat: &Etat, profil: &crate::config::Profil, pid: u
         replays_vus: Vec::new(),
         debut_systeme: SystemTime::now(),
         pseudo_r6: None,
+        clips_manuels: Vec::new(),
     });
     if reglages.discord {
         demarrer_discord(etat, profil, boost);
@@ -442,21 +445,62 @@ fn surveiller_replays(app: &AppHandle, etat: &Etat, pid: u32) {
         let _ = thread::Builder::new().name("clip-auto".into()).spawn(move || {
             let Ok(octets) = std::fs::read(&fichier) else { return };
             let Ok(manche) = crate::replays_r6::lire(&octets) else { return };
-            if let Some(pseudo) = &manche.moi {
-                let etat = app.state::<Arc<Etat>>();
+            let etat = app.state::<Arc<Etat>>();
+            let manuels = {
                 let mut session = etat.session.lock().unwrap();
-                if let Some(s) = session.as_mut().filter(|s| s.pid == pid) {
-                    s.pseudo_r6 = Some(pseudo.clone());
+                match session.as_mut().filter(|s| s.pid == pid) {
+                    Some(s) => {
+                        if let Some(pseudo) = &manche.moi {
+                            s.pseudo_r6 = Some(pseudo.clone());
+                        }
+                        s.clips_manuels.clone()
+                    }
+                    None => vec![],
+                }
+            };
+            // Repères des kills, KO et morts sur les clips faits à la touche pendant cette manche
+            for (clip, fin, secondes) in manuels {
+                let reperes = reperes_manche(&manche, modifie, fin, secondes);
+                if !reperes.is_empty() {
+                    crate::clips::ajouter_marqueurs(&etat.stock, &clip, &reperes);
                 }
             }
             let Some(titre) = crate::replays_r6::titre_clip(&manche) else { return };
+            // Seulement les multi-kills choisis (2K, 3K, 4K, ACE)
+            let kills = manche.mes_kills().len().min(5) as u8;
+            if !etat.stock.donnees.lock().unwrap().reglages.clips_auto_kills.contains(&kills) {
+                return;
+            }
             let depuis_ecriture = SystemTime::now().duration_since(modifie).map_or(0, |d| d.as_secs() as u32);
             let secondes = crate::replays_r6::duree_clip(&manche, depuis_ecriture);
-            let etat = app.state::<Arc<Etat>>();
+            let fin = SystemTime::now();
             if let Ok(chemin) = crate::clips::sauver(&etat.stock, &tampon, &jeu, secondes, Some(&titre)) {
-                let _ = app.emit("clip", chemin.to_string_lossy().to_string());
+                crate::clips::ajouter_marqueurs(&etat.stock, &chemin, &reperes_manche(&manche, modifie, fin, secondes));
+                signaler_clip(&app, &etat.stock, &chemin);
             }
         });
+    }
+}
+
+/// Repères d'une manche qui tombent dans un clip couvrant les `secondes` avant `fin`
+fn reperes_manche(manche: &crate::replays_r6::Manche, ecriture: SystemTime, fin: SystemTime, secondes: u32) -> Vec<crate::clips::Marqueur> {
+    let Some(debut) = fin.checked_sub(Duration::from_secs(secondes as u64)) else { return vec![] };
+    manche
+        .mes_evenements()
+        .into_iter()
+        .filter_map(|e| {
+            let quand = crate::replays_r6::instant(manche, e.chrono, ecriture)?;
+            let t = quand.duration_since(debut).ok()?.as_secs_f64();
+            (t <= secondes as f64).then(|| crate::clips::Marqueur { t, genre: e.genre.into(), detail: e.detail, headshot: e.headshot })
+        })
+        .collect()
+}
+
+/// Clip enregistré : prévient l'interface, et dit si le dossier choisi (serveur) était injoignable
+fn signaler_clip(app: &AppHandle, stock: &crate::config::Stockage, chemin: &std::path::Path) {
+    let _ = app.emit("clip", chemin.to_string_lossy().to_string());
+    if !chemin.starts_with(crate::clips::dossier_clips(stock)) {
+        let _ = app.emit("clip_secours", ());
     }
 }
 
@@ -481,7 +525,10 @@ pub fn touche_clips(app: &AppHandle) {
     match crate::clips::sauver(&etat.stock, &dossier, &jeu, duree, titre.as_deref()) {
         Ok(chemin) => {
             unsafe { MessageBeep(MB_OK) };
-            let _ = app.emit("clip", chemin.to_string_lossy().to_string());
+            if let Some(s) = etat.session.lock().unwrap().as_mut() {
+                s.clips_manuels.push((chemin.clone(), SystemTime::now(), duree));
+            }
+            signaler_clip(app, &etat.stock, &chemin);
         }
         Err(e) => {
             unsafe { MessageBeep(MB_ICONHAND) };

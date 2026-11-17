@@ -165,11 +165,25 @@ pub struct Joueur {
 
 #[derive(Serialize, Clone, Debug, PartialEq)]
 pub struct Kill {
+    /// Joueur crédité du kill (celui qui a mis à terre, si la victime a été achevée ensuite)
     pub tueur: String,
     pub victime: String,
     pub headshot: bool,
-    /// Secondes restantes au chrono de la manche au moment du kill
+    /// Secondes restantes au chrono de la manche au moment de la mort
     pub chrono: u32,
+    /// Chrono de la mise à terre (KO) quand la victime a d'abord été mise à terre
+    pub ko: Option<u32>,
+}
+
+/// Moment de la manche à marquer sur la vidéo
+#[derive(Serialize, Clone, Debug, PartialEq)]
+pub struct Evenement {
+    pub chrono: u32,
+    /// « kill », « ko » ou « mort »
+    pub genre: &'static str,
+    /// Victime (kill, KO) ou tueur (mort)
+    pub detail: String,
+    pub headshot: bool,
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -192,6 +206,25 @@ impl Manche {
     pub fn mes_kills(&self) -> Vec<&Kill> {
         let Some(moi) = &self.moi else { return vec![] };
         self.kills.iter().filter(|k| &k.tueur == moi).collect()
+    }
+
+    /// Mes KO, mes kills et ma mort, dans l'ordre de la manche
+    pub fn mes_evenements(&self) -> Vec<Evenement> {
+        let Some(moi) = &self.moi else { return vec![] };
+        let mut e = Vec::new();
+        for k in &self.kills {
+            if &k.tueur == moi {
+                if let Some(ko) = k.ko {
+                    e.push(Evenement { chrono: ko, genre: "ko", detail: k.victime.clone(), headshot: false });
+                }
+                e.push(Evenement { chrono: k.chrono, genre: "kill", detail: k.victime.clone(), headshot: k.headshot });
+            } else if &k.victime == moi {
+                e.push(Evenement { chrono: k.chrono, genre: "mort", detail: k.tueur.clone(), headshot: k.headshot });
+            }
+        }
+        // Le chrono descend : le premier moment a le plus grand chrono
+        e.sort_by(|a, b| b.chrono.cmp(&a.chrono));
+        e
     }
 
     pub fn mon_operateur(&self) -> Option<&Joueur> {
@@ -463,10 +496,31 @@ fn lire_kill(c: &mut Curseur, m: &mut Manche, chrono: u32) -> Option<()> {
     }
     c.sauter(56)?;
     let headshot = c.octet()? == 1;
-    if !m.kills.iter().any(|k| k.tueur == tueur && k.victime == victime) {
-        m.kills.push(Kill { tueur, victime, headshot, chrono });
+    // Même victime une seconde fois : la première était une mise à terre (KO), celle-ci l'achève.
+    // Le kill reste à celui qui l'a mise à terre (règle du jeu) ; un paquet en double (même chrono) est ignoré.
+    match m.kills.iter_mut().find(|k| k.victime == victime) {
+        Some(k) if k.chrono != chrono && k.ko.is_none() => {
+            k.ko = Some(k.chrono);
+            k.chrono = chrono;
+            k.headshot |= headshot;
+        }
+        Some(_) => {}
+        None => m.kills.push(Kill { tueur, victime, headshot, chrono, ko: None }),
     }
     Some(())
+}
+
+/// Délai supposé entre le dernier chrono de la manche et l'écriture du replay (à confirmer sur de vraies parties)
+pub const DECALAGE_ECRITURE_S: f64 = 2.0;
+
+/// Instant réel d'un moment de la manche, d'après la date d'écriture du replay. None si le chrono est passé
+/// au compte à rebours du défuseur entre-temps (les deux chronos ne se comparent pas).
+pub fn instant(m: &Manche, chrono: u32, ecriture: std::time::SystemTime) -> Option<std::time::SystemTime> {
+    if chrono < m.chrono_fin {
+        return None;
+    }
+    let recul = (chrono - m.chrono_fin) as f64 + DECALAGE_ECRITURE_S;
+    ecriture.checked_sub(std::time::Duration::from_secs_f64(recul))
 }
 
 /// Secondes à garder pour couvrir tous mes kills de la manche : du premier kill moins 15 s jusqu'à la fin,
@@ -540,7 +594,7 @@ mod tests {
             manche: 5,
             moi: Some("Cagoule".into()),
             joueurs: vec![Joueur { pseudo: "Cagoule".into(), equipe: 0, operateur_id: op, operateur: nom_operateur(op).map(String::from), profil: String::new(), id_entete: 0, id_dissect: vec![], id_ui: 0 }],
-            kills: kills.iter().map(|(t, c)| Kill { tueur: t.to_string(), victime: "x".into(), headshot: false, chrono: *c }).collect(),
+            kills: kills.iter().enumerate().map(|(i, (t, c))| Kill { tueur: t.to_string(), victime: format!("ennemi{i}"), headshot: false, chrono: *c, ko: None }).collect(),
             chrono_fin,
         }
     }
@@ -552,6 +606,16 @@ mod tests {
         // Opérateur d'une nouvelle saison : pas de plantage, nom provisoire
         assert_eq!(titre_clip(&manche(&[("Cagoule", 150), ("Cagoule", 140)], 444310693746, 0)).as_deref(), Some("2K · Nouvel opérateur · Clubhouse · Cagoule"));
         assert_eq!(titre_clip(&manche(&[("Cagoule", 150)], 104189664390, 0)), None);
+    }
+
+    #[test]
+    fn ko_et_evenements() {
+        let mut m = manche(&[("Cagoule", 150), ("Ennemi", 90)], 0, 0);
+        m.kills[1].victime = "Cagoule".into();
+        m.kills[0].ko = Some(160);
+        let e = m.mes_evenements();
+        assert_eq!(e.iter().map(|x| (x.genre, x.chrono)).collect::<Vec<_>>(), vec![("ko", 160), ("kill", 150), ("mort", 90)]);
+        assert_eq!(e[2].detail, "Ennemi");
     }
 
     #[test]
