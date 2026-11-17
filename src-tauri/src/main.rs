@@ -563,7 +563,10 @@ fn partage_regler(app: AppHandle, dossier: Option<String>, url: Option<String>, 
 /// Partage le clip par un lien (copié dans le dossier publié) ; renvoie le lien
 #[tauri::command(async)]
 fn clips_partager(app: AppHandle, chemin: String, titre: String) -> Res<liens::Partage> {
-    liens::partager(&etat(&app).stock, &chemin, &titre)
+    let app2 = app.clone();
+    liens::partager(&etat(&app).stock, &chemin, &titre, move |fraction| {
+        let _ = app2.emit("partage_progression", ProgressionExport { fraction });
+    })
 }
 
 /// Reposte un clip déjà partagé dans le salon Discord

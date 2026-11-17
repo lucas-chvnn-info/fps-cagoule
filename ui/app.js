@@ -2735,7 +2735,8 @@ async function partagerClip(c, bouton) {
     return toast('Règle d\'abord où partager tes clips.');
   }
   if (c.lien) return copierLien(c.lien);
-  toast(reglages.partage_discord ? 'Préparation du lien et envoi sur Discord…' : 'Préparation du lien…', 5000);
+  dernierPourcent = -1;
+  toast('Préparation du clip…', 20000);
   try {
     const r = await appel('clips_partager', { chemin: c.chemin, titre: c.nom }, bouton);
     c.lien = r.lien;
@@ -2745,6 +2746,15 @@ async function partagerClip(c, bouton) {
     else toast(`Lien copié, mais Discord a refusé : ${r.discord.Err}`, 8000);
   } catch {}
 }
+
+// Avancement de la préparation du clip (conversion pour le web puis copie sur le serveur)
+let dernierPourcent = -1;
+listen('partage_progression', (e) => {
+  const p = Math.round(e.payload.fraction * 100);
+  if (p === dernierPourcent) return;
+  dernierPourcent = p;
+  toast(p < 92 ? `Préparation du clip… ${p} %` : 'Envoi sur le serveur…', 20000);
+});
 
 function afficherPartage() {
   $('#partage-resume').textContent = partageRegle() ? `${reglages.partage_url}${reglages.partage_discord ? ' · posté sur Discord' : ''}` : 'Pas encore réglé';

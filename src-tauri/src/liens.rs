@@ -121,8 +121,39 @@ pub struct Partage {
 }
 
 /// Partage le clip (ou redonne son lien s'il l'est déjà) ; un nouveau partage est posté dans Discord si un webhook est réglé
-pub fn partager(stock: &Stockage, chemin: &str, titre: &str) -> Result<Partage, String> {
+pub fn partager(stock: &Stockage, chemin: &str, titre: &str, progression: impl Fn(f64)) -> Result<Partage, String> {
     let source = clips::clip_valide(stock, chemin)?;
+    // Un seul partage à la fois pour un même clip (double-clic…)
+    let cle_source = cle(&source);
+    {
+        let mut en_cours = EN_COURS.lock().unwrap();
+        if en_cours.contains(&cle_source) {
+            return Err("Ce clip est déjà en train d'être partagé.".into());
+        }
+        en_cours.push(cle_source.clone());
+    }
+    let r = partager_un(stock, &source, titre, progression);
+    EN_COURS.lock().unwrap().retain(|c| c != &cle_source);
+    r
+}
+
+/// Clips en train d'être partagés
+static EN_COURS: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+
+/// Copies provisoires abandonnées (app fermée pendant un partage) : effacées au bout d'une heure
+fn nettoyer(dossier: &Path) {
+    let Ok(l) = fs::read_dir(dossier) else { return };
+    for e in l.flatten() {
+        let nom = e.file_name().to_string_lossy().to_string();
+        let vieux = e.metadata().and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok()).is_some_and(|d| d.as_secs() > 3600);
+        if nom.starts_with('.') && nom.ends_with(".mp4") && vieux {
+            let _ = fs::remove_file(e.path());
+        }
+    }
+}
+
+fn partager_un(stock: &Stockage, source: &Path, titre: &str, progression: impl Fn(f64)) -> Result<Partage, String> {
+    let source = source.to_path_buf();
     let (dossier, url) = reglage(stock).ok_or("Règle d'abord le partage : dossier publié et adresse du site.")?;
     if let Some(id) = stock.donnees.lock().unwrap().partages.get(&cle(&source)).cloned() {
         if dossier.join(format!("{id}.mp4")).is_file() {
@@ -130,10 +161,11 @@ pub fn partager(stock: &Stockage, chemin: &str, titre: &str) -> Result<Partage, 
         }
     }
     fs::create_dir_all(&dossier).map_err(|_| "Dossier de partage injoignable (serveur éteint ?).".to_string())?;
+    nettoyer(&dossier);
     let id = identifiant();
     // Copie sous un nom provisoire : le lien ne marche qu'une fois la vidéo complète
     let provisoire = dossier.join(format!(".{id}.mp4"));
-    if let Err(e) = clips::version_web(stock, &source, &provisoire) {
+    if let Err(e) = clips::version_web(stock, &source, &provisoire, progression) {
         let _ = fs::remove_file(&provisoire);
         return Err(e);
     }

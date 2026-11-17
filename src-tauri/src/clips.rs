@@ -561,34 +561,80 @@ fn miniature_vers(ffmpeg: &Path, dossier: &Path, clip: &Path) -> bool {
     sortie.is_file()
 }
 
-/// Copie du clip lisible partout sur le web (navigateurs, Discord) : H.264 tel quel, sinon (HEVC de Medal…)
-/// réencodé en H.264. Une seule piste son, et l'index en tête pour démarrer avant la fin du téléchargement.
-pub fn version_web(stock: &Stockage, source: &Path, sortie: &Path) -> Result<(), String> {
+/// Copie du clip lisible partout sur le web (navigateurs, Discord) : H.264 léger tel quel, sinon (HEVC de Medal,
+/// clip Ultra…) réencodé en H.264 vers 8 Mb/s. Une seule piste son, l'index en tête pour démarrer tout de suite.
+/// La conversion se fait sur le PC, puis une seule copie part vers `sortie` (souvent un dossier réseau).
+pub fn version_web(stock: &Stockage, source: &Path, sortie: &Path, progression: impl Fn(f64)) -> Result<(), String> {
     let infos = Command::new(ffmpeg(stock)).arg("-i").arg(source).creation_flags(CREATE_NO_WINDOW).output().map_err(|e| e.to_string())?;
-    let infos = String::from_utf8_lossy(&infos.stderr);
-    let h264 = infos.contains("Video: h264");
+    let infos = String::from_utf8_lossy(&infos.stderr).to_string();
+    let duree = infos
+        .split("Duration: ")
+        .nth(1)
+        .and_then(|r| r.split(',').next())
+        .and_then(|t| {
+            let p: Vec<f64> = t.trim().split(':').filter_map(|x| x.parse().ok()).collect();
+            (p.len() == 3).then(|| p[0] * 3600.0 + p[1] * 60.0 + p[2])
+        })
+        .unwrap_or(0.0);
+    let debit_kbs: u64 = infos.split("bitrate: ").nth(1).and_then(|r| r.split_whitespace().next()).and_then(|n| n.parse().ok()).unwrap_or(0);
+    // H.264 pas trop lourd : copié tel quel (rapide) ; sinon réencodé
+    let copie = infos.contains("Video: h264") && debit_kbs > 0 && debit_kbs <= 16_000;
     let son = infos.contains("Audio:");
+    let local = stock.dossier().join("partage-en-cours");
+    let _ = fs::create_dir_all(&local);
+    let temp = local.join(format!("{}.mp4", cle_clip(source, "tmp").trim_end_matches(".tmp")));
     let mut erreur = String::new();
     for encodeur in [encodeur_conseille(), Encodeur::Logiciel] {
-        let video: Vec<&str> = match (h264, encodeur) {
+        let video: Vec<&str> = match (copie, encodeur) {
             (true, _) => vec!["-c:v", "copy"],
-            (_, Encodeur::Nvidia) => vec!["-c:v", "h264_nvenc", "-preset", "p5", "-rc", "vbr", "-cq", "23", "-b:v", "0"],
-            (_, Encodeur::Amd) => vec!["-c:v", "h264_amf", "-quality", "quality", "-rc", "cqp", "-qp_i", "22", "-qp_p", "24"],
-            (_, Encodeur::Intel) => vec!["-c:v", "h264_qsv", "-global_quality", "23", "-pix_fmt", "nv12"],
-            (_, Encodeur::Logiciel) => vec!["-c:v", "libx264", "-preset", "veryfast", "-crf", "22", "-pix_fmt", "yuv420p"],
+            (_, Encodeur::Nvidia) => vec!["-c:v", "h264_nvenc", "-preset", "p5", "-rc", "vbr", "-cq", "26", "-b:v", "8M", "-maxrate", "12M", "-bufsize", "16M"],
+            (_, Encodeur::Amd) => vec!["-c:v", "h264_amf", "-quality", "quality", "-rc", "vbr_peak", "-b:v", "8M", "-maxrate", "12M"],
+            (_, Encodeur::Intel) => vec!["-c:v", "h264_qsv", "-preset", "medium", "-b:v", "8M", "-maxrate", "12M", "-pix_fmt", "nv12"],
+            (_, Encodeur::Logiciel) => vec!["-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-maxrate", "10M", "-bufsize", "20M", "-pix_fmt", "yuv420p"],
         };
         let mut cmd = Command::new(ffmpeg(stock));
-        cmd.args(["-hide_banner", "-loglevel", "error", "-y", "-i"]).arg(source).args(["-map", "0:v:0"]);
+        cmd.args(["-hide_banner", "-loglevel", "error", "-y", "-nostats", "-progress", "pipe:1", "-i"]).arg(source).args(["-map", "0:v:0"]);
         if son {
             cmd.args(["-map", "0:a:0", "-c:a", "aac", "-b:a", "160k"]);
         }
-        let r = cmd.args(&video).args(["-movflags", "+faststart"]).arg(sortie).creation_flags(CREATE_NO_WINDOW).output().map_err(|e| e.to_string())?;
-        if r.status.success() && sortie.is_file() {
-            return Ok(());
+        let mut enfant = cmd
+            .args(&video)
+            .args(["-movflags", "+faststart"])
+            .arg(&temp)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .creation_flags(CREATE_NO_WINDOW)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+        if let Some(out) = enfant.stdout.take() {
+            use std::io::BufRead;
+            for ligne in std::io::BufReader::new(out).lines().map_while(Result::ok) {
+                if let Some(us) = ligne.strip_prefix("out_time_us=").and_then(|v| v.trim().parse::<f64>().ok()) {
+                    if duree > 0.0 {
+                        progression((us / 1e6 / duree * 0.9).clamp(0.0, 0.9));
+                    }
+                }
+            }
         }
-        let _ = fs::remove_file(sortie);
-        erreur = String::from_utf8_lossy(&r.stderr).lines().last().unwrap_or("").to_string();
-        if h264 || encodeur == Encodeur::Logiciel {
+        let mut sortie_err = String::new();
+        if let Some(mut e) = enfant.stderr.take() {
+            let _ = e.read_to_string(&mut sortie_err);
+        }
+        let ok = enfant.wait().map(|s| s.success()).unwrap_or(false);
+        if ok && temp.is_file() {
+            progression(0.92);
+            let r = fs::copy(&temp, sortie).map(|_| ()).map_err(|e| format!("Copie vers le serveur impossible : {e}"));
+            let _ = fs::remove_file(&temp);
+            if r.is_err() {
+                let _ = fs::remove_file(sortie);
+            }
+            progression(1.0);
+            return r;
+        }
+        let _ = fs::remove_file(&temp);
+        erreur = sortie_err.lines().last().unwrap_or("").to_string();
+        if copie || encodeur == Encodeur::Logiciel {
             break;
         }
     }
