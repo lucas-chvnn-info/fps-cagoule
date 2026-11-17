@@ -3833,6 +3833,11 @@ const ICONES_NOUVEAUTES = {
 };
 
 const NOUVEAUTES = {
+  '0.26.5': [
+    { icone: 'clips', titre: 'Clips auto réparés', texte: 'Les replays de R6 sont maintenant trouvés dans le dossier du jeu : tes 2K à ACE se gardent tout seuls, avec Solid Snake, Noor et les nouvelles maps.' },
+    { icone: 'montage', titre: 'Un vrai montage', texte: 'Plein écran (F), passage de 0:20 à 0:30 à retirer ou à garder seul, et « Remplacer l\'original » pour raccourcir un clip.' },
+    { icone: 'dossier', titre: 'Galerie plus propre', texte: 'Pleine largeur, noms en entier, et les clips copiés de Medal apparaissent avec leurs miniatures.' },
+  ],
   '0.26.0': [
     { icone: 'clips', titre: 'Clips automatiques dans R6', texte: 'Tes 2K, 3K, 4K ou ACE (au choix) sont gardés tout seuls : « 3K · Ace · Clubhouse · TonPseudo ». Laisse le Match Replay activé dans R6.' },
     { icone: 'montage', titre: 'Monte tes clips', texte: 'Tes clips sont rangés par jeu, avec une recherche et des filtres 2K à ACE. Clique sur un clip pour le couper : tes kills, KO et morts sont marqués sur la timeline.' },
