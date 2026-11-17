@@ -123,6 +123,8 @@ pub const MAPS: &[(u64, &str)] = &[
     (417890697769, "Lair"),
     (418119057546, "Nighthaven Labs"),
     (418126004176, "Consulate"),
+    // Y11S3 : vu dans un replay de quick match (« Littoral » en français)
+    (436375283234, "Coastline"),
 ];
 
 /// Versions du jeu (« code » de l'en-tête) à partir desquelles le format change
