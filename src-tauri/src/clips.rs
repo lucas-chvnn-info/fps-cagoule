@@ -561,9 +561,10 @@ fn miniature_vers(ffmpeg: &Path, dossier: &Path, clip: &Path) -> bool {
     sortie.is_file()
 }
 
-/// Copie du clip lisible partout sur le web (navigateurs, Discord) : H.264 léger tel quel, sinon (HEVC de Medal,
-/// clip Ultra…) réencodé en H.264 vers 8 Mb/s. Une seule piste son, l'index en tête pour démarrer tout de suite.
-/// La conversion se fait sur le PC, puis une seule copie part vers `sortie` (souvent un dossier réseau).
+/// Copie du clip pour le web (navigateurs, Discord). Un clip H.264 ou HEVC pas trop lourd (cas normal, Medal compris)
+/// est simplement copié : d'un dossier du serveur à un autre, Windows fait faire la copie au serveur lui-même
+/// (rien ne passe par le PC). Seul un clip trop lourd (Ultra 120 i/s…) est réencodé en H.264 ~8 Mb/s, sur le PC,
+/// puis copié une fois.
 pub fn version_web(stock: &Stockage, source: &Path, sortie: &Path, progression: impl Fn(f64)) -> Result<(), String> {
     let infos = Command::new(ffmpeg(stock)).arg("-i").arg(source).creation_flags(CREATE_NO_WINDOW).output().map_err(|e| e.to_string())?;
     let infos = String::from_utf8_lossy(&infos.stderr).to_string();
@@ -577,7 +578,14 @@ pub fn version_web(stock: &Stockage, source: &Path, sortie: &Path, progression: 
         })
         .unwrap_or(0.0);
     let debit_kbs: u64 = infos.split("bitrate: ").nth(1).and_then(|r| r.split_whitespace().next()).and_then(|n| n.parse().ok()).unwrap_or(0);
-    // H.264 pas trop lourd : copié tel quel (rapide) ; sinon réencodé
+    let lisible = infos.contains("Video: h264") || infos.contains("Video: hevc");
+    if lisible && debit_kbs > 0 && debit_kbs <= 25_000 {
+        progression(0.5);
+        fs::copy(source, sortie).map_err(|e| format!("Copie vers le serveur impossible : {e}"))?;
+        progression(1.0);
+        return Ok(());
+    }
+    // H.264 un peu lourd : piste vidéo gardée telle quelle ; sinon réencodé
     let copie = infos.contains("Video: h264") && debit_kbs > 0 && debit_kbs <= 16_000;
     let son = infos.contains("Audio:");
     let local = stock.dossier().join("partage-en-cours");

@@ -2753,7 +2753,7 @@ listen('partage_progression', (e) => {
   const p = Math.round(e.payload.fraction * 100);
   if (p === dernierPourcent) return;
   dernierPourcent = p;
-  toast(p < 92 ? `Préparation du clip… ${p} %` : 'Envoi sur le serveur…', 20000);
+  toast(p === 50 ? 'Copie du clip sur le serveur…' : p < 92 ? `Préparation du clip… ${p} %` : 'Envoi sur le serveur…', 20000);
 });
 
 function afficherPartage() {
