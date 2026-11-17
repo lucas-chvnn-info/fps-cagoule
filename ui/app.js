@@ -2618,7 +2618,9 @@ function afficherClips() {
     const compte = (g) => c.marqueurs.filter((m) => m.genre === g).length;
     const resume = [['kill', compte('kill')], ['ko', compte('ko')], ['mort', compte('mort')]].filter(([, n]) => n);
     visuel.innerHTML = `<span class="clip-lecture">${JOUER}</span>${
-      resume.length ? `<span class="clip-reperes">${resume.map(([g, n]) => `<span class="pastille-repere ${g}">${n}</span>`).join('')}</span>` : ''
+      resume.length
+        ? `<span class="clip-reperes">${resume.map(([g, n]) => `<span class="pastille-repere ${g}" title="${n} ${NOMS_REPERES[g]}${n > 1 && g !== 'ko' ? 's' : ''}">${n}</span>`).join('')}</span>`
+        : ''
     }`;
     visuel.addEventListener('click', () => ouvrirEditeur(c));
     const pied = document.createElement('div');
@@ -2627,7 +2629,8 @@ function afficherClips() {
     const nom = document.createElement('strong');
     nom.textContent = c.nom;
     const infos = document.createElement('small');
-    infos.textContent = `${c.jeu} · ${dateCourte(c.date)} · ${taillePetite(c.octets)}`;
+    const d = new Date(c.date * 1000);
+    infos.textContent = `${c.jeu} · ${d.toLocaleDateString('fr-CH', { day: '2-digit', month: '2-digit' })} ${d.toLocaleTimeString('fr-CH', { hour: '2-digit', minute: '2-digit' })} · ${taillePetite(c.octets)}`;
     textes.append(nom, infos);
     const suppr = document.createElement('button');
     suppr.className = 'petit discret-btn clip-suppr';
@@ -2759,7 +2762,7 @@ listen('clip_secours', () => toast('Dossier des clips injoignable (serveur étei
 
 const ICONES_REPERES = {
   kill: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><path d="M12 2v5M12 17v5M2 12h5M17 12h5"/></svg>',
-  ko: '<svg viewBox="0 0 24 24"><path d="M6 18l12-12M6 6h7M18 18h-7"/></svg>',
+  ko: '<svg viewBox="0 0 24 24"><path d="M12 4v13M6 12l6 6 6-6"/></svg>',
   mort: '<svg viewBox="0 0 24 24"><path d="M12 3a7 7 0 0 0-7 7c0 2.4 1.2 4 2.5 5v3h9v-3c1.3-1 2.5-2.6 2.5-5a7 7 0 0 0-7-7z"/><circle cx="9.5" cy="10.5" r="1.3"/><circle cx="14.5" cy="10.5" r="1.3"/></svg>',
 };
 const NOMS_REPERES = { kill: 'Kill', ko: 'KO', mort: 'Mort' };
@@ -3558,11 +3561,15 @@ const ICONES_NOUVEAUTES = {
   discord: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7.5c3-1.5 7-1.5 10 0l1.5 9c-1.5 1.3-3 2-4.5 2l-.8-1.6M7 7.5 5.5 16.5c1.5 1.3 3 2 4.5 2l.8-1.6M8.5 15c2.3 1 4.7 1 7 0"/><circle cx="9.5" cy="12" r="1"/><circle cx="14.5" cy="12" r="1"/></svg>',
   reglages: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>',
   clips: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10.5l5-3v9l-5-3z"/></svg>',
+  montage: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M8.1 8.1 20 20M8.1 15.9 20 4"/></svg>',
+  dossier: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
 };
 
 const NOUVEAUTES = {
   '0.26.0': [
-    { icone: 'clips', titre: 'Clips automatiques dans R6', texte: 'Tes 2K, 3K, 4K et ACE sont gardés tout seuls, nommés comme « 3K · Ace · Clubhouse ». Laisse le Match Replay activé dans R6.' },
+    { icone: 'clips', titre: 'Clips automatiques dans R6', texte: 'Tes 2K, 3K, 4K ou ACE (au choix) sont gardés tout seuls : « 3K · Ace · Clubhouse · TonPseudo ». Laisse le Match Replay activé dans R6.' },
+    { icone: 'montage', titre: 'Monte tes clips', texte: 'Clique sur un clip : coupe, retire des passages et exporte. Tes kills, KO et morts sont marqués sur la timeline.' },
+    { icone: 'dossier', titre: 'Clips sur ton serveur', texte: 'Choisis le dossier des clips, même un dossier réseau. Serveur éteint ? Le clip reste sur ton PC.' },
   ],
   '0.25.0': [
     { icone: 'clips', titre: 'Tes clips, comme Medal', texte: 'Jeux → Clips : active l\'enregistrement, choisis ta touche et la durée. En jeu, elle garde les 30 s, 1 min ou 3 min d\'avant.' },
