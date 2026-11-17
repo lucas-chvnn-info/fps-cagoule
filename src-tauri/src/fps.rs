@@ -33,6 +33,7 @@ pub fn demarrer(presentmon: &Path, exe: &str, rappel: impl Fn(f64) + Send + 'sta
         .stdin(Stdio::null())
         .creation_flags(CREATE_NO_WINDOW)
         .spawn()?;
+    crate::systeme::attacher_a_l_app(&enfant);
     let sortie = enfant.stdout.take().expect("stdout de PresentMon");
     let fil = thread::Builder::new().name("presentmon".into()).spawn(move || {
         let mut acc = Accumulateur::default();

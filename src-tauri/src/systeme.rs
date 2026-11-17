@@ -84,6 +84,51 @@ pub fn remettre_priorite(pid: u32, classe: u32) -> bool {
     Poignee::ouvrir(PROCESS_SET_INFORMATION, pid).map_or(false, |h| unsafe { SetPriorityClass(h.0, classe) != 0 })
 }
 
+/// Groupe de processus (« job » Windows) fermé avec l'app : tout outil qu'on y rattache (FFmpeg, PresentMon)
+/// est arrêté par Windows quand FPS Cagoule se ferme, plante ou se met à jour. Rien d'autre n'y est mis
+/// (les jeux et l'installateur des mises à jour doivent survivre à l'app).
+fn groupe_app() -> Option<HANDLE> {
+    use std::sync::OnceLock;
+    use windows_sys::Win32::System::JobObjects::{
+        CreateJobObjectW, JobObjectExtendedLimitInformation, SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+        JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+    };
+    static GROUPE: OnceLock<usize> = OnceLock::new();
+    let h = *GROUPE.get_or_init(|| unsafe {
+        let job = CreateJobObjectW(std::ptr::null(), std::ptr::null());
+        if job.is_null() {
+            return 0;
+        }
+        let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std::mem::zeroed();
+        info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        SetInformationJobObject(job, JobObjectExtendedLimitInformation, &info as *const _ as *const _, std::mem::size_of_val(&info) as u32);
+        // La poignée n'est jamais fermée : Windows la ferme à la fin de l'app, et arrête alors le groupe
+        job as usize
+    });
+    (h != 0).then_some(h as HANDLE)
+}
+
+/// Rattache un outil lancé par l'app à son groupe : il s'arrêtera avec elle
+pub fn attacher_a_l_app(enfant: &std::process::Child) {
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::System::JobObjects::AssignProcessToJobObject;
+    if let Some(job) = groupe_app() {
+        unsafe { AssignProcessToJobObject(job, enfant.as_raw_handle() as HANDLE) };
+    }
+}
+
+/// Arrête les copies d'un outil de l'app restées ouvertes (versions d'avant le groupe, app tuée…)
+pub fn arreter_orphelins(exe: &std::path::Path) -> usize {
+    let Some(nom) = exe.file_name().map(|n| n.to_string_lossy().to_lowercase()) else { return 0 };
+    let cible = exe.to_string_lossy().to_lowercase();
+    processus()
+        .into_iter()
+        .filter(|p| p.nom.to_lowercase() == nom)
+        .filter(|p| chemin_exe(p.pid).is_some_and(|c| c.to_lowercase() == cible))
+        .filter(|p| terminer(p.pid))
+        .count()
+}
+
 pub fn terminer(pid: u32) -> bool {
     Poignee::ouvrir(PROCESS_TERMINATE, pid).map_or(false, |h| unsafe { TerminateProcess(h.0, 0) != 0 })
 }

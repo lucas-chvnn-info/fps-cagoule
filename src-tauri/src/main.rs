@@ -874,6 +874,15 @@ fn main() {
             jeux::restaurer_resolution(&etat);
             jeux::synchroniser_priorites(&etat.stock);
             jeux::oc_au_demarrage(&etat);
+            // Outils restés ouverts par une version d'avant (enregistrement, conversion…) : ils prenaient de la mémoire
+            {
+                let ffmpeg = clips::ffmpeg(&etat.stock);
+                let presentmon = etat.presentmon.clone();
+                std::thread::spawn(move || {
+                    systeme::arreter_orphelins(&ffmpeg);
+                    systeme::arreter_orphelins(&presentmon);
+                });
+            }
             app.manage(etat);
 
             fenetres::creer_icone(app.handle())?;

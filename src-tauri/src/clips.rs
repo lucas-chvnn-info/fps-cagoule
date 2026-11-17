@@ -329,6 +329,7 @@ fn lancer_ffmpeg(
         .creation_flags(CREATE_NO_WINDOW | 0x0000_4000) // BELOW_NORMAL : le jeu passe d'abord
         .spawn()
         .map_err(|e| format!("FFmpeg ne démarre pas : {e}"))?;
+    crate::systeme::attacher_a_l_app(&enfant);
     let capture = match (son, enfant.stdin.take()) {
         (Some((_, demarrer)), Some(entree)) => Some(demarrer(Box::new(entree))),
         _ => None,
@@ -615,6 +616,7 @@ pub fn version_web(stock: &Stockage, source: &Path, sortie: &Path, progression: 
             .creation_flags(CREATE_NO_WINDOW)
             .spawn()
             .map_err(|e| e.to_string())?;
+        crate::systeme::attacher_a_l_app(&enfant);
         if let Some(out) = enfant.stdout.take() {
             use std::io::BufRead;
             for ligne in std::io::BufReader::new(out).lines().map_while(Result::ok) {
@@ -886,6 +888,7 @@ pub fn exporter(stock: &Stockage, chemin: &str, morceaux: &[(f64, f64)], remplac
             .creation_flags(CREATE_NO_WINDOW)
             .spawn()
             .map_err(|e| e.to_string())?;
+        crate::systeme::attacher_a_l_app(&enfant);
         // Progression : FFmpeg écrit « out_time_us=… » sur sa sortie
         if let Some(out) = enfant.stdout.take() {
             use std::io::BufRead;
