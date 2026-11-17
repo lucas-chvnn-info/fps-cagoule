@@ -90,13 +90,43 @@ pub fn page(titre: &str, url: &str, id: &str) -> String {
     )
 }
 
-/// Partage le clip (ou redonne son lien s'il l'est déjà). Renvoie le lien.
-pub fn partager(stock: &Stockage, chemin: &str, titre: &str) -> Result<String, String> {
+/// Adresse d'un webhook Discord valide (salon → Intégrations → Webhooks → Copier l'URL)
+pub fn webhook_valide(url: &str) -> bool {
+    ["https://discord.com/api/webhooks/", "https://discordapp.com/api/webhooks/", "https://ptb.discord.com/api/webhooks/", "https://canary.discord.com/api/webhooks/"]
+        .iter()
+        .any(|d| url.starts_with(d) && url.len() > d.len() + 10)
+}
+
+/// Poste le clip dans le salon Discord du webhook : Discord montre la vidéo grâce à la page du lien
+fn poster_discord(webhook: &str, titre: &str, lien: &str) -> Result<(), String> {
+    let corps = serde_json::json!({
+        "username": "FPS Cagoule",
+        "content": format!("🎬 **{titre}**\n{lien}"),
+        "allowed_mentions": { "parse": [] },
+    })
+    .to_string();
+    let script = format!(
+        "[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12;\n$c = [Text.Encoding]::UTF8.GetBytes({});\nInvoke-RestMethod -UseBasicParsing -TimeoutSec 20 -Method Post -ContentType 'application/json; charset=utf-8' -Uri {} -Body $c | Out-Null",
+        crate::ps::chaine(&corps),
+        crate::ps::chaine(webhook)
+    );
+    crate::ps::executer(&script).map(|_| ())
+}
+
+#[derive(serde::Serialize)]
+pub struct Partage {
+    pub lien: String,
+    /// Posté dans Discord : None = pas de webhook réglé, Some(Ok) = posté, Some(Err) = raté
+    pub discord: Option<Result<(), String>>,
+}
+
+/// Partage le clip (ou redonne son lien s'il l'est déjà) ; un nouveau partage est posté dans Discord si un webhook est réglé
+pub fn partager(stock: &Stockage, chemin: &str, titre: &str) -> Result<Partage, String> {
     let source = clips::clip_valide(stock, chemin)?;
     let (dossier, url) = reglage(stock).ok_or("Règle d'abord le partage : dossier publié et adresse du site.")?;
     if let Some(id) = stock.donnees.lock().unwrap().partages.get(&cle(&source)).cloned() {
         if dossier.join(format!("{id}.mp4")).is_file() {
-            return Ok(format!("{url}/{id}"));
+            return Ok(Partage { lien: format!("{url}/{id}"), discord: None });
         }
     }
     fs::create_dir_all(&dossier).map_err(|_| "Dossier de partage injoignable (serveur éteint ?).".to_string())?;
@@ -112,7 +142,18 @@ pub fn partager(stock: &Stockage, chemin: &str, titre: &str) -> Result<String, S
     fs::rename(&provisoire, dossier.join(format!("{id}.mp4"))).map_err(|e| e.to_string())?;
     stock.donnees.lock().unwrap().partages.insert(cle(&source), id.clone());
     stock.sauver();
-    Ok(format!("{url}/{id}"))
+    let lien = format!("{url}/{id}");
+    let webhook = stock.donnees.lock().unwrap().reglages.partage_discord.clone().filter(|w| webhook_valide(w));
+    let discord = webhook.map(|w| poster_discord(&w, titre, &lien));
+    Ok(Partage { lien, discord })
+}
+
+/// Reposte un clip déjà partagé dans Discord
+pub fn reposter(stock: &Stockage, chemin: &str, titre: &str) -> Result<(), String> {
+    let source = clips::clip_valide(stock, chemin)?;
+    let lien = lien(stock, &source).ok_or("Ce clip n'est pas partagé.")?;
+    let webhook = stock.donnees.lock().unwrap().reglages.partage_discord.clone().filter(|w| webhook_valide(w)).ok_or("Aucun salon Discord réglé.")?;
+    poster_discord(&webhook, titre, &lien)
 }
 
 /// Retire le clip du web : le lien ne marche plus
@@ -141,5 +182,7 @@ mod tests {
         let p = page("3K · Kaid · <Oregon>", "https://clips.exemple.ch", "abc");
         assert!(p.contains(r#"content="https://clips.exemple.ch/abc.mp4""#));
         assert!(p.contains("3K · Kaid · &lt;Oregon&gt;"));
+        assert!(webhook_valide("https://discord.com/api/webhooks/1234567890/abcdefghijklmnop"));
+        assert!(!webhook_valide("https://exemple.ch/api/webhooks/123"));
     }
 }

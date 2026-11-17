@@ -532,9 +532,13 @@ fn clips_dossier_regler(app: AppHandle, dossier: Option<String>, identifiant: Op
 
 /// Règle le partage : dossier publié par le site (vérifié en écriture) et adresse publique. Vides = partage coupé.
 #[tauri::command(async)]
-fn partage_regler(app: AppHandle, dossier: Option<String>, url: Option<String>) -> Res<(Option<String>, Option<String>)> {
+fn partage_regler(app: AppHandle, dossier: Option<String>, url: Option<String>, discord: Option<String>) -> Res<(Option<String>, Option<String>, Option<String>)> {
     let dossier = dossier.map(|d| partage::resoudre(d.trim())).filter(|d| !d.is_empty());
     let url = url.map(|u| u.trim().trim_end_matches('/').to_string()).filter(|u| !u.is_empty());
+    let discord = discord.map(|w| w.trim().to_string()).filter(|w| !w.is_empty());
+    if discord.as_deref().is_some_and(|w| !liens::webhook_valide(w)) {
+        return Err("Ce n'est pas une adresse de webhook Discord (elle commence par https://discord.com/api/webhooks/).".into());
+    }
     if let (Some(d), Some(u)) = (&dossier, &url) {
         if !(u.starts_with("https://") || u.starts_with("http://")) {
             return Err("L'adresse du site doit commencer par https://".into());
@@ -550,15 +554,22 @@ fn partage_regler(app: AppHandle, dossier: Option<String>, url: Option<String>) 
         let mut d = e.stock.donnees.lock().unwrap();
         d.reglages.partage_dossier = dossier.clone();
         d.reglages.partage_url = url.clone();
+        d.reglages.partage_discord = discord.clone();
     }
     e.stock.sauver();
-    Ok((dossier, url))
+    Ok((dossier, url, discord))
 }
 
 /// Partage le clip par un lien (copié dans le dossier publié) ; renvoie le lien
 #[tauri::command(async)]
-fn clips_partager(app: AppHandle, chemin: String, titre: String) -> Res<String> {
+fn clips_partager(app: AppHandle, chemin: String, titre: String) -> Res<liens::Partage> {
     liens::partager(&etat(&app).stock, &chemin, &titre)
+}
+
+/// Reposte un clip déjà partagé dans le salon Discord
+#[tauri::command(async)]
+fn clips_poster_discord(app: AppHandle, chemin: String, titre: String) -> Res<()> {
+    liens::reposter(&etat(&app).stock, &chemin, &titre)
 }
 
 /// Retire le clip du web
@@ -917,6 +928,7 @@ fn main() {
             clips_exporter,
             clips_partager,
             partage_regler,
+            clips_poster_discord,
             clips_ne_plus_partager,
             comptes_steam,
             jeu_image_effacer,

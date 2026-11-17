@@ -2735,15 +2735,19 @@ async function partagerClip(c, bouton) {
     return toast('Règle d\'abord où partager tes clips.');
   }
   if (c.lien) return copierLien(c.lien);
-  if (!c.lien) toast('Préparation du lien…', 4000);
+  toast(reglages.partage_discord ? 'Préparation du lien et envoi sur Discord…' : 'Préparation du lien…', 5000);
   try {
-    c.lien = await appel('clips_partager', { chemin: c.chemin, titre: c.nom }, bouton);
-    await copierLien(c.lien);
+    const r = await appel('clips_partager', { chemin: c.chemin, titre: c.nom }, bouton);
+    c.lien = r.lien;
+    try { await navigator.clipboard.writeText(r.lien); } catch {}
+    if (!r.discord) toast(`Lien copié : ${r.lien}`, 5000);
+    else if ('Ok' in r.discord) toast('Posté sur Discord, lien copié.', 5000);
+    else toast(`Lien copié, mais Discord a refusé : ${r.discord.Err}`, 8000);
   } catch {}
 }
 
 function afficherPartage() {
-  $('#partage-resume').textContent = partageRegle() ? reglages.partage_url : 'Pas encore réglé';
+  $('#partage-resume').textContent = partageRegle() ? `${reglages.partage_url}${reglages.partage_discord ? ' · posté sur Discord' : ''}` : 'Pas encore réglé';
 }
 function editerPartage(ouvrir) {
   $('#partage-edition').hidden = !ouvrir;
@@ -2751,6 +2755,7 @@ function editerPartage(ouvrir) {
   if (ouvrir) {
     $('#partage-dossier').value = reglages.partage_dossier || '';
     $('#partage-url').value = reglages.partage_url || '';
+    $('#partage-discord').value = reglages.partage_discord || '';
     $('#partage-dossier').focus();
   }
 }
@@ -2759,10 +2764,12 @@ $('#btn-partage-annuler').addEventListener('click', () => editerPartage(false));
 $('#btn-partage-valider').addEventListener('click', async (e) => {
   const dossier = $('#partage-dossier').value.trim().replace(/^"|"$/g, '') || null;
   const url = $('#partage-url').value.trim().replace(/\/+$/, '') || null;
+  const discord = $('#partage-discord').value.trim() || null;
   try {
-    const r = await appel('partage_regler', { dossier, url }, e.currentTarget);
+    const r = await appel('partage_regler', { dossier, url, discord }, e.currentTarget);
     reglages.partage_dossier = r[0];
     reglages.partage_url = r[1];
+    reglages.partage_discord = r[2];
     editerPartage(false);
     afficherPartage();
     toast(partageRegle() ? 'Partage prêt : clique sur 🔗 sur un clip.' : 'Partage coupé.');
@@ -2984,7 +2991,14 @@ function majPartageEditeur() {
   $('#ed-partager').title = ed.clip?.lien ? 'Copier le lien du clip' : 'Copier un lien vers ce clip';
   $('#ed-partager').lastChild.textContent = ed.clip?.lien ? ' Copier le lien' : ' Partager';
   $('#ed-plus-partager').hidden = !ed.clip?.lien;
+  $('#ed-discord').hidden = !(ed.clip?.lien && reglages?.partage_discord);
 }
+$('#ed-discord').addEventListener('click', async (e) => {
+  try {
+    await appel('clips_poster_discord', { chemin: ed.clip.chemin, titre: ed.clip.nom }, e.currentTarget);
+    toast('Posté sur Discord.');
+  } catch {}
+});
 $('#ed-partager').addEventListener('click', async (e) => {
   await partagerClip(ed.clip, e.currentTarget);
   majPartageEditeur();
