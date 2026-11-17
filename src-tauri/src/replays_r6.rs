@@ -131,6 +131,12 @@ pub const MAPS: &[(u64, &str)] = &[
     // Y11 : reconnues par les zones d'apparition des attaquants écrites dans les replays
     (434715462383, "Oregon"),
     (441408792952, "Kanal"),
+    // Y11 : identifiées par l'utilisateur d'après les zones d'apparition (Fountain/Ruins, Garden Ruins/Poolside,
+    // Fuel Pumps, Helipad/Tower)
+    (409325881472, "Villa"),
+    (419965653950, "Coastline"),
+    (441825219764, "Outback"),
+    (423767322185, "Skyscraper"),
 ];
 
 /// Versions du jeu (« code » de l'en-tête) à partir desquelles le format change
