@@ -1115,6 +1115,10 @@ kbd { font: 600 12px/1 inherit; padding: 3px 7px; border-radius: 6px; background
 .ed-poignee[data-bord="a"] { left: -7px; }
 .ed-poignee[data-bord="b"] { right: -7px; }
 .ed-zone { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding-top: 4px; }
+.ed-volume { display: flex; align-items: center; gap: 4px; }
+.ed-volume button { padding: 4px 6px; }
+.ed-volume svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; vertical-align: -4px; }
+#ed-volume { width: 90px; accent-color: var(--accent-clair); cursor: pointer; }
 .ed-remplacer { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--discret); cursor: pointer; white-space: nowrap; }
 .ed-remplacer input { accent-color: var(--accent); }
 .ed-zone-titre { color: var(--discret); font-size: 12.5px; margin-right: 2px; }

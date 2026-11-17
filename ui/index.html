@@ -536,6 +536,10 @@
       <div class="ed-commandes">
         <button id="ed-lecture" class="ed-rond" aria-label="Lecture"></button>
         <span id="ed-temps" class="ed-temps">0:00 / 0:00</span>
+        <div class="ed-volume">
+          <button id="ed-muet" class="petit discret-btn" title="Couper le son (M)" aria-label="Couper le son"></button>
+          <input id="ed-volume" type="range" min="0" max="100" step="1" value="60" aria-label="Volume du clip" title="Volume (↑ ↓)">
+        </div>
         <button id="ed-couper" title="Couper au curseur (S)"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M8.1 8.1 20 20M8.1 15.9 20 4"/></svg>Couper</button>
         <button id="ed-supprimer" title="Retirer ou remettre le morceau choisi entre deux coupes (Suppr)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>Retirer le morceau</button>
         <button id="ed-annuler" class="discret-btn" title="Annuler (Ctrl+Z)">Annuler</button>

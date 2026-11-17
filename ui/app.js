@@ -3060,6 +3060,34 @@ $('#ed-selection').addEventListener('pointerdown', (e) => {
   window.addEventListener('pointerup', () => window.removeEventListener('pointermove', glisser), { once: true });
 });
 
+/* Volume du clip : retenu d'un clip à l'autre (60 % au départ, les clips sont souvent forts) */
+const ICONE_SON = (n) =>
+  `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z"/>${
+    n === 0 ? '<path d="M17 9l5 6M22 9l-5 6"/>' : `<path d="M16.5 9.5a3.5 3.5 0 0 1 0 5"/>${n > 50 ? '<path d="M19 7a7 7 0 0 1 0 10"/>' : ''}`
+  }</svg>`;
+function regleVolume(niveau, muet = video.muted) {
+  niveau = Math.min(Math.max(Math.round(niveau), 0), 100);
+  video.volume = niveau / 100;
+  video.muted = muet || niveau === 0;
+  $('#ed-volume').value = niveau;
+  $('#ed-volume').style.setProperty('--niveau', `${niveau}%`);
+  $('#ed-muet').innerHTML = ICONE_SON(video.muted ? 0 : niveau);
+  $('#ed-muet').title = video.muted ? 'Remettre le son (M)' : 'Couper le son (M)';
+  try { localStorage.setItem('volumeClips', JSON.stringify({ niveau, muet: video.muted && niveau > 0 })); } catch {}
+}
+try {
+  const v = JSON.parse(localStorage.getItem('volumeClips') || 'null');
+  regleVolume(v?.niveau ?? 60, !!v?.muet);
+} catch {
+  regleVolume(60, false);
+}
+$('#ed-volume').addEventListener('input', (e) => regleVolume(Number(e.target.value), false));
+$('#ed-muet').addEventListener('click', () => regleVolume(Number($('#ed-volume').value) || 60, !video.muted));
+video.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  regleVolume(Number($('#ed-volume').value) + (e.deltaY < 0 ? 5 : -5), false);
+}, { passive: false });
+
 /* Plein écran : la fenêtre de l'app passe en plein écran et l'éditeur la remplit */
 let pleinEcran = false;
 async function basculerPleinEcran() {
@@ -3178,6 +3206,10 @@ document.addEventListener('keydown', (e) => {
     I: () => borneZone('a', video.currentTime),
     o: () => borneZone('b', video.currentTime),
     O: () => borneZone('b', video.currentTime),
+    ArrowUp: () => regleVolume(Number($('#ed-volume').value) + 5, false),
+    ArrowDown: () => regleVolume(Number($('#ed-volume').value) - 5, false),
+    m: () => regleVolume(Number($('#ed-volume').value) || 60, !video.muted),
+    M: () => regleVolume(Number($('#ed-volume').value) || 60, !video.muted),
     f: basculerPleinEcran,
     F: basculerPleinEcran,
     Escape: () => (pleinEcran ? basculerPleinEcran() : fermerEditeur()),
