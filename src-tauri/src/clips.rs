@@ -154,8 +154,35 @@ fn encodeur_conseille() -> Encodeur {
     }
 }
 
+/// Qualité de l'enregistrement : débit (Mbit/s) et images par seconde
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Qualite {
+    pub debit_mbps: u32,
+    pub ips: u32,
+    /// Qualité constante de l'encodeur du processeur (plus petit = meilleur)
+    pub crf: u32,
+}
+
+impl Qualite {
+    /// Standard 12, haute 20, ultra 40 Mbit/s à 60 images/s ; ×1,5 à 120 images/s
+    pub fn depuis(niveau: &str, ips: u32) -> Self {
+        let ips = if ips >= 120 { 120 } else { 60 };
+        let (base, crf) = match niveau {
+            "standard" => (12, 26),
+            "ultra" => (40, 19),
+            _ => (20, 23),
+        };
+        Qualite { debit_mbps: if ips == 120 { base * 3 / 2 } else { base }, ips, crf }
+    }
+}
+
+/// Capture d'écran de FFmpeg : écran principal, sans le curseur
+pub fn source_ecran(ips: u32) -> String {
+    format!("ddagrab=output_idx=0:framerate={ips}:draw_mouse=0")
+}
+
 /// Arguments FFmpeg de l'enregistrement. `base_us` : instant de référence (µs depuis 1970) commun au son et à l'image.
-pub fn arguments(source_video: &str, audio: Option<crate::audio::Format>, encodeur: Encodeur, base_us: i64, sortie: &Path) -> Vec<String> {
+pub fn arguments(source_video: &str, audio: Option<crate::audio::Format>, encodeur: Encodeur, qualite: Qualite, base_us: i64, sortie: &Path) -> Vec<String> {
     let mut a: Vec<String> = ["-hide_banner", "-loglevel", "error", "-y"].iter().map(|s| s.to_string()).collect();
     if let Some(f) = audio {
         a.extend(
@@ -186,12 +213,15 @@ pub fn arguments(source_video: &str, audio: Option<crate::audio::Format>, encode
     if audio.is_some() {
         a.extend(["-map", "[a]", "-c:a", "aac", "-b:a", "160k"].iter().map(|s| s.to_string()));
     }
-    let gop = (60 * MORCEAU_S).to_string();
+    // Une image clé toutes les 2 s : les morceaux du tampon commencent tous par une image complète
+    let gop = (qualite.ips * MORCEAU_S).to_string();
+    let debit = format!("{}M", qualite.debit_mbps);
+    let crf = qualite.crf.to_string();
     let video: Vec<&str> = match encodeur {
-        Encodeur::Nvidia => vec!["-c:v", "h264_nvenc", "-preset", "p4", "-tune", "ll", "-rc", "cbr", "-b:v", "20M", "-bf", "0"],
-        Encodeur::Amd => vec!["-c:v", "h264_amf", "-usage", "lowlatency", "-quality", "speed", "-rc", "cbr", "-b:v", "20M"],
-        Encodeur::Intel => vec!["-c:v", "h264_qsv", "-preset", "veryfast", "-b:v", "20M"],
-        Encodeur::Logiciel => vec!["-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency", "-crf", "23"],
+        Encodeur::Nvidia => vec!["-c:v", "h264_nvenc", "-preset", "p4", "-tune", "ll", "-rc", "cbr", "-b:v", &debit, "-bf", "0"],
+        Encodeur::Amd => vec!["-c:v", "h264_amf", "-usage", "lowlatency", "-quality", "speed", "-rc", "cbr", "-b:v", &debit],
+        Encodeur::Intel => vec!["-c:v", "h264_qsv", "-preset", "veryfast", "-b:v", &debit],
+        Encodeur::Logiciel => vec!["-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency", "-crf", &crf],
     };
     a.extend(video.iter().map(|s| s.to_string()));
     a.extend(
@@ -206,8 +236,6 @@ pub fn arguments(source_video: &str, audio: Option<crate::audio::Format>, encode
     a
 }
 
-/// Capture d'écran de FFmpeg : écran principal à 60 images/s, sans le curseur
-pub const ECRAN: &str = "ddagrab=output_idx=0:framerate=60:draw_mouse=0";
 
 pub struct Enregistreur {
     enfant: Child,
@@ -215,6 +243,7 @@ pub struct Enregistreur {
     pub dossier: PathBuf,
     pub jeu: String,
     pub encodeur: Encodeur,
+    qualite: Qualite,
     /// Horloge commune gardée d'un redémarrage à l'autre : les morceaux restent bout à bout
     base_us: i64,
     /// Redémarrages pendant la partie (changement de résolution, plein écran…)
@@ -232,7 +261,7 @@ impl Enregistreur {
         let _ = self.enfant.kill();
         let _ = self.enfant.wait();
         self.relances += 1;
-        let (enfant, son) = lancer_ffmpeg(stock, self.encodeur, &self.dossier, self.base_us)?;
+        let (enfant, son) = lancer_ffmpeg(stock, self.encodeur, self.qualite, &self.dossier, self.base_us)?;
         self.enfant = enfant;
         self._son = son;
         Ok(())
@@ -247,9 +276,9 @@ impl Drop for Enregistreur {
     }
 }
 
-fn lancer_ffmpeg(stock: &Stockage, encodeur: Encodeur, dossier: &Path, base_us: i64) -> Result<(Child, Option<crate::audio::Capture>), String> {
+fn lancer_ffmpeg(stock: &Stockage, encodeur: Encodeur, qualite: Qualite, dossier: &Path, base_us: i64) -> Result<(Child, Option<crate::audio::Capture>), String> {
     let son = crate::audio::ouvrir().ok();
-    let args = arguments(ECRAN, son.as_ref().map(|(f, _)| *f), encodeur, base_us, dossier);
+    let args = arguments(&source_ecran(qualite.ips), son.as_ref().map(|(f, _)| *f), encodeur, qualite, base_us, dossier);
     let mut enfant = Command::new(ffmpeg(stock))
         .args(&args)
         .stdin(if son.is_some() { Stdio::piped() } else { Stdio::null() })
@@ -288,9 +317,13 @@ pub fn demarrer(stock: &Stockage, jeu: &str) -> Result<Enregistreur, String> {
     fs::create_dir_all(&dossier).map_err(|e| e.to_string())?;
     let mut erreurs = Vec::new();
     let base_us = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_micros() as i64);
+    let qualite = {
+        let r = &stock.donnees.lock().unwrap().reglages;
+        Qualite::depuis(&r.clips_qualite, r.clips_ips)
+    };
     for encodeur in [encodeur_conseille(), Encodeur::Logiciel] {
-        match lancer_ffmpeg(stock, encodeur, &dossier, base_us) {
-            Ok((enfant, son)) => return Ok(Enregistreur { enfant, _son: son, dossier, jeu: jeu.into(), encodeur, base_us, relances: 0 }),
+        match lancer_ffmpeg(stock, encodeur, qualite, &dossier, base_us) {
+            Ok((enfant, son)) => return Ok(Enregistreur { enfant, _son: son, dossier, jeu: jeu.into(), encodeur, qualite, base_us, relances: 0 }),
             Err(e) => erreurs.push(e),
         }
         if encodeur == Encodeur::Logiciel {
@@ -649,7 +682,7 @@ mod tests {
         // Image de test + silence envoyé comme le ferait la capture du son
         let format = crate::audio::Format { frequence: 48000, canaux: 2, flottant: true };
         let base = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_micros() as i64;
-        let args = arguments("testsrc2=size=640x360:rate=60", Some(format), Encodeur::Logiciel, base, &dossier);
+        let args = arguments("testsrc2=size=640x360:rate=60", Some(format), Encodeur::Logiciel, Qualite::depuis("haute", 60), base, &dossier);
         let mut enfant = Command::new(ffmpeg(&stock)).args(&args).stdin(Stdio::piped()).stderr(Stdio::piped()).spawn().unwrap();
         let mut entree = enfant.stdin.take().unwrap();
         let debut = Instant::now();
@@ -709,11 +742,14 @@ mod tests {
     #[test]
     fn arguments_nvidia_avec_son() {
         let f = crate::audio::Format { frequence: 48000, canaux: 2, flottant: true };
-        let a = arguments(ECRAN, Some(f), Encodeur::Nvidia, 1_000_000, Path::new(r"C:\t"));
+        let a = arguments(&source_ecran(120), Some(f), Encodeur::Nvidia, Qualite::depuis("ultra", 120), 1_000_000, Path::new(r"C:\t"));
         let texte = a.join(" ");
         assert!(texte.contains("-f f32le -ar 48000 -ac 2 -i pipe:0"));
         assert!(texte.contains("[1:v]setpts=(RTCTIME-1000000)/(1000000*TB)[v]"));
         assert!(texte.contains("h264_nvenc") && texte.contains("-segment_wrap 124"));
+        assert!(texte.contains("framerate=120") && texte.contains("-b:v 60M") && texte.contains("-g 240"));
+        assert_eq!(Qualite::depuis("standard", 60), Qualite { debit_mbps: 12, ips: 60, crf: 26 });
+        assert_eq!(Qualite::depuis("inconnu", 90).debit_mbps, 20);
         assert!(a.last().unwrap().ends_with(r"m%03d.ts"));
     }
 }

@@ -343,6 +343,19 @@
             <button id="clips-touche" class="touche-clavier" title="Clique puis appuie sur la touche voulue">F8</button>
           </div>
         </div>
+        <div class="clips-options">
+          <div class="clips-option">
+            <span class="etiquette-option">Qualité</span>
+            <div class="choix-duree" id="clips-qualite">
+              <button data-qualite="standard" title="12 Mbit/s : fichiers légers">Standard</button><button data-qualite="haute" title="20 Mbit/s : conseillé">Haute</button><button data-qualite="ultra" title="40 Mbit/s : presque sans perte, fichiers lourds">Ultra</button>
+            </div>
+          </div>
+          <div class="clips-option">
+            <span class="etiquette-option">Images/s</span>
+            <div class="choix-duree" id="clips-ips"><button data-ips="60">60</button><button data-ips="120" title="Pour des ralentis fluides">120</button></div>
+          </div>
+          <span id="clips-poids" class="etiquette-option"></span>
+        </div>
         <div class="clips-options clips-auto-ligne">
           <label class="bascule clips-auto" title="À chaque fin de manche, FPS Cagoule lit le replay de R6 et garde tes multi-kills. Le « Match Replay » doit être activé dans R6."><input type="checkbox" id="clips-auto"><span></span> Clips auto dans R6</label>
           <div class="choix-duree" id="clips-kills" aria-label="Multi-kills à garder">

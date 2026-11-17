@@ -2595,6 +2595,11 @@ function afficherClips() {
         ? `Enregistrement en cours · ${touche} pour garder le moment`
         : `Prêt : appuie sur ${touche} en jeu`;
   document.querySelectorAll('.clips-options').forEach((o) => o.classList.toggle('inactif', !reglages.clips));
+  document.querySelectorAll('#clips-qualite button').forEach((b) => b.classList.toggle('actif', b.dataset.qualite === (reglages.clips_qualite || 'haute')));
+  document.querySelectorAll('#clips-ips button').forEach((b) => b.classList.toggle('actif', Number(b.dataset.ips) === (reglages.clips_ips || 60)));
+  // Poids d'une minute de clip : débit (Mbit/s) × 60 s ÷ 8, plus le son
+  const debit = ({ standard: 12, haute: 20, ultra: 40 }[reglages.clips_qualite] || 20) * ((reglages.clips_ips || 60) >= 120 ? 1.5 : 1);
+  $('#clips-poids').textContent = `≈ ${Math.round((debit * 60) / 8 + 1)} Mo par minute`;
   document.querySelectorAll('#clips-kills button').forEach((b) => b.classList.toggle('actif', (reglages.clips_auto_kills || []).includes(Number(b.dataset.kills))));
   if (clipsEtat) {
     $('#clips-dossier-chemin').textContent = clipsEtat.dossier;
@@ -2787,6 +2792,23 @@ $('#clips-touche').addEventListener('click', (e) => {
     if (await reglerClips({ touche: { modificateurs, vk, nom } })) toast(`Touche des clips : ${nom}`);
   };
   window.addEventListener('keydown', ecouter, true);
+});
+
+$('#clips-qualite').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-qualite]');
+  if (!b) return;
+  reglages.clips_qualite = b.dataset.qualite;
+  sauverReglages();
+  afficherClips();
+  if (clipsEtat?.enregistrement) toast('Nouvelle qualité dès ta prochaine partie.');
+});
+$('#clips-ips').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-ips]');
+  if (!b) return;
+  reglages.clips_ips = Number(b.dataset.ips);
+  sauverReglages();
+  afficherClips();
+  if (clipsEtat?.enregistrement) toast('Nouveau réglage dès ta prochaine partie.');
 });
 
 $('#clips-kills').addEventListener('click', (e) => {
@@ -3636,7 +3658,7 @@ const NOUVEAUTES = {
   '0.26.0': [
     { icone: 'clips', titre: 'Clips automatiques dans R6', texte: 'Tes 2K, 3K, 4K ou ACE (au choix) sont gardés tout seuls : « 3K · Ace · Clubhouse · TonPseudo ». Laisse le Match Replay activé dans R6.' },
     { icone: 'montage', titre: 'Monte tes clips', texte: 'Tes clips sont rangés par jeu, avec une recherche et des filtres 2K à ACE. Clique sur un clip pour le couper : tes kills, KO et morts sont marqués sur la timeline.' },
-    { icone: 'dossier', titre: 'Clips sur ton serveur', texte: 'Choisis le dossier des clips, même un dossier réseau. Serveur éteint ? Le clip reste sur ton PC.' },
+    { icone: 'dossier', titre: 'Clips sur ton serveur', texte: 'Choisis le dossier des clips, même un dossier réseau, et leur qualité (jusqu\'à Ultra en 120 images/s).' },
   ],
   '0.25.0': [
     { icone: 'clips', titre: 'Tes clips, comme Medal', texte: 'Jeux → Clips : active l\'enregistrement, choisis ta touche et la durée. En jeu, elle garde les 30 s, 1 min ou 3 min d\'avant.' },

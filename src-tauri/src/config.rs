@@ -43,6 +43,10 @@ pub struct Reglages {
     pub clips_auto_kills: Vec<u8>,
     /// Dossier des clips choisi (dossier réseau possible), sinon Vidéos\FPS Cagoule
     pub clips_dossier: Option<String>,
+    /// Qualité des clips : « standard », « haute » ou « ultra »
+    pub clips_qualite: String,
+    /// Images par seconde des clips : 60 ou 120
+    pub clips_ips: u32,
 }
 
 /// Raccourci clavier (modificateurs MOD_ALT 1, MOD_CONTROL 2, MOD_SHIFT 4 ; code de touche virtuelle Windows)
@@ -72,7 +76,7 @@ pub fn applis_fond_par_defaut() -> Vec<String> {
 
 impl Default for Reglages {
     fn default() -> Self {
-        Self { boost_auto: true, boost_max: false, mesure_fps: true, overlay: false, maj_auto: true, couleurs_en_jeu: false, fermer_applis: vec![], assistant_fait: false, mode_simple: false, oc_protection: true, priorite_basse: true, priorite_basse_applis: applis_fond_par_defaut(), discord: true, clips: false, clips_duree_s: 30, clips_touche: Touche::default(), clips_auto: true, clips_auto_kills: vec![2, 3, 4, 5], clips_dossier: None }
+        Self { boost_auto: true, boost_max: false, mesure_fps: true, overlay: false, maj_auto: true, couleurs_en_jeu: false, fermer_applis: vec![], assistant_fait: false, mode_simple: false, oc_protection: true, priorite_basse: true, priorite_basse_applis: applis_fond_par_defaut(), discord: true, clips: false, clips_duree_s: 30, clips_touche: Touche::default(), clips_auto: true, clips_auto_kills: vec![2, 3, 4, 5], clips_dossier: None, clips_qualite: "haute".into(), clips_ips: 60 }
     }
 }
 
