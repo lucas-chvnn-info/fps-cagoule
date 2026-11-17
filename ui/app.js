@@ -2822,15 +2822,38 @@ $('#clips-kills').addEventListener('click', (e) => {
   afficherClips();
 });
 
-$('#btn-clips-changer').addEventListener('click', async (e) => {
+// Dossier des clips : chemin tapé ou collé (\\serveur\partage), ou choisi avec Parcourir
+function editerDossier(ouvrir) {
+  $('#clips-dossier-edition').hidden = !ouvrir;
+  $('.clips-dossier').hidden = ouvrir;
+  if (ouvrir) {
+    const saisie = $('#clips-dossier-saisie');
+    saisie.value = clipsEtat?.dossier || '';
+    saisie.focus();
+    saisie.select();
+  }
+}
+async function validerDossier(bouton) {
+  const dossier = $('#clips-dossier-saisie').value.trim().replace(/^"|"$/g, '');
+  if (!dossier) return;
   try {
-    const choix = await appel('clips_choisir_dossier', {}, e.currentTarget);
-    if (choix) {
-      reglages.clips_dossier = choix;
-      toast(`Les clips iront dans ${choix}`, 5000);
-      chargerClips();
-    }
+    await appel('clips_dossier_regler', { dossier }, bouton);
+    reglages.clips_dossier = dossier;
+    toast(`Les clips iront dans ${dossier}`, 5000);
+    editerDossier(false);
+    chargerClips();
   } catch {}
+}
+$('#btn-clips-changer').addEventListener('click', () => editerDossier(true));
+$('#btn-clips-annuler-dossier').addEventListener('click', () => editerDossier(false));
+$('#btn-clips-valider').addEventListener('click', (e) => validerDossier(e.currentTarget));
+$('#clips-dossier-saisie').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') validerDossier($('#btn-clips-valider'));
+  if (e.key === 'Escape') editerDossier(false);
+});
+$('#btn-clips-parcourir').addEventListener('click', async (e) => {
+  const choix = await appel('clips_parcourir', {}, e.currentTarget).catch(() => null);
+  if (choix) $('#clips-dossier-saisie').value = choix;
 });
 $('#btn-clips-defaut').addEventListener('click', async (e) => {
   await appel('clips_dossier_regler', { dossier: null }, e.currentTarget).catch(() => {});

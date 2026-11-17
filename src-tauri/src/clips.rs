@@ -59,19 +59,16 @@ pub fn accessible(dossier: &Path) -> bool {
     ok
 }
 
-/// Fenêtre Windows de choix d'un dossier (dossiers réseau compris)
-pub fn choisir_dossier(depart: &Path) -> Option<String> {
+/// Fenêtre Windows de choix d'un dossier, avec un champ où taper un chemin réseau (\\serveur\partage),
+/// même quand Windows ne montre pas les serveurs du réseau. `fenetre` : fenêtre de l'app, pour s'ouvrir devant elle.
+pub fn choisir_dossier(fenetre: isize) -> Option<String> {
+    // BIF_RETURNONLYFSDIRS | BIF_EDITBOX | BIF_NEWDIALOGSTYLE | BIF_SHAREABLE
     let script = format!(
-        r#"Add-Type -AssemblyName System.Windows.Forms
-$f = New-Object System.Windows.Forms.FolderBrowserDialog
-$f.Description = 'Dossier des clips de FPS Cagoule'
-$f.ShowNewFolderButton = $true
-$f.SelectedPath = {}
-$haut = New-Object System.Windows.Forms.Form -Property @{{ TopMost = $true }}
-if ($f.ShowDialog($haut) -eq 'OK') {{ $f.SelectedPath }}"#,
-        crate::ps::chaine(&depart.to_string_lossy())
+        r#"$s = New-Object -ComObject Shell.Application
+$d = $s.BrowseForFolder({fenetre}, 'Dossier des clips. Pour un serveur, tape son chemin, par exemple \\192.168.1.10\partage', 0x8051, 0)
+if ($d) {{ $d.Self.Path }}"#
     );
-    crate::ps::executer(&script).ok().map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
+    crate::ps::executer(&script).ok().map(|s| s.trim().to_string()).filter(|s| !s.is_empty() && !s.starts_with("::"))
 }
 
 pub fn dossier_defaut() -> PathBuf {

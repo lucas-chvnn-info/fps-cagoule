@@ -488,13 +488,11 @@ fn autoriser_dossiers_clips(app: &AppHandle) {
     }
 }
 
-/// Ouvre la fenêtre de choix d'un dossier et le garde s'il accepte l'écriture
+/// Fenêtre Windows de choix d'un dossier (le chemin choisi est seulement renvoyé, pas encore gardé)
 #[tauri::command(async)]
-fn clips_choisir_dossier(app: AppHandle) -> Res<Option<String>> {
-    let e = etat(&app);
-    let Some(choix) = clips::choisir_dossier(&clips::dossier_clips(&e.stock)) else { return Ok(None) };
-    clips_dossier_regler(app, Some(choix.clone()))?;
-    Ok(Some(choix))
+fn clips_parcourir(app: AppHandle) -> Option<String> {
+    let fenetre = app.get_webview_window("main").and_then(|f| f.hwnd().ok()).map_or(0, |h| h.0 as isize);
+    clips::choisir_dossier(fenetre)
 }
 
 /// Dossier des clips (None = Vidéos\FPS Cagoule)
@@ -502,7 +500,11 @@ fn clips_choisir_dossier(app: AppHandle) -> Res<Option<String>> {
 fn clips_dossier_regler(app: AppHandle, dossier: Option<String>) -> Res<()> {
     if let Some(d) = &dossier {
         if !clips::accessible(std::path::Path::new(d)) {
-            return Err("Impossible d'écrire dans ce dossier (serveur éteint, droits…). Choisis-en un autre.".into());
+            return Err(if d.starts_with(r"\\") {
+                "Windows n'arrive pas à écrire sur ce serveur. Vérifie le chemin, puis ouvre-le une fois dans l'Explorateur pour enregistrer ton identifiant.".into()
+            } else {
+                "Impossible d'écrire dans ce dossier. Choisis-en un autre.".into()
+            });
         }
     }
     let e = etat(&app);
@@ -852,7 +854,7 @@ fn main() {
             clips_liste,
             clips_ouvrir,
             clips_supprimer,
-            clips_choisir_dossier,
+            clips_parcourir,
             clips_dossier_regler,
             clips_exporter,
             comptes_steam,

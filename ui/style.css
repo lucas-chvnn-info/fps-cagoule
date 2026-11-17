@@ -1095,3 +1095,5 @@ kbd { font: 600 12px/1 inherit; padding: 3px 7px; border-radius: 6px; background
 .dossier-pied strong { font-size: 14.5px; }
 .dossier-pied small { color: var(--discret); font-size: 12px; }
 .clip-pied small { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.clips-dossier-edition { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.clips-dossier-edition input { flex: 1; min-width: 260px; font-family: Consolas, monospace; font-size: 13px; }
