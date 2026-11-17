@@ -3170,7 +3170,7 @@ const NOUVEAUTES = {
     { icone: 'courbe', titre: 'La courbe de tes FPS', texte: 'Dans Statistiques, vois chaque partie seconde par seconde et repère les chutes.' },
     { icone: 'chaud', titre: 'Alerte température', texte: 'Si ta carte graphique dépasse 85 °C en jeu, l\'app te prévient avec des conseils.' },
     { icone: 'discord', titre: 'Statut Discord', texte: 'Tes potes voient à quoi tu joues et tes FPS, boostés par FPS Cagoule.' },
-    { icone: 'reglages', titre: 'Plus de jeux optimisés', texte: 'Les réglages en jeu couvrent maintenant plus de jeux.' },
+    { icone: 'reglages', titre: '3 jeux de plus optimisés', texte: 'Overwatch 2, GTA V et Minecraft ont maintenant leurs réglages en jeu, en un clic sur l\'éclair.' },
   ],
 };
 

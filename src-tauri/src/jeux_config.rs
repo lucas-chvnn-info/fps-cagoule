@@ -23,6 +23,7 @@ const fn r(section: Option<&'static str>, cle: &'static str, valeur: &'static st
 #[derive(Clone, Copy)]
 enum Base {
     LocalAppData,
+    AppData,
     Documents,
     PartiesEnregistrees,
     Steam,
@@ -33,9 +34,8 @@ struct Jeu {
     nom: &'static str,
     exes: &'static [&'static str],
     format: Format,
-    base: Base,
-    /// Chemin sous la base ; « * » = un dossier par compte
-    motif: &'static str,
+    /// Emplacements possibles du fichier (base + chemin) ; « * » = un dossier par compte
+    chemins: &'static [(Base, &'static str)],
     reglages: &'static [Reglage],
     note: &'static str,
 }
@@ -43,6 +43,7 @@ struct Jeu {
 const SG: Option<&str> = Some("ScalabilityGroups");
 const RL: Option<&str> = Some("SystemSettings");
 const R6: Option<&str> = Some("CUSTOM_PRESET_SETTINGS");
+const OW: Option<&str> = Some("Render.13");
 
 const JEUX: &[Jeu] = &[
     Jeu {
@@ -50,8 +51,7 @@ const JEUX: &[Jeu] = &[
         nom: "Fortnite",
         exes: &["FortniteClient-Win64-Shipping.exe"],
         format: Format::Ini,
-        base: Base::LocalAppData,
-        motif: r"FortniteGame\Saved\Config\WindowsClient\GameUserSettings.ini",
+        chemins: &[(Base::LocalAppData, r"FortniteGame\Saved\Config\WindowsClient\GameUserSettings.ini")],
         reglages: &[
             r(None, "bUseVSync", "False", "V-Sync désactivée"),
             r(None, "bMotionBlur", "False", "Flou de mouvement coupé"),
@@ -70,8 +70,7 @@ const JEUX: &[Jeu] = &[
         nom: "Valorant",
         exes: &["VALORANT-Win64-Shipping.exe"],
         format: Format::Ini,
-        base: Base::LocalAppData,
-        motif: r"VALORANT\Saved\Config\*\Windows\GameUserSettings.ini",
+        chemins: &[(Base::LocalAppData, r"VALORANT\Saved\Config\*\Windows\GameUserSettings.ini")],
         reglages: &[
             r(None, "bUseVSync", "False", "V-Sync désactivée"),
             r(SG, "sg.ShadowQuality", "0", "Ombres au minimum"),
@@ -86,8 +85,7 @@ const JEUX: &[Jeu] = &[
         nom: "Rainbow Six Siege",
         exes: &["RainbowSix.exe", "RainbowSix_Vulkan.exe", "RainbowSix_DX12.exe"],
         format: Format::Ini,
-        base: Base::Documents,
-        motif: r"My Games\Rainbow Six - Siege\*\GameSettings.ini",
+        chemins: &[(Base::Documents, r"My Games\Rainbow Six - Siege\*\GameSettings.ini")],
         reglages: &[
             r(None, "VSync", "0", "V-Sync désactivée"),
             r(None, "MaxGPUBufferedFrame", "1", "Une seule image en attente (moins de latence)"),
@@ -104,8 +102,7 @@ const JEUX: &[Jeu] = &[
         nom: "Counter-Strike 2",
         exes: &["cs2.exe"],
         format: Format::Valve,
-        base: Base::Steam,
-        motif: r"userdata\*\730\local\cfg\cs2_video.txt",
+        chemins: &[(Base::Steam, r"userdata\*\730\local\cfg\cs2_video.txt")],
         reglages: &[
             r(None, "setting.mat_vsync", "0", "V-Sync désactivée"),
             r(None, "setting.r_low_latency", "1", "NVIDIA Reflex activé"),
@@ -118,8 +115,7 @@ const JEUX: &[Jeu] = &[
         nom: "Apex Legends",
         exes: &["r5apex.exe", "r5apex_dx12.exe"],
         format: Format::Valve,
-        base: Base::PartiesEnregistrees,
-        motif: r"Respawn\Apex\local\videoconfig.txt",
+        chemins: &[(Base::PartiesEnregistrees, r"Respawn\Apex\local\videoconfig.txt")],
         reglages: &[
             r(None, "setting.mat_vsync_mode", "0", "V-Sync désactivée"),
             r(None, "setting.mat_backbuffer_count", "0", "Moins d'images en attente (moins de latence)"),
@@ -135,8 +131,7 @@ const JEUX: &[Jeu] = &[
         nom: "Rocket League",
         exes: &["RocketLeague.exe"],
         format: Format::Ini,
-        base: Base::Documents,
-        motif: r"My Games\Rocket League\TAGame\Config\TASystemSettings.ini",
+        chemins: &[(Base::Documents, r"My Games\Rocket League\TAGame\Config\TASystemSettings.ini")],
         reglages: &[
             r(RL, "UseVsync", "False", "V-Sync désactivée"),
             r(RL, "MotionBlur", "False", "Flou de mouvement coupé"),
@@ -153,8 +148,7 @@ const JEUX: &[Jeu] = &[
         nom: "Marvel Rivals",
         exes: &["Marvel-Win64-Shipping.exe"],
         format: Format::Ini,
-        base: Base::LocalAppData,
-        motif: r"Marvel\Saved\Config\Windows\GameUserSettings.ini",
+        chemins: &[(Base::LocalAppData, r"Marvel\Saved\Config\Windows\GameUserSettings.ini")],
         reglages: &[
             r(None, "bUseVSync", "False", "V-Sync désactivée"),
             r(SG, "sg.ShadowQuality", "0", "Ombres au minimum"),
@@ -170,8 +164,7 @@ const JEUX: &[Jeu] = &[
         nom: "The Finals",
         exes: &["Discovery.exe"],
         format: Format::Ini,
-        base: Base::LocalAppData,
-        motif: r"Discovery\Saved\Config\WindowsClient\GameUserSettings.ini",
+        chemins: &[(Base::LocalAppData, r"Discovery\Saved\Config\WindowsClient\GameUserSettings.ini")],
         reglages: &[
             r(None, "bUseVSync", "False", "V-Sync désactivée"),
             r(SG, "sg.ShadowQuality", "0", "Ombres au minimum"),
@@ -181,6 +174,55 @@ const JEUX: &[Jeu] = &[
             r(SG, "sg.EffectsQuality", "0", "Effets au minimum"),
         ],
         note: "Textures et distance d'affichage gardées.",
+    },
+    Jeu {
+        id: "overwatch",
+        nom: "Overwatch 2",
+        exes: &["Overwatch.exe"],
+        format: Format::Ini,
+        chemins: &[(Base::Documents, r"Overwatch\Settings\Settings_v0.ini")],
+        reglages: &[
+            r(OW, "TripleBufferingEnabled", "0", "Triple tampon coupé (moins de latence)"),
+            r(OW, "SSAOEnabled", "0", "Occlusion ambiante coupée"),
+            r(OW, "LocalReflections", "0", "Réflexions locales coupées"),
+            r(OW, "SSLRDetailLevel", "0", "Réflexions à l'écran au minimum"),
+            r(OW, "RefractionDetail", "0", "Réfraction au minimum"),
+            r(OW, "LocalFogDetail", "0", "Brouillard au minimum (meilleure visibilité)"),
+        ],
+        note: "Ombres, textures et effets des capacités gardés. Si tu changes les graphismes dans le jeu, il réécrit le fichier.",
+    },
+    Jeu {
+        id: "gta-v",
+        nom: "GTA V",
+        exes: &["GTA5.exe", "GTA5_Enhanced.exe"],
+        format: Format::XmlValeur,
+        chemins: &[(Base::Documents, r"Rockstar Games\GTAV Enhanced\settings.xml"), (Base::Documents, r"Rockstar Games\GTA V\settings.xml")],
+        reglages: &[
+            r(None, "VSync", "0", "V-Sync désactivée"),
+            r(None, "MotionBlurStrength", "0.000000", "Flou de mouvement coupé"),
+            r(None, "DoF", "false", "Profondeur de champ coupée"),
+            r(None, "SSAO", "0", "Occlusion ambiante coupée"),
+            r(None, "ReflectionMSAA", "0", "Anticrénelage des reflets coupé"),
+            r(None, "Lighting_FogVolumes", "false", "Volumes de brouillard coupés"),
+        ],
+        note: "Textures et distance d'affichage gardées. Édition Legacy et Enhanced.",
+    },
+    Jeu {
+        id: "minecraft",
+        nom: "Minecraft",
+        exes: &["Minecraft.Windows.exe"],
+        format: Format::DeuxPoints,
+        chemins: &[
+            (Base::AppData, r"Minecraft Bedrock\Users\*\games\com.mojang\minecraftpe\options.txt"),
+            (Base::LocalAppData, r"Packages\Microsoft.MinecraftUWP_8wekyb3d8bbwe\LocalState\games\com.mojang\minecraftpe\options.txt"),
+        ],
+        reglages: &[
+            r(None, "gfx_vsync", "0", "V-Sync désactivée"),
+            r(None, "graphics_mode", "0", "Graphismes simples (au lieu de « Vibrant Visuals »)"),
+            r(None, "gfx_toggleclouds", "0", "Nuages coupés"),
+            r(None, "gfx_bubble_particles", "0", "Particules de bulles coupées"),
+        ],
+        note: "Minecraft pour Windows (Bedrock). Distance d'affichage gardée.",
     },
 ];
 
@@ -203,6 +245,7 @@ fn base(b: Base) -> Option<PathBuf> {
     use windows_sys::Win32::UI::Shell::{FOLDERID_Documents, FOLDERID_SavedGames};
     match b {
         Base::LocalAppData => std::env::var("LOCALAPPDATA").ok().map(PathBuf::from),
+        Base::AppData => std::env::var("APPDATA").ok().map(PathBuf::from),
         // Dossiers connus : ils peuvent être déplacés (OneDrive…)
         Base::Documents => dossier_connu(&FOLDERID_Documents),
         Base::PartiesEnregistrees => dossier_connu(&FOLDERID_SavedGames),
@@ -216,9 +259,16 @@ fn base(b: Base) -> Option<PathBuf> {
 
 /// Fichiers de configuration du jeu (un par compte quand le motif contient « * »).
 fn fichiers(jeu: &Jeu) -> Vec<PathBuf> {
-    let Some(racine) = base(jeu.base) else { return vec![] };
+    let mut trouves: Vec<PathBuf> = jeu.chemins.iter().flat_map(|(b, motif)| fichiers_motif(*b, motif)).collect();
+    // Le plus récemment utilisé d'abord (c'est lui qu'on affiche)
+    trouves.sort_by_key(|p| std::cmp::Reverse(std::fs::metadata(p).and_then(|m| m.modified()).ok()));
+    trouves
+}
+
+fn fichiers_motif(b: Base, motif: &str) -> Vec<PathBuf> {
+    let Some(racine) = base(b) else { return vec![] };
     let mut chemins = vec![racine];
-    for morceau in jeu.motif.split('\\') {
+    for morceau in motif.split('\\') {
         chemins = chemins
             .into_iter()
             .flat_map(|c| -> Vec<PathBuf> {
@@ -230,10 +280,7 @@ fn fichiers(jeu: &Jeu) -> Vec<PathBuf> {
             })
             .collect();
     }
-    let mut trouves: Vec<PathBuf> = chemins.into_iter().filter(|p| p.is_file()).collect();
-    // Le plus récemment utilisé d'abord (c'est lui qu'on affiche)
-    trouves.sort_by_key(|p| std::cmp::Reverse(std::fs::metadata(p).and_then(|m| m.modified()).ok()));
-    trouves
+    chemins.into_iter().filter(|p| p.is_file()).collect()
 }
 
 fn changements(jeu: &Jeu) -> Vec<Changement<'static>> {

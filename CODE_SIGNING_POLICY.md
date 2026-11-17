@@ -36,6 +36,10 @@ The app only connects to the network for these user-visible features:
 - **Game covers**: when the "My games" page is opened, covers missing from the local Steam/Epic caches are downloaded once per game from
   Steam (`store.steampowered.com` search by game name, `shared.akamai.steamstatic.com` images) or from Epic's image CDN (`cdn1.epicgames.com`),
   then kept in `%APPDATA%\FPS Cagoule\images`. Only the game name is sent.
+- **Discord status** (optional, Settings): during a game, the app talks to the Discord app running on the same PC through its local
+  connection (no internet request from FPS Cagoule) to show the game name and FPS on the user's profile.
+- **Play button**: opens the game through its launcher (Steam, Epic, Ubisoft Connect, Riot Client) like a desktop shortcut.
+  Switching Steam accounts only edits Steam's own local files (`loginusers.vdf`, auto-login registry value) on the user's PC.
 
 FPS Cagoule ne collecte ni n'envoie aucune donnée personnelle. Les seules connexions sont celles listées ci-dessus, toutes visibles et déclenchées par l'utilisateur (sauf la recherche de mise à jour, désactivable).
 
