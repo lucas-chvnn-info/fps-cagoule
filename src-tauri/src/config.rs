@@ -32,6 +32,25 @@ pub struct Reglages {
     pub priorite_basse_applis: Vec<String>,
     /// Statut Discord pendant les parties (« Joue à … · boosté par FPS Cagoule »)
     pub discord: bool,
+    /// Clips : enregistrement des parties et touche de sauvegarde
+    pub clips: bool,
+    /// Durée sauvegardée par la touche (secondes : 30, 60 ou 180)
+    pub clips_duree_s: u32,
+    pub clips_touche: Touche,
+}
+
+/// Raccourci clavier (modificateurs MOD_ALT 1, MOD_CONTROL 2, MOD_SHIFT 4 ; code de touche virtuelle Windows)
+#[derive(Clone, Serialize, Deserialize, PartialEq)]
+pub struct Touche {
+    pub modificateurs: u32,
+    pub vk: u32,
+    pub nom: String,
+}
+
+impl Default for Touche {
+    fn default() -> Self {
+        Self { modificateurs: 0, vk: 0x77, nom: "F8".into() }
+    }
 }
 
 /// Programmes de fond courants : ils restent ouverts (vocal, musique) mais passent après le jeu
@@ -47,7 +66,7 @@ pub fn applis_fond_par_defaut() -> Vec<String> {
 
 impl Default for Reglages {
     fn default() -> Self {
-        Self { boost_auto: true, boost_max: false, mesure_fps: true, overlay: false, maj_auto: true, couleurs_en_jeu: false, fermer_applis: vec![], assistant_fait: false, mode_simple: false, oc_protection: true, priorite_basse: true, priorite_basse_applis: applis_fond_par_defaut(), discord: true }
+        Self { boost_auto: true, boost_max: false, mesure_fps: true, overlay: false, maj_auto: true, couleurs_en_jeu: false, fermer_applis: vec![], assistant_fait: false, mode_simple: false, oc_protection: true, priorite_basse: true, priorite_basse_applis: applis_fond_par_defaut(), discord: true, clips: false, clips_duree_s: 30, clips_touche: Touche::default() }
     }
 }
 

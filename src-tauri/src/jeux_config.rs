@@ -226,7 +226,7 @@ const JEUX: &[Jeu] = &[
     },
 ];
 
-fn dossier_connu(id: &windows_sys::core::GUID) -> Option<PathBuf> {
+pub(crate) fn dossier_connu(id: &windows_sys::core::GUID) -> Option<PathBuf> {
     use windows_sys::Win32::System::Com::CoTaskMemFree;
     use windows_sys::Win32::UI::Shell::SHGetKnownFolderPath;
     unsafe {

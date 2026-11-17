@@ -2,9 +2,11 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod amd;
+mod audio;
 mod benchmark;
 mod bibliotheques;
 mod bios;
+mod clips;
 mod config;
 mod demarrage;
 mod discord;
@@ -24,6 +26,7 @@ mod pilotes;
 mod maj;
 mod programmes;
 mod ps;
+mod raccourci;
 mod rampe;
 mod reseau;
 mod stats;
@@ -36,7 +39,7 @@ use jeux::{Etat, InfoJeu};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use tauri::{AppHandle, Manager, RunEvent};
+use tauri::{AppHandle, Emitter, Manager, RunEvent};
 
 type Res<T> = Result<T, String>;
 
@@ -436,6 +439,98 @@ fn reglages_set(app: AppHandle, reglages: Reglages) {
     e.stock.donnees.lock().unwrap().reglages = reglages;
     e.stock.sauver();
     jeux::synchroniser_priorites(&e.stock);
+    appliquer_touche(&e);
+}
+
+/// Enregistre la touche des clips auprès de Windows (ou la retire si les clips sont coupés). Faux si elle est déjà prise.
+fn appliquer_touche(e: &Etat) -> bool {
+    let (actif, touche) = {
+        let d = e.stock.donnees.lock().unwrap();
+        (d.reglages.clips, d.reglages.clips_touche.clone())
+    };
+    let r = e.raccourci.lock().unwrap();
+    let Some(r) = r.as_ref() else { return false };
+    r.changer(touche.modificateurs, if actif { touche.vk } else { 0 })
+}
+
+#[derive(Serialize)]
+struct EtatClips {
+    installe: bool,
+    dossier: String,
+    /// Une partie est enregistrée en ce moment
+    enregistrement: bool,
+}
+
+#[tauri::command]
+fn clips_etat(app: AppHandle) -> EtatClips {
+    let e = etat(&app);
+    let enregistrement = e.session.lock().unwrap().as_ref().is_some_and(|s| s.enregistreur.is_some());
+    EtatClips { installe: clips::installe(&e.stock), dossier: clips::dossier_clips().to_string_lossy().into(), enregistrement }
+}
+
+#[derive(Serialize, Clone)]
+struct ProgressionInstallation {
+    recu: u64,
+    total: u64,
+}
+
+#[tauri::command(async)]
+fn clips_installer(app: AppHandle) -> Res<()> {
+    let e = etat(&app);
+    let app2 = app.clone();
+    clips::installer(&e.stock, move |recu, total| {
+        let _ = app2.emit("clips_installation", ProgressionInstallation { recu, total });
+    })
+}
+
+/// Active ou coupe les clips, avec la touche choisie
+#[tauri::command(async)]
+fn clips_regler(app: AppHandle, actif: bool, duree_s: u32, touche: config::Touche) -> Res<()> {
+    if touche.modificateurs == 0 && !raccourci::seule_permise(touche.vk) {
+        return Err("Choisis une touche F1 à F12, ou une touche avec Ctrl, Alt ou Maj : une lettre seule bloquerait ta frappe.".into());
+    }
+    let e = etat(&app);
+    let ancien = {
+        let mut d = e.stock.donnees.lock().unwrap();
+        let ancien = (d.reglages.clips, d.reglages.clips_duree_s, d.reglages.clips_touche.clone());
+        d.reglages.clips = actif;
+        d.reglages.clips_duree_s = duree_s.clamp(10, 180);
+        d.reglages.clips_touche = touche;
+        ancien
+    };
+    if !appliquer_touche(&e) {
+        // Touche déjà prise par une autre appli : on remet l'ancienne
+        {
+            let mut d = e.stock.donnees.lock().unwrap();
+            (d.reglages.clips, d.reglages.clips_duree_s, d.reglages.clips_touche) = ancien;
+        }
+        appliquer_touche(&e);
+        return Err("Cette touche est déjà utilisée par une autre appli (Discord, la Game Bar…). Choisis-en une autre.".into());
+    }
+    e.stock.sauver();
+    Ok(())
+}
+
+#[tauri::command(async)]
+fn clips_liste(app: AppHandle) -> Vec<clips::Clip> {
+    clips::liste(&etat(&app).stock)
+}
+
+#[tauri::command(async)]
+fn clips_ouvrir(chemin: Option<String>) -> Res<()> {
+    match chemin {
+        Some(c) => lancement::ouvrir(&clips::clip_valide(&c)?.to_string_lossy(), "", None),
+        None => {
+            let d = clips::dossier_clips();
+            let _ = std::fs::create_dir_all(&d);
+            lancement::ouvrir(&d.to_string_lossy(), "", None)
+        }
+    }
+}
+
+#[tauri::command(async)]
+fn clips_supprimer(app: AppHandle, chemin: String) -> Res<()> {
+    clips::supprimer(&etat(&app).stock, &chemin)
 }
 
 #[tauri::command(async)]
@@ -637,6 +732,7 @@ fn main() {
                 session: Mutex::new(None),
                 fps_live: Arc::new(Mutex::new(None)),
                 presentmon,
+                raccourci: Mutex::new(None),
             });
             // L'app a été coupée en pleine partie : on remet le plan d'alimentation d'avant
             jeux::restaurer_plan(&etat);
@@ -652,6 +748,15 @@ fn main() {
             }
             jeux::lancer(app.handle().clone());
             maj::lancer(app.handle().clone());
+            // Touche des clips : la sauvegarde se fait dans son propre fil
+            let app_touche = app.handle().clone();
+            let raccourci = raccourci::Raccourci::lancer(move || {
+                let app = app_touche.clone();
+                std::thread::spawn(move || jeux::touche_clips(&app));
+            });
+            let e = app.state::<Arc<Etat>>().inner().clone();
+            *e.raccourci.lock().unwrap() = raccourci;
+            appliquer_touche(&e);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -680,6 +785,12 @@ fn main() {
             jeux_images_chercher,
             jeu_image_choisir,
             jeu_lancer,
+            clips_etat,
+            clips_installer,
+            clips_regler,
+            clips_liste,
+            clips_ouvrir,
+            clips_supprimer,
             comptes_steam,
             jeu_image_effacer,
             amd_etat,

@@ -9,7 +9,7 @@ fn large(s: &str) -> Vec<u16> {
 }
 
 /// Ouvre un lien ou un programme comme un double-clic (ShellExecute)
-fn ouvrir(cible: &str, arguments: &str, dossier: Option<&Path>) -> Result<(), String> {
+pub(crate) fn ouvrir(cible: &str, arguments: &str, dossier: Option<&Path>) -> Result<(), String> {
     use windows_sys::Win32::UI::Shell::ShellExecuteW;
     let (verbe, cible_w, args_w) = (large("open"), large(cible), large(arguments));
     let dossier_w = dossier.map(|d| large(&d.to_string_lossy()));

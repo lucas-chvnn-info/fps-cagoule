@@ -35,6 +35,8 @@ pub struct EnCours {
     vus: Vec<u32>,
     /// Statut Discord de la partie (effacé quand il est lâché)
     presence: Option<crate::discord::Presence>,
+    /// Enregistrement pour les clips (arrêté et tampon effacé quand il est lâché)
+    pub enregistreur: Option<crate::clips::Enregistreur>,
 }
 
 pub struct Etat {
@@ -42,6 +44,8 @@ pub struct Etat {
     pub session: Mutex<Option<EnCours>>,
     pub fps_live: Arc<Mutex<Option<f64>>>,
     pub presentmon: PathBuf,
+    /// Touche de sauvegarde des clips (raccourci global)
+    pub raccourci: Mutex<Option<crate::raccourci::Raccourci>>,
 }
 
 #[derive(Serialize, Clone)]
@@ -241,7 +245,11 @@ fn demarrer(app: &AppHandle, etat: &Etat, profil: &crate::config::Profil, pid: u
         abaisses: Vec::new(),
         vus: Vec::new(),
         presence: None,
+        enregistreur: None,
     });
+    if reglages.clips && crate::clips::installe(&etat.stock) {
+        demarrer_clips(app, pid, &profil.nom);
+    }
     if reglages.discord {
         demarrer_discord(etat, profil, boost);
     }
@@ -337,6 +345,52 @@ pub fn terminer(app: &AppHandle, etat: &Etat) {
         let _ = app.emit("alerte_temp", ());
     }
     let _ = app.emit("jeu", None::<InfoJeu>);
+}
+
+/// Démarre l'enregistrement à côté (FFmpeg met quelques secondes à confirmer qu'il tourne)
+fn demarrer_clips(app: &AppHandle, pid: u32, jeu: &str) {
+    let app = app.clone();
+    let jeu = jeu.to_string();
+    let _ = thread::Builder::new().name("clips".into()).spawn(move || {
+        let etat = app.state::<Arc<Etat>>();
+        let resultat = crate::clips::demarrer(&etat.stock, &jeu);
+        let mut session = etat.session.lock().unwrap();
+        match (session.as_mut(), resultat) {
+            // La partie est toujours là : l'enregistrement lui appartient (sinon il s'arrête en étant lâché)
+            (Some(s), Ok(e)) if s.pid == pid => {
+                s.actions.push(format!("Clips : touche prête ({})", match e.encodeur {
+                    crate::clips::Encodeur::Logiciel => "encodage par le processeur",
+                    _ => "encodage par la carte graphique",
+                }));
+                s.enregistreur = Some(e);
+            }
+            (Some(s), Err(e)) if s.pid == pid => s.actions.push(e),
+            _ => {}
+        }
+    });
+}
+
+/// Touche des clips : sauvegarde les dernières secondes de la partie en cours
+pub fn touche_clips(app: &AppHandle) {
+    use windows_sys::Win32::System::Diagnostics::Debug::MessageBeep;
+    use windows_sys::Win32::UI::WindowsAndMessaging::{MB_ICONHAND, MB_OK};
+    let etat = app.state::<Arc<Etat>>();
+    let infos = etat.session.lock().unwrap().as_ref().and_then(|s| s.enregistreur.as_ref().map(|e| (e.dossier.clone(), e.jeu.clone())));
+    let Some((dossier, jeu)) = infos else {
+        unsafe { MessageBeep(MB_ICONHAND) };
+        return;
+    };
+    let duree = etat.stock.donnees.lock().unwrap().reglages.clips_duree_s.clamp(10, 180);
+    match crate::clips::sauver(&etat.stock, &dossier, &jeu, duree, None) {
+        Ok(chemin) => {
+            unsafe { MessageBeep(MB_OK) };
+            let _ = app.emit("clip", chemin.to_string_lossy().to_string());
+        }
+        Err(e) => {
+            unsafe { MessageBeep(MB_ICONHAND) };
+            let _ = app.emit("clip_erreur", e);
+        }
+    }
 }
 
 fn texte_discord(boost: bool, fps: Option<f64>) -> String {
