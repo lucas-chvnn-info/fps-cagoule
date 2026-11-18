@@ -1233,7 +1233,7 @@ mod tests_windows {
         let dossier = std::env::temp_dir().join("fps-cagoule-test");
         let stock = Stockage::ouvrir(dossier);
         let liste = tweaks::liste(&stock);
-        assert_eq!(liste.len(), 72);
+        assert_eq!(liste.len(), 76);
         // Pas de carte AMD sur le PC de GitHub : réglages AMD indisponibles, sans erreur
         assert!(liste.iter().filter(|t| t.tweak.special.as_deref() == Some("amd")).all(|t| !t.disponible));
         assert!(amd::avec(|s| Ok(s.nom())).is_err());
