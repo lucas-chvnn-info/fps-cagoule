@@ -221,11 +221,21 @@ pub fn arguments(source_video: &str, audio: Option<crate::audio::Format>, encode
     let gop = (qualite.ips * MORCEAU_S).to_string();
     let debit = format!("{}M", qualite.debit_mbps);
     let crf = qualite.crf.to_string();
+    // Un clip n'est pas du direct : réglages « qualité » (profil High, images B, analyse en avance, quantification
+    // adaptative) plutôt que « faible latence » (profil Baseline), bien plus net à débit égal, surtout en mouvement.
+    // Débit visé, et jusqu'à 1,5 fois plus dans les scènes chargées.
+    let maxi = format!("{}M", qualite.debit_mbps * 3 / 2);
+    let tampon = format!("{}M", qualite.debit_mbps * 2);
     let video: Vec<&str> = match encodeur {
-        Encodeur::Nvidia => vec!["-c:v", "h264_nvenc", "-preset", "p4", "-tune", "ll", "-rc", "cbr", "-b:v", &debit, "-bf", "0"],
-        Encodeur::Amd => vec!["-c:v", "h264_amf", "-usage", "lowlatency", "-quality", "speed", "-rc", "cbr", "-b:v", &debit],
-        Encodeur::Intel => vec!["-c:v", "h264_qsv", "-preset", "veryfast", "-b:v", &debit],
-        Encodeur::Logiciel => vec!["-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency", "-crf", &crf],
+        Encodeur::Nvidia => vec![
+            "-c:v", "h264_nvenc", "-preset", "p5", "-tune", "hq", "-profile:v", "high", "-rc", "vbr", "-cq", &crf, "-b:v", &debit, "-maxrate", &maxi,
+            "-bufsize", &tampon, "-bf", "2", "-spatial-aq", "1", "-rc-lookahead", "16",
+        ],
+        Encodeur::Amd => vec![
+            "-c:v", "h264_amf", "-usage", "transcoding", "-quality", "quality", "-profile:v", "high", "-rc", "vbr_peak", "-b:v", &debit, "-maxrate", &maxi,
+        ],
+        Encodeur::Intel => vec!["-c:v", "h264_qsv", "-preset", "medium", "-profile:v", "high", "-b:v", &debit, "-maxrate", &maxi],
+        Encodeur::Logiciel => vec!["-c:v", "libx264", "-preset", "superfast", "-profile:v", "high", "-crf", &crf, "-maxrate", &maxi, "-bufsize", &tampon],
     };
     a.extend(video.iter().map(|s| s.to_string()));
     a.extend(
@@ -1090,6 +1100,9 @@ mod tests {
         assert!(texte.contains("[1:v]setpts=(RTCTIME-1000000)/(1000000*TB)[v]"));
         assert!(texte.contains("h264_nvenc") && texte.contains("-segment_wrap 124"));
         assert!(texte.contains("framerate=120") && texte.contains("-b:v 60M") && texte.contains("-g 240"));
+        // Réglages « qualité » : profil High, images B, débit max 1,5 fois le débit visé
+        assert!(texte.contains("-profile:v high") && texte.contains("-tune hq") && texte.contains("-bf 2") && texte.contains("-maxrate 90M"));
+        assert!(!texte.contains("-tune ll") && !texte.contains("cbr"));
         assert_eq!(Qualite::depuis("standard", 60), Qualite { debit_mbps: 12, ips: 60, crf: 26 });
         assert_eq!(Qualite::depuis("inconnu", 90).debit_mbps, 20);
         assert!(a.last().unwrap().ends_with(r"m%03d.ts"));
