@@ -468,12 +468,17 @@ struct EtatClips {
     enregistrement: bool,
     /// Partie en cours mais enregistrement impossible : pourquoi
     probleme: Option<String>,
+    /// Pendant l'enregistrement : « carte graphique » ou « processeur »
+    encodeur: Option<String>,
 }
 
 #[tauri::command]
 fn clips_etat(app: AppHandle) -> EtatClips {
     let e = etat(&app);
-    let (enregistrement, probleme) = e.session.lock().unwrap().as_ref().map_or((false, None), |s| (s.enregistreur.is_some(), s.clips_erreur.clone()));
+    let (enregistrement, probleme, encodeur) = e.session.lock().unwrap().as_ref().map_or((false, None, None), |s| {
+        let encodeur = s.enregistreur.as_ref().map(|r| if r.encodeur == clips::Encodeur::Logiciel { "processeur" } else { "carte graphique" }.to_string());
+        (s.enregistreur.is_some(), s.clips_erreur.clone(), encodeur)
+    });
     let dossier = clips::dossier_clips(&e.stock);
     EtatClips {
         installe: clips::installe(&e.stock),
@@ -482,6 +487,7 @@ fn clips_etat(app: AppHandle) -> EtatClips {
         dossier: dossier.to_string_lossy().into(),
         enregistrement,
         probleme,
+        encodeur,
     }
 }
 

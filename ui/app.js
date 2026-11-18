@@ -2592,7 +2592,7 @@ function afficherClips() {
     : clipsInstallation
       ? 'Installation…'
       : clipsEtat?.enregistrement
-        ? `Enregistrement en cours · ${touche} pour garder le moment`
+        ? `Enregistrement en cours${clipsEtat.encodeur ? ` (${clipsEtat.encodeur})` : ''} · ${touche} pour garder le moment`
         : clipsEtat?.probleme
           ? `Enregistrement impossible : ${clipsEtat.probleme}`
           : `Prêt : appuie sur ${touche} en jeu`;
@@ -3974,6 +3974,10 @@ const ICONES_NOUVEAUTES = {
 };
 
 const NOUVEAUTES = {
+  '0.27.0': [
+    { icone: 'clips', titre: 'Des clips bien plus nets', texte: 'Nouvel encodage pensé pour la qualité : moins de blocs et de flou quand ça bouge, à taille égale. Pour tes prochains clips.' },
+    { icone: 'reglages', titre: '4 optimisations de plus', texte: 'Tâches de télémétrie coupées, logiciels installés tout seuls bloqués, stockage réservé récupéré et recherche du menu Démarrer allégée.' },
+  ],
   '0.26.6': [
     { icone: 'discord', titre: 'Partage tes clips', texte: 'Le bouton 🔗 met ton clip en ligne sur ton site et copie le lien. Avec un webhook, il est posté direct dans ton salon Discord.' },
     { icone: 'clips', titre: 'Le son, à ton goût', texte: 'Règle le volume dans le lecteur (molette ou ↑ ↓, M pour couper). Il est retenu pour les prochains clips.' },
