@@ -57,6 +57,9 @@ pub struct Tweak {
     /// Plusieurs réglages NVIDIA d'un coup : [numéro, valeur voulue]
     #[serde(default)]
     pub reglages_nvidia: Vec<(u32, u32)>,
+    /// Tâches planifiées à désactiver (special = taches), chemin complet : \Dossier\Nom
+    #[serde(default)]
+    pub taches: Vec<String>,
     /// recommande : sans contrepartie notable ; max : plus agressif (consommation, confort), inclus dans « Boost maximum » ;
     /// risque : baisse la sécurité ou touche au démarrage, jamais appliqué en lot
     /// choix : dépend du matériel (ex. écran G-Sync), jamais appliqué en lot non plus
@@ -204,6 +207,54 @@ fn valeurs_nagle() -> Vec<Valeur> {
         }
     }
     v
+}
+
+/* ---------- Tâches planifiées et stockage réservé (une seule lecture PowerShell pour les deux) ---------- */
+
+/// État des tâches (chemin → activée ?) et du stockage réservé (Some(true) = activé, None = inconnu)
+fn lire_taches_reserve(taches: &[String]) -> (std::collections::HashMap<String, bool>, Option<bool>) {
+    let liste = taches.iter().map(|t| ps::chaine(t)).collect::<Vec<_>>().join(",");
+    let script = format!(
+        r#"$t = @{{}}
+foreach ($p in @({liste})) {{
+  $i = $p.LastIndexOf('\')
+  $x = Get-ScheduledTask -TaskPath $p.Substring(0, $i + 1) -TaskName $p.Substring($i + 1) -ErrorAction SilentlyContinue
+  if ($x) {{ $t[$p] = ([string]$x.State -ne 'Disabled') }}
+}}
+$r = $null
+try {{ $r = ([string](Get-WindowsReservedStorageState -ErrorAction Stop).ReservedStorageState) -eq 'Enabled' }} catch {{}}
+@{{ taches = $t; reserve = $r }} | ConvertTo-Json -Compress"#
+    );
+    let Ok(sortie) = ps::executer(&script) else { return (Default::default(), None) };
+    let v: Value = serde_json::from_str(&sortie).unwrap_or_default();
+    let taches = v["taches"].as_object().map(|m| m.iter().filter_map(|(k, b)| Some((k.clone(), b.as_bool()?))).collect()).unwrap_or_default();
+    (taches, v["reserve"].as_bool())
+}
+
+/// Active ou désactive des tâches planifiées (celles absentes sont ignorées)
+fn changer_taches(taches: &[String], activer: bool) -> Result<(), String> {
+    if taches.is_empty() {
+        return Ok(());
+    }
+    let liste = taches.iter().map(|t| ps::chaine(t)).collect::<Vec<_>>().join(",");
+    let action = if activer { "Enable-ScheduledTask" } else { "Disable-ScheduledTask" };
+    let script = format!(
+        r#"$ko = @()
+foreach ($p in @({liste})) {{
+  $i = $p.LastIndexOf('\')
+  $x = Get-ScheduledTask -TaskPath $p.Substring(0, $i + 1) -TaskName $p.Substring($i + 1) -ErrorAction SilentlyContinue
+  if ($x) {{ try {{ $x | {action} -ErrorAction Stop | Out-Null }} catch {{ $ko += $p.Substring($i + 1) }} }}
+}}
+if ($ko.Count) {{ throw ('Tâches non modifiées : ' + ($ko -join ', ')) }}"#
+    );
+    ps::executer(&script).map(|_| ())
+}
+
+fn reserve(activer: bool) -> Result<(), String> {
+    let etat = if activer { "Enabled" } else { "Disabled" };
+    ps::executer(&format!("Set-WindowsReservedStorageState -State {etat} -ErrorAction Stop | Out-Null"))
+        .map(|_| ())
+        .map_err(|e| if e.to_lowercase().contains("use") || e.contains("utilis") { "Windows utilise ce stockage en ce moment (mise à jour en cours) : réessaie après".into() } else { e })
 }
 
 fn valeurs_de(t: &Tweak) -> Vec<Valeur> {
@@ -450,10 +501,21 @@ pub fn liste(stock: &Stockage) -> Vec<TweakEtat> {
         })
         .ok()
     });
+    let toutes_taches: Vec<String> = definitions().iter().flat_map(|t| t.taches.clone()).collect();
+    let (etat_taches, etat_reserve) = lire_taches_reserve(&toutes_taches);
     definitions()
         .iter()
         .map(|t| {
             let (actif, disponible) = match t.special.as_deref() {
+                // Tâches planifiées : proposé si au moins une existe, actif quand toutes celles présentes sont coupées
+                Some("taches") => {
+                    let presentes: Vec<bool> = t.taches.iter().filter_map(|p| etat_taches.get(p).copied()).collect();
+                    (!presentes.is_empty() && presentes.iter().all(|active| !active), !presentes.is_empty())
+                }
+                Some("reserve") => match etat_reserve {
+                    Some(active) => (!active, true),
+                    None => (false, false),
+                },
                 Some("plan") => (
                     systeme::plan_actif().is_some_and(|g| systeme::est_plan_perf(&g, &persos))
                         || systeme::mode_alimentation().as_deref() == Some(systeme::MODE_PERF),
@@ -572,6 +634,34 @@ fn appliquer_un(stock: &Stockage, t: &Tweak) -> Result<(), String> {
             drop(d);
             veille_prolongee(false)
         }
+        Some("taches") => {
+            drop(d);
+            // Sauvegarde : les tâches qui étaient actives (seules elles seront réactivées)
+            let (etat, _) = lire_taches_reserve(&t.taches);
+            let actives: Vec<String> = t.taches.iter().filter(|p| etat.get(*p) == Some(&true)).cloned().collect();
+            if etat.is_empty() {
+                return Err("Aucune de ces tâches n'existe sur ton PC".into());
+            }
+            let mut d = stock.donnees.lock().unwrap();
+            let mut avant: Vec<String> = d.sauvegardes.get(&t.id).and_then(|v| serde_json::from_value(v.clone()).ok()).unwrap_or_default();
+            for a in &actives {
+                if !avant.contains(a) {
+                    avant.push(a.clone());
+                }
+            }
+            d.sauvegardes.insert(t.id.clone(), json!(avant));
+            drop(d);
+            changer_taches(&actives, false)
+        }
+        Some("reserve") => {
+            drop(d);
+            let (_, avant) = lire_taches_reserve(&[]);
+            let avant = avant.ok_or("Ce réglage n'existe pas sur ton Windows")?;
+            if !deja {
+                stock.donnees.lock().unwrap().sauvegardes.insert(t.id.clone(), json!(avant));
+            }
+            reserve(false)
+        }
         Some("bcd") => {
             if !deja {
                 d.sauvegardes.insert(t.id.clone(), lire_bcd(&t.parametre).map_or(Value::Null, Value::String));
@@ -677,6 +767,19 @@ fn annuler_un(stock: &Stockage, t: &Tweak) -> Result<(), String> {
             drop(d);
             if origine.as_bool().unwrap_or(true) {
                 veille_prolongee(true)?;
+            }
+            d = stock.donnees.lock().unwrap();
+        }
+        Some("taches") => {
+            let actives: Vec<String> = serde_json::from_value(origine).unwrap_or_default();
+            drop(d);
+            changer_taches(&actives, true)?;
+            d = stock.donnees.lock().unwrap();
+        }
+        Some("reserve") => {
+            drop(d);
+            if origine.as_bool().unwrap_or(true) {
+                reserve(true)?;
             }
             d = stock.donnees.lock().unwrap();
         }
@@ -803,6 +906,17 @@ mod tests_services {
 
     fn valeur(chemin: &str, nom: &str) -> Valeur {
         serde_json::from_value(json!({ "ruche": "HKLM", "chemin": chemin, "nom": nom, "type": "dword", "valeur": 4 })).unwrap()
+    }
+
+    #[test]
+    fn taches_et_stockage_reserve_lus() {
+        // Lecture seule : les tâches de télémétrie existent sur un Windows normal
+        let toutes: Vec<String> = definitions().iter().flat_map(|t| t.taches.clone()).collect();
+        assert!(toutes.len() >= 5);
+        let (taches, reserve) = lire_taches_reserve(&toutes);
+        println!("tâches trouvées : {taches:?}, stockage réservé : {reserve:?}");
+        assert!(taches.keys().all(|k| toutes.contains(k)));
+        assert!(definitions().iter().any(|t| t.id == "recherche-webview" && t.valeurs.len() == 5));
     }
 
     #[test]

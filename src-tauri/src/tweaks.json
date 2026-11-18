@@ -1099,6 +1099,108 @@
     ]
   },
   {
+    "id": "taches-telemetrie",
+    "categorie": "arriere-plan",
+    "titre": "Couper les tâches planifiées de télémétrie",
+    "description": "Des tâches de Windows (évaluation de compatibilité, programme d'amélioration, rapports d'usage) se lancent seules et peuvent faire ramer le disque et le processeur en pleine partie. Elles ne te servent à rien.",
+    "gain": "moyen",
+    "redemarrage": false,
+    "niveau": "recommande",
+    "special": "taches",
+    "taches": [
+      "\\Microsoft\\Windows\\Application Experience\\Microsoft Compatibility Appraiser",
+      "\\Microsoft\\Windows\\Application Experience\\Microsoft Compatibility Appraiser Exp",
+      "\\Microsoft\\Windows\\Application Experience\\ProgramDataUpdater",
+      "\\Microsoft\\Windows\\Customer Experience Improvement Program\\Consolidator",
+      "\\Microsoft\\Windows\\Customer Experience Improvement Program\\UsbCeip",
+      "\\Microsoft\\Windows\\Customer Experience Improvement Program\\KernelCeipTask",
+      "\\Microsoft\\Windows\\Flighting\\FeatureConfig\\UsageDataReporting",
+      "\\Microsoft\\Windows\\Sustainability\\SustainabilityTelemetry",
+      "\\Microsoft\\Windows\\Windows Media Sharing\\UpdateLibrary"
+    ]
+  },
+  {
+    "id": "installations-auto",
+    "categorie": "arriere-plan",
+    "titre": "Bloquer les logiciels installés tout seuls",
+    "description": "Empêche la carte mère d'installer ses logiciels au démarrage (ex. Armoury Crate) et Windows d'ajouter les applis des appareils que tu branches. Tes périphériques marchent pareil. Prend effet au redémarrage.",
+    "gain": "faible",
+    "redemarrage": true,
+    "niveau": "recommande",
+    "valeurs": [
+      {
+        "ruche": "HKLM",
+        "chemin": "SYSTEM\\CurrentControlSet\\Control\\Session Manager",
+        "nom": "DisableWpbtExecution",
+        "type": "dword",
+        "valeur": 1
+      },
+      {
+        "ruche": "HKLM",
+        "chemin": "SOFTWARE\\Policies\\Microsoft\\Windows\\Device Metadata",
+        "nom": "PreventDeviceMetadataFromNetwork",
+        "type": "dword",
+        "valeur": 1
+      }
+    ]
+  },
+  {
+    "id": "stockage-reserve",
+    "categorie": "windows",
+    "titre": "Récupérer le stockage réservé",
+    "description": "Windows garde 7 à 10 Go de ton disque pour ses mises à jour. Tu les récupères. Si une grosse mise à jour de Windows échoue faute de place, annule ce réglage.",
+    "gain": "faible",
+    "redemarrage": false,
+    "niveau": "max",
+    "special": "reserve"
+  },
+  {
+    "id": "recherche-webview",
+    "categorie": "arriere-plan",
+    "titre": "Alléger la recherche du menu Démarrer",
+    "description": "La recherche du menu Démarrer garde des processus Edge WebView2 ouverts en permanence (100 à 200 Mo). Ils sont coupés et l'ancienne recherche revient. Prend effet au redémarrage.",
+    "gain": "faible",
+    "redemarrage": true,
+    "niveau": "max",
+    "valeurs": [
+      {
+        "ruche": "HKLM",
+        "chemin": "SYSTEM\\CurrentControlSet\\Control\\FeatureManagement\\Overrides\\8\\1694661260",
+        "nom": "EnabledState",
+        "type": "dword",
+        "valeur": 1
+      },
+      {
+        "ruche": "HKLM",
+        "chemin": "SYSTEM\\CurrentControlSet\\Control\\FeatureManagement\\Overrides\\8\\1694661260",
+        "nom": "EnabledStateOptions",
+        "type": "dword",
+        "valeur": 0
+      },
+      {
+        "ruche": "HKLM",
+        "chemin": "SYSTEM\\CurrentControlSet\\Control\\FeatureManagement\\Overrides\\8\\1694661260",
+        "nom": "Variant",
+        "type": "dword",
+        "valeur": 0
+      },
+      {
+        "ruche": "HKLM",
+        "chemin": "SYSTEM\\CurrentControlSet\\Control\\FeatureManagement\\Overrides\\8\\1694661260",
+        "nom": "VariantPayload",
+        "type": "dword",
+        "valeur": 0
+      },
+      {
+        "ruche": "HKLM",
+        "chemin": "SYSTEM\\CurrentControlSet\\Control\\FeatureManagement\\Overrides\\8\\1694661260",
+        "nom": "VariantPayloadKind",
+        "type": "dword",
+        "valeur": 0
+      }
+    ]
+  },
+  {
     "id": "veille-prolongee",
     "categorie": "windows",
     "niveau": "max",
