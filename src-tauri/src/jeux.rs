@@ -43,7 +43,7 @@ pub struct EnCours {
     /// Compte Ubisoft qui joue (lu dans le premier replay de la partie), pour nommer les clips de la touche
     pseudo_r6: Option<String>,
     /// Clips faits à la touche pendant la partie : (fichier, fin, durée en s), pour y ajouter les repères des kills
-    clips_manuels: Vec<(PathBuf, SystemTime, u32)>,
+    clips_manuels: Vec<(PathBuf, SystemTime, f64)>,
     /// Dossiers « MatchReplay » de R6 trouvés pour cette partie
     dossiers_replays: Vec<PathBuf>,
     /// Démarrage de l'enregistrement déjà tenté pour cette partie
@@ -524,8 +524,8 @@ fn surveiller_replays(app: &AppHandle, etat: &Etat, pid: u32) {
             }
             let secondes = crate::replays_r6::duree_clip(&manche, modifie, SystemTime::now());
             let fin = SystemTime::now();
-            if let Ok(chemin) = crate::clips::sauver(&etat.stock, &tampon, &jeu, secondes, Some(&titre)) {
-                crate::clips::ajouter_marqueurs(&etat.stock, &chemin, &reperes_manche(&manche, modifie, fin, secondes));
+            if let Ok((chemin, duree)) = crate::clips::sauver(&etat.stock, &tampon, &jeu, secondes, Some(&titre)) {
+                crate::clips::ajouter_marqueurs(&etat.stock, &chemin, &reperes_manche(&manche, modifie, fin, duree));
                 signaler_clip(&app, &etat.stock, &chemin);
             }
         });
@@ -533,15 +533,15 @@ fn surveiller_replays(app: &AppHandle, etat: &Etat, pid: u32) {
 }
 
 /// Repères d'une manche qui tombent dans un clip couvrant les `secondes` avant `fin`
-fn reperes_manche(manche: &crate::replays_r6::Manche, ecriture: SystemTime, fin: SystemTime, secondes: u32) -> Vec<crate::clips::Marqueur> {
-    let Some(debut) = fin.checked_sub(Duration::from_secs(secondes as u64)) else { return vec![] };
+fn reperes_manche(manche: &crate::replays_r6::Manche, ecriture: SystemTime, fin: SystemTime, secondes: f64) -> Vec<crate::clips::Marqueur> {
+    let Some(debut) = fin.checked_sub(Duration::from_secs_f64(secondes)) else { return vec![] };
     manche
         .mes_evenements()
         .into_iter()
         .filter_map(|e| {
             let quand = crate::replays_r6::instant(manche, e.ecoule, ecriture)?;
             let t = quand.duration_since(debut).ok()?.as_secs_f64();
-            (t <= secondes as f64).then(|| crate::clips::Marqueur { t, genre: e.genre.into(), detail: e.detail, headshot: e.headshot })
+            (t <= secondes).then(|| crate::clips::Marqueur { t, genre: e.genre.into(), detail: e.detail, headshot: e.headshot })
         })
         .collect()
 }
@@ -574,10 +574,10 @@ pub fn touche_clips(app: &AppHandle) {
     // Dans R6, le compte joué est ajouté au nom : « Rainbow Six Siege · Pseudo 2026-11-17 21h42m05 »
     let titre = pseudo.map(|p| format!("{jeu} · {p} {}", crate::clips::date_texte()));
     match crate::clips::sauver(&etat.stock, &dossier, &jeu, duree, titre.as_deref()) {
-        Ok(chemin) => {
+        Ok((chemin, duree_reelle)) => {
             unsafe { MessageBeep(MB_OK) };
             if let Some(s) = etat.session.lock().unwrap().as_mut() {
-                s.clips_manuels.push((chemin.clone(), SystemTime::now(), duree));
+                s.clips_manuels.push((chemin.clone(), SystemTime::now(), duree_reelle));
             }
             signaler_clip(app, &etat.stock, &chemin);
         }

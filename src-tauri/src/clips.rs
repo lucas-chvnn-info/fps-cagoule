@@ -336,10 +336,13 @@ fn lancer_ffmpeg(
         .stdin(if son.is_some() { Stdio::piped() } else { Stdio::null() })
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
-        .creation_flags(CREATE_NO_WINDOW | 0x0000_4000) // BELOW_NORMAL : le jeu passe d'abord
+        // Priorité normale (en « basse », la capture ratait une image sur deux pendant les parties chargées)
+        .creation_flags(CREATE_NO_WINDOW)
         .spawn()
         .map_err(|e| format!("FFmpeg ne démarre pas : {e}"))?;
     crate::systeme::attacher_a_l_app(&enfant);
+    // Comme OBS : priorité haute sur la carte graphique, sinon le jeu la monopolise et la capture rate des images
+    crate::systeme::priorite_gpu_haute(&enfant);
     let capture = match (son, enfant.stdin.take()) {
         (Some((_, demarrer)), Some(entree)) => Some(demarrer(Box::new(entree))),
         _ => None,
@@ -439,8 +442,50 @@ fn morceaux_recents(dossier: &Path, secondes: u32) -> Vec<PathBuf> {
     liste.into_iter().rev().take(n).rev().map(|(_, p)| p).collect()
 }
 
-/// Sauvegarde les `secondes` dernières secondes de la partie. Renvoie le chemin du clip.
-pub fn sauver(stock: &Stockage, dossier_tampon: &Path, jeu: &str, secondes: u32, titre: Option<&str>) -> Result<PathBuf, String> {
+/// Premier horodatage (90 kHz) de l'image et du son dans un flux MPEG-TS
+pub fn premiers_pts(ts: &[u8]) -> (Option<u64>, Option<u64>) {
+    let (mut video, mut son) = (None, None);
+    for p in ts.chunks_exact(PAQUET_TS).take(200_000) {
+        if p[0] != 0x47 || p[1] & 0x40 == 0 {
+            continue; // pas un début de paquet PES
+        }
+        let mut debut = 4;
+        if p[3] & 0x20 != 0 {
+            debut += 1 + p[4] as usize;
+        }
+        let Some(pes) = p.get(debut..) else { continue };
+        if pes.len() < 14 || pes[..3] != [0, 0, 1] || pes[7] & 0x80 == 0 {
+            continue;
+        }
+        let b = &pes[9..14];
+        let pts = (((b[0] as u64 >> 1) & 7) << 30) | ((b[1] as u64) << 22) | ((b[2] as u64 >> 1) << 15) | ((b[3] as u64) << 7) | (b[4] as u64 >> 1);
+        match pes[3] {
+            0xE0..=0xEF if video.is_none() => video = Some(pts),
+            0xC0..=0xDF if son.is_none() => son = Some(pts),
+            _ => {}
+        }
+        if video.is_some() && son.is_some() {
+            break;
+        }
+    }
+    (video, son)
+}
+
+/// Réglage du son pour qu'il commence avec la première image (sinon décalé dans certains lecteurs, ex. celui de Windows).
+/// `decalage` : avance du son sur l'image, en secondes (négatif = le son commence après).
+pub fn alignement_son(decalage: f64) -> Option<String> {
+    if decalage > 0.02 {
+        Some(format!("atrim=start={decalage:.3}"))
+    } else if decalage < -0.02 {
+        Some("aresample=async=1:first_pts=0".into())
+    } else {
+        None
+    }
+}
+
+/// Sauvegarde les `secondes` dernières secondes de la partie (en morceaux entiers : le clip commence sur une image
+/// complète, le son aligné dessus). Renvoie le chemin du clip et sa durée réelle.
+pub fn sauver(stock: &Stockage, dossier_tampon: &Path, jeu: &str, secondes: u32, titre: Option<&str>) -> Result<(PathBuf, f64), String> {
     let morceaux = morceaux_recents(dossier_tampon, secondes);
     if morceaux.is_empty() {
         return Err("Rien d'enregistré pour l'instant".into());
@@ -469,10 +514,24 @@ pub fn sauver(stock: &Stockage, dossier_tampon: &Path, jeu: &str, secondes: u32,
         sortie = dossier_jeu.join(format!("{nom} ({n}).mp4"));
         n += 1;
     }
-    let statut = Command::new(ffmpeg(stock))
-        .args(["-hide_banner", "-loglevel", "error", "-y", "-sseof", &format!("-{secondes}"), "-i"])
-        .arg(&brut)
-        .args(["-t", &secondes.to_string(), "-c", "copy", "-bsf:a", "aac_adtstoasc", "-movflags", "+faststart"])
+    // Chaque morceau commence par une image complète : pas de coupe au milieu, l'image démarre tout de suite.
+    // Le son, lui, peut commencer un peu avant ou après : on l'aligne sur la première image.
+    let (pts_image, pts_son) = fs::read(&brut).map(|o| premiers_pts(&o)).unwrap_or((None, None));
+    let mut cmd = Command::new(ffmpeg(stock));
+    cmd.args(["-hide_banner", "-loglevel", "error", "-y", "-i"]).arg(&brut).args(["-map", "0:v:0", "-c:v", "copy"]);
+    if pts_son.is_some() {
+        cmd.args(["-map", "0:a:0"]);
+        let decalage = match (pts_image, pts_son) {
+            (Some(v), Some(a)) => (v as f64 - a as f64) / 90_000.0,
+            _ => 0.0,
+        };
+        match alignement_son(decalage) {
+            Some(filtre) => cmd.args(["-af", &filtre, "-c:a", "aac", "-b:a", "160k"]),
+            None => cmd.args(["-c:a", "copy", "-bsf:a", "aac_adtstoasc"]),
+        };
+    }
+    let statut = cmd
+        .args(["-avoid_negative_ts", "make_zero", "-movflags", "+faststart"])
         .arg(&sortie)
         .creation_flags(CREATE_NO_WINDOW)
         .status()
@@ -482,12 +541,13 @@ pub fn sauver(stock: &Stockage, dossier_tampon: &Path, jeu: &str, secondes: u32,
         return Err("Le clip n'a pas pu être créé".into());
     }
     // Sans image (capture d'écran coupée par Windows) : pas de clip « que du son »
-    if !a_de_l_image(stock, &sortie) {
+    let (image, duree) = infos_video(stock, &sortie);
+    if !image {
         let _ = fs::remove_file(&sortie);
         return Err("l'image du jeu n'a pas été capturée (la capture redémarre, réessaie dans quelques secondes)".into());
     }
     miniature(stock, &sortie);
-    Ok(sortie)
+    Ok((sortie, if duree > 0.0 { duree } else { secondes as f64 }))
 }
 
 /// Chemin sous sa forme courante : « \\?\C:\… » (chemin canonique de Windows) → « C:\… », « \\?\UNC\serveur\… » → « \\serveur\… »
@@ -816,14 +876,20 @@ pub fn supprimer(stock: &Stockage, chemin: &str) -> Result<(), String> {
 }
 
 /// Le clip a-t-il une piste vidéo
-fn a_de_l_image(stock: &Stockage, clip: &Path) -> bool {
-    Command::new(ffmpeg(stock))
-        .arg("-i")
-        .arg(clip)
-        .creation_flags(CREATE_NO_WINDOW)
-        .output()
-        .map(|o| String::from_utf8_lossy(&o.stderr).contains("Video:"))
-        .unwrap_or(false)
+/// Le clip a-t-il une piste vidéo, et sa durée (s)
+fn infos_video(stock: &Stockage, clip: &Path) -> (bool, f64) {
+    let Ok(o) = Command::new(ffmpeg(stock)).arg("-i").arg(clip).creation_flags(CREATE_NO_WINDOW).output() else { return (false, 0.0) };
+    let t = String::from_utf8_lossy(&o.stderr);
+    let duree = t
+        .split("Duration: ")
+        .nth(1)
+        .and_then(|r| r.split(',').next())
+        .and_then(|d| {
+            let p: Vec<f64> = d.trim().split(':').filter_map(|x| x.parse().ok()).collect();
+            (p.len() == 3).then(|| p[0] * 3600.0 + p[1] * 60.0 + p[2])
+        })
+        .unwrap_or(0.0);
+    (t.contains("Video:"), duree)
 }
 
 /// Le clip a-t-il une piste son (le PC peut ne pas avoir de sortie audio)
@@ -1007,7 +1073,9 @@ mod tests {
         let _ = enfant.kill();
         let mut erreur = String::new();
         let _ = enfant.stderr.take().unwrap().read_to_string(&mut erreur);
-        let clip = clip.unwrap_or_else(|e| panic!("{e} / FFmpeg : {erreur}"));
+        let (clip, duree) = clip.unwrap_or_else(|e| panic!("{e} / FFmpeg : {erreur}"));
+        // Morceaux entiers : au moins les 4 s demandées, au plus un morceau de plus
+        assert!((3.5..=8.5).contains(&duree), "durée {duree}");
         // FFmpeg décrit le clip : il faut une vidéo et un son
         let sortie = Command::new(ffmpeg(&stock)).arg("-i").arg(&clip).output().unwrap();
         let infos = String::from_utf8_lossy(&sortie.stderr).to_string();
@@ -1048,6 +1116,24 @@ mod tests {
         // Le dossier caché n'est pas pris pour un jeu
         assert_eq!(videos(&d).len(), 1);
         let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn son_aligne_sur_l_image() {
+        // Paquet TS minimal : début de PES vidéo (0xE0) avec PTS = 90 000 (1 s), puis son (0xC0) à 0,9 s
+        fn paquet(flux: u8, pts: u64) -> Vec<u8> {
+            let mut p = vec![0x47, 0x40, 0x11, 0x10, 0, 0, 1, flux, 0, 0, 0x80, 0x80, 5];
+            p.extend([0x21 | ((pts >> 29) & 0x0E) as u8, (pts >> 22) as u8, 0x01 | ((pts >> 14) & 0xFE) as u8, (pts >> 7) as u8, 0x01 | ((pts << 1) & 0xFE) as u8]);
+            p.resize(PAQUET_TS, 0xFF);
+            p
+        }
+        let mut ts = paquet(0xE0, 90_000);
+        ts.extend(paquet(0xC0, 81_000));
+        assert_eq!(premiers_pts(&ts), (Some(90_000), Some(81_000)));
+        // Son 0,1 s en avance : on en coupe le début ; en retard : on complète avec du silence ; sinon rien
+        assert_eq!(alignement_son(0.1).as_deref(), Some("atrim=start=0.100"));
+        assert_eq!(alignement_son(-0.3).as_deref(), Some("aresample=async=1:first_pts=0"));
+        assert_eq!(alignement_son(0.005), None);
     }
 
     #[test]

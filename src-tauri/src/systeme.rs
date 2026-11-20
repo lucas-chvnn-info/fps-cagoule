@@ -108,6 +108,26 @@ fn groupe_app() -> Option<HANDLE> {
     (h != 0).then_some(h as HANDLE)
 }
 
+/// Priorité haute sur la carte graphique pour un outil de l'app (capture des clips), comme OBS :
+/// quand le jeu occupe la carte à 100 %, la capture reçoit quand même chaque image
+pub fn priorite_gpu_haute(enfant: &std::process::Child) {
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryW};
+    type Fonction = unsafe extern "system" fn(HANDLE, i32) -> i32;
+    const HAUTE: i32 = 4; // D3DKMT_SCHEDULINGPRIORITYCLASS_HIGH
+    let nom: Vec<u16> = "gdi32.dll\0".encode_utf16().collect();
+    unsafe {
+        let h = LoadLibraryW(nom.as_ptr());
+        if h.is_null() {
+            return;
+        }
+        if let Some(f) = GetProcAddress(h, b"D3DKMTSetProcessSchedulingPriorityClass\0".as_ptr()) {
+            let f: Fonction = std::mem::transmute(f);
+            f(enfant.as_raw_handle() as HANDLE, HAUTE);
+        }
+    }
+}
+
 /// Rattache un outil lancé par l'app à son groupe : il s'arrêtera avec elle
 pub fn attacher_a_l_app(enfant: &std::process::Child) {
     use std::os::windows::io::AsRawHandle;
