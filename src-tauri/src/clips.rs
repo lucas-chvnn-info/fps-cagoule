@@ -442,6 +442,18 @@ fn morceaux_recents(dossier: &Path, secondes: u32) -> Vec<PathBuf> {
     liste.into_iter().rev().take(n).rev().map(|(_, p)| p).collect()
 }
 
+/// Journal des clips (%APPDATA%\FPS Cagoule\journal-clips.txt) : replays trouvés et lus, clips auto faits ou ratés.
+/// Petit fichier texte (gardé sous 300 Ko) pour comprendre un clip auto qui ne vient pas.
+pub fn noter(stock: &Stockage, message: &str) {
+    let f = stock.dossier().join("journal-clips.txt");
+    if fs::metadata(&f).map(|m| m.len() > 300_000).unwrap_or(false) {
+        let _ = fs::rename(&f, stock.dossier().join("journal-clips.ancien.txt"));
+    }
+    if let Ok(mut fichier) = fs::OpenOptions::new().create(true).append(true).open(&f) {
+        let _ = writeln!(fichier, "{} {message}", date_texte());
+    }
+}
+
 /// Premier horodatage (90 kHz) de l'image et du son dans un flux MPEG-TS
 pub fn premiers_pts(ts: &[u8]) -> (Option<u64>, Option<u64>) {
     let (mut video, mut son) = (None, None);

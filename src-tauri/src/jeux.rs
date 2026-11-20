@@ -48,6 +48,8 @@ pub struct EnCours {
     dossiers_replays: Vec<PathBuf>,
     /// Démarrage de l'enregistrement déjà tenté pour cette partie
     clips_lances: bool,
+    /// Recherche des dossiers de replays déjà notée dans le journal
+    replays_cherches: bool,
     /// Pourquoi l'enregistrement n'a pas pu démarrer
     pub clips_erreur: Option<String>,
 }
@@ -267,6 +269,7 @@ fn demarrer(app: &AppHandle, etat: &Etat, profil: &crate::config::Profil, pid: u
         pseudo_r6: None,
         clips_manuels: Vec::new(),
         clips_lances: false,
+        replays_cherches: false,
         clips_erreur: None,
         dossiers_replays: Vec::new(),
     });
@@ -399,6 +402,7 @@ fn demarrer_clips(app: &AppHandle, pid: u32, jeu: &str) {
         match (session.as_mut(), resultat) {
             // La partie est toujours là : l'enregistrement lui appartient (sinon il s'arrête en étant lâché)
             (Some(s), Ok(e)) if s.pid == pid => {
+                crate::clips::noter(&etat.stock, &format!("Enregistrement de {jeu} démarré ({:?})", e.encodeur));
                 s.actions.push(format!("Clips : touche prête ({})", match e.encodeur {
                     crate::clips::Encodeur::Logiciel => "encodage par le processeur",
                     _ => "encodage par la carte graphique",
@@ -406,6 +410,7 @@ fn demarrer_clips(app: &AppHandle, pid: u32, jeu: &str) {
                 s.enregistreur = Some(e);
             }
             (Some(s), Err(e)) if s.pid == pid => {
+                crate::clips::noter(&etat.stock, &format!("Enregistrement de {jeu} impossible : {e}"));
                 s.clips_erreur = Some(e.clone());
                 s.actions.push(e);
             }
@@ -438,6 +443,7 @@ fn surveiller_clips(app: &AppHandle, etat: &Etat, pid: u32) {
     let _ = thread::Builder::new().name("clips".into()).spawn(move || {
         let etat = app.state::<Arc<Etat>>();
         let r = enregistreur.relancer(&etat.stock);
+        crate::clips::noter(&etat.stock, &format!("Capture relancée ({}e fois){}", enregistreur.relances, r.as_ref().err().map(|e| format!(" : {e}")).unwrap_or_default()));
         let mut session = etat.session.lock().unwrap();
         if let Some(s) = session.as_mut().filter(|s| s.pid == pid) {
             if enregistreur.relances >= RELANCES_MAX || r.is_err() {
@@ -476,6 +482,11 @@ fn surveiller_replays(app: &AppHandle, etat: &Etat, pid: u32) {
             let exe = systeme::chemin_exe(pid).map(PathBuf::from);
             let trouves = crate::replays_r6::dossiers_replays(&documents, exe.as_deref(), &crate::bibliotheques::dossiers_ubisoft());
             if let Some(s) = etat.session.lock().unwrap().as_mut().filter(|s| s.pid == pid) {
+                // Noté une fois (puis seulement quand un dossier apparaît)
+                if !s.replays_cherches || !trouves.is_empty() {
+                    crate::clips::noter(&etat.stock, &format!("Partie R6 ({}) : dossiers des replays {:?}", exe.as_deref().map(|p| p.display().to_string()).unwrap_or_default(), trouves));
+                    s.replays_cherches = true;
+                }
                 s.dossiers_replays = trouves.clone();
             }
             trouves
@@ -494,9 +505,17 @@ fn surveiller_replays(app: &AppHandle, etat: &Etat, pid: u32) {
         }
         let (app, tampon, jeu) = (app.clone(), tampon.clone(), jeu.clone());
         let _ = thread::Builder::new().name("clip-auto".into()).spawn(move || {
-            let Ok(octets) = std::fs::read(&fichier) else { return };
-            let Ok(manche) = crate::replays_r6::lire(&octets) else { return };
             let etat = app.state::<Arc<Etat>>();
+            let nom = fichier.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+            let octets = match std::fs::read(&fichier) {
+                Ok(o) => o,
+                Err(e) => return crate::clips::noter(&etat.stock, &format!("{nom} : illisible ({e})")),
+            };
+            let manche = match crate::replays_r6::lire(&octets) {
+                Ok(m) => m,
+                Err(e) => return crate::clips::noter(&etat.stock, &format!("{nom} : replay non lu ({e})")),
+            };
+            crate::clips::noter(&etat.stock, &format!("{nom} : compte {:?}, {} kill(s), titre {:?}", manche.moi, manche.mes_kills().len(), crate::replays_r6::titre_clip(&manche)));
             let manuels = {
                 let mut session = etat.session.lock().unwrap();
                 match session.as_mut().filter(|s| s.pid == pid) {
@@ -520,13 +539,20 @@ fn surveiller_replays(app: &AppHandle, etat: &Etat, pid: u32) {
             // Seulement les multi-kills choisis (2K, 3K, 4K, ACE)
             let kills = manche.mes_kills().len().min(5) as u8;
             if !etat.stock.donnees.lock().unwrap().reglages.clips_auto_kills.contains(&kills) {
-                return;
+                return crate::clips::noter(&etat.stock, &format!("{nom} : {kills} kills, pas dans les clips auto choisis"));
             }
             let secondes = crate::replays_r6::duree_clip(&manche, modifie, SystemTime::now());
             let fin = SystemTime::now();
-            if let Ok((chemin, duree)) = crate::clips::sauver(&etat.stock, &tampon, &jeu, secondes, Some(&titre)) {
-                crate::clips::ajouter_marqueurs(&etat.stock, &chemin, &reperes_manche(&manche, modifie, fin, duree));
-                signaler_clip(&app, &etat.stock, &chemin);
+            match crate::clips::sauver(&etat.stock, &tampon, &jeu, secondes, Some(&titre)) {
+                Ok((chemin, duree)) => {
+                    crate::clips::noter(&etat.stock, &format!("{nom} : clip auto « {titre} » ({duree:.0} s) → {}", chemin.display()));
+                    crate::clips::ajouter_marqueurs(&etat.stock, &chemin, &reperes_manche(&manche, modifie, fin, duree));
+                    signaler_clip(&app, &etat.stock, &chemin);
+                }
+                Err(e) => {
+                    crate::clips::noter(&etat.stock, &format!("{nom} : clip auto « {titre} » raté ({e})"));
+                    let _ = app.emit("clip_erreur", format!("clip auto « {titre} » raté ({e})"));
+                }
             }
         });
     }
