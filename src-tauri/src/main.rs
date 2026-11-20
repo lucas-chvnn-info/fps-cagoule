@@ -470,6 +470,8 @@ struct EtatClips {
     probleme: Option<String>,
     /// Pendant l'enregistrement : « carte graphique » ou « processeur »
     encodeur: Option<String>,
+    /// Clips auto de R6 impossibles pendant cette partie : pourquoi
+    alerte_replays: Option<String>,
 }
 
 #[tauri::command]
@@ -488,6 +490,7 @@ fn clips_etat(app: AppHandle) -> EtatClips {
         enregistrement,
         probleme,
         encodeur,
+        alerte_replays: jeux::alerte_replays(&e),
     }
 }
 

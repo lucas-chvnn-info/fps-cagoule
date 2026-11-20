@@ -555,6 +555,22 @@ fn signaler_clip(app: &AppHandle, stock: &crate::config::Stockage, chemin: &std:
 }
 
 /// Touche des clips : sauvegarde les dernières secondes de la partie en cours
+/// Clips auto de R6 qui ne peuvent pas marcher pendant cette partie : pourquoi (None = tout va bien ou trop tôt)
+pub fn alerte_replays(etat: &Etat) -> Option<String> {
+    if !etat.stock.donnees.lock().unwrap().reglages.clips_auto {
+        return None;
+    }
+    let session = etat.session.lock().unwrap();
+    let s = session.as_ref().filter(|s| s.exe.to_lowercase().starts_with("rainbowsix") && s.enregistreur.is_some())?;
+    if s.replays_vus.is_empty() && s.debut.elapsed() > Duration::from_secs(8 * 60) {
+        Some("aucun replay de R6 depuis le début de la partie : active l'enregistrement des replays dans les options du jeu, sur ce compte".into())
+    } else if !s.replays_vus.is_empty() && s.pseudo_r6.is_none() {
+        Some("les replays sont lus, mais ton compte n'y est pas reconnu : envoie-en un pour que je regarde".into())
+    } else {
+        None
+    }
+}
+
 pub fn touche_clips(app: &AppHandle) {
     use windows_sys::Win32::System::Diagnostics::Debug::MessageBeep;
     use windows_sys::Win32::UI::WindowsAndMessaging::{MB_ICONHAND, MB_OK};

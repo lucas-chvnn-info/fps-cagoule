@@ -2592,7 +2592,7 @@ function afficherClips() {
     : clipsInstallation
       ? 'Installation…'
       : clipsEtat?.enregistrement
-        ? `Enregistrement en cours${clipsEtat.encodeur ? ` (${clipsEtat.encodeur})` : ''} · ${touche} pour garder le moment`
+        ? `Enregistrement en cours${clipsEtat.encodeur ? ` (${clipsEtat.encodeur})` : ''} · ${touche} pour garder le moment${clipsEtat.alerte_replays ? ` · ⚠ Clips auto : ${clipsEtat.alerte_replays}` : ''}`
         : clipsEtat?.probleme
           ? `Enregistrement impossible : ${clipsEtat.probleme}`
           : `Prêt : appuie sur ${touche} en jeu`;
