@@ -181,6 +181,16 @@ impl Qualite {
 }
 
 /// Capture d'écran de FFmpeg : écran principal, sans le curseur
+/// Capture de la fenêtre du jeu (Windows Graphics Capture, comme OBS) : reçoit chaque image du jeu, là où la copie
+/// de l'écran en rate dans les parties chargées. `exe` : exécutable du jeu (RainbowSix.exe…).
+pub fn source_fenetre(exe: &str, ips: u32) -> String {
+    // Motif sans caractères spéciaux pour FFmpeg : « . » remplace tout ce qui n'est pas lettre, chiffre, _ ou -
+    let motif: String = exe.chars().map(|c| if c.is_ascii_alphanumeric() || c == '_' || c == '-' { c.to_ascii_lowercase() } else { '.' }).collect();
+    // R6 : sa vraie fenêtre de jeu (pas celle de lancement)
+    let classe = if motif.starts_with("rainbowsix") { ":window_class=R6Game" } else { "" };
+    format!("gfxcapture=window_exe=(?i){motif}${classe}:max_framerate={ips}:capture_cursor=0:display_border=0")
+}
+
 pub fn source_ecran(ips: u32) -> String {
     format!("ddagrab=output_idx=0:framerate={ips}:draw_mouse=0")
 }
@@ -201,7 +211,8 @@ pub fn arguments(source_video: &str, audio: Option<crate::audio::Format>, encode
     a.extend(["-thread_queue_size", "64", "-f", "lavfi", "-i", source_video].iter().map(|s| s.to_string()));
     let v = if audio.is_some() { 1 } else { 0 };
     // Images de la capture d'écran (D3D11) : directes pour NVIDIA et AMD, converties pour Intel et le processeur
-    let capture_ecran = source_video.starts_with("ddagrab");
+    // Images de la carte graphique (D3D11), écran entier ou fenêtre du jeu
+    let capture_ecran = source_video.starts_with("ddagrab") || source_video.starts_with("gfxcapture");
     let conversion = match encodeur {
         _ if !capture_ecran => "format=yuv420p,",
         Encodeur::Nvidia | Encodeur::Amd => "",
@@ -271,6 +282,12 @@ pub struct Enregistreur {
     pub derniere_erreur: Arc<Mutex<Option<String>>>,
     /// Raison de la dernière relance (pour le journal)
     pub raison: &'static str,
+    /// Exécutable du jeu : capture de sa fenêtre quand c'est possible
+    exe: Option<String>,
+    /// Capture en cours : fenêtre du jeu (true) ou écran entier
+    pub fenetre: bool,
+    /// Nouvel essai de la capture de fenêtre déjà fait (la fenêtre n'existait pas encore au lancement)
+    pub fenetre_reessayee: bool,
 }
 
 impl Enregistreur {
@@ -308,10 +325,21 @@ impl Enregistreur {
         self.fige = false;
         self.dernier_morceau = None;
         self.depuis = Instant::now();
-        let (enfant, son) = lancer_ffmpeg(stock, self.encodeur, self.qualite, &self.dossier, self.base_us, &self.derniere_erreur)?;
-        self.enfant = enfant;
-        self._son = son;
-        Ok(())
+        let mut derniere = String::new();
+        for fenetre in sources(self.exe.is_some()) {
+            let source = source_de(fenetre, self.exe.as_deref(), self.qualite.ips);
+            match lancer_ffmpeg(stock, &source, self.encodeur, self.qualite, &self.dossier, self.base_us, &self.derniere_erreur) {
+                Ok((enfant, son)) => {
+                    self.enfant = enfant;
+                    self._son = son;
+                    self.fenetre = fenetre;
+                    noter(stock, &format!("Capture : {}", if fenetre { "fenêtre du jeu" } else { "écran entier" }));
+                    return Ok(());
+                }
+                Err(e) => derniere = e,
+            }
+        }
+        Err(derniere)
     }
 }
 
@@ -323,8 +351,25 @@ impl Drop for Enregistreur {
     }
 }
 
+/// Sources essayées dans l'ordre : fenêtre du jeu (si connue), puis écran entier
+fn sources(avec_fenetre: bool) -> Vec<bool> {
+    if avec_fenetre {
+        vec![true, false]
+    } else {
+        vec![false]
+    }
+}
+
+fn source_de(fenetre: bool, exe: Option<&str>, ips: u32) -> String {
+    match (fenetre, exe) {
+        (true, Some(e)) => source_fenetre(e, ips),
+        _ => source_ecran(ips),
+    }
+}
+
 fn lancer_ffmpeg(
     stock: &Stockage,
+    source: &str,
     encodeur: Encodeur,
     qualite: Qualite,
     dossier: &Path,
@@ -332,7 +377,7 @@ fn lancer_ffmpeg(
     derniere_erreur: &Arc<Mutex<Option<String>>>,
 ) -> Result<(Child, Option<crate::audio::Capture>), String> {
     let son = crate::audio::ouvrir().ok();
-    let args = arguments(&source_ecran(qualite.ips), son.as_ref().map(|(f, _)| *f), encodeur, qualite, base_us, dossier);
+    let args = arguments(source, son.as_ref().map(|(f, _)| *f), encodeur, qualite, base_us, dossier);
     let mut enfant = Command::new(ffmpeg(stock))
         .args(&args)
         .stdin(if son.is_some() { Stdio::piped() } else { Stdio::null() })
@@ -382,7 +427,7 @@ fn lancer_ffmpeg(
 }
 
 /// Démarre l'enregistrement d'une partie (encodeur de la carte graphique, sinon le processeur)
-pub fn demarrer(stock: &Stockage, jeu: &str) -> Result<Enregistreur, String> {
+pub fn demarrer(stock: &Stockage, jeu: &str, exe: Option<&str>) -> Result<Enregistreur, String> {
     let dossier = tampon(stock);
     let _ = fs::remove_dir_all(&dossier);
     fs::create_dir_all(&dossier).map_err(|e| e.to_string())?;
@@ -394,25 +439,35 @@ pub fn demarrer(stock: &Stockage, jeu: &str) -> Result<Enregistreur, String> {
     };
     let derniere_erreur = Arc::new(Mutex::new(None));
     for encodeur in [encodeur_conseille(), Encodeur::Logiciel] {
-        match lancer_ffmpeg(stock, encodeur, qualite, &dossier, base_us, &derniere_erreur) {
-            Ok((enfant, son)) => {
-                return Ok(Enregistreur {
-                    enfant,
-                    _son: son,
-                    dossier,
-                    jeu: jeu.into(),
-                    encodeur,
-                    qualite,
-                    base_us,
-                    relances: 0,
-                    dernier_morceau: None,
-                    depuis: Instant::now(),
-                    fige: false,
-                    derniere_erreur,
-                    raison: "",
-                })
+        for fenetre in sources(exe.is_some()) {
+            let source = source_de(fenetre, exe, qualite.ips);
+            match lancer_ffmpeg(stock, &source, encodeur, qualite, &dossier, base_us, &derniere_erreur) {
+                Ok((enfant, son)) => {
+                    noter(stock, &format!("Capture : {}", if fenetre { "fenêtre du jeu" } else { "écran entier" }));
+                    return Ok(Enregistreur {
+                        enfant,
+                        _son: son,
+                        dossier,
+                        jeu: jeu.into(),
+                        encodeur,
+                        qualite,
+                        base_us,
+                        relances: 0,
+                        dernier_morceau: None,
+                        depuis: Instant::now(),
+                        fige: false,
+                        derniere_erreur,
+                        raison: "",
+                        exe: exe.map(String::from),
+                        fenetre,
+                        fenetre_reessayee: fenetre,
+                    });
+                }
+                Err(e) => {
+                    noter(stock, &format!("Capture {} refusée : {e}", if fenetre { "de la fenêtre" } else { "de l'écran" }));
+                    erreurs.push(e)
+                }
             }
-            Err(e) => erreurs.push(e),
         }
         if encodeur == Encodeur::Logiciel {
             break;
@@ -1121,8 +1176,16 @@ mod tests {
             let aide = Command::new(ffmpeg(&stock)).args(["-hide_banner", "-h", "filter=gfxcapture"]).output().unwrap();
             println!("{}", String::from_utf8_lossy(&aide.stdout));
         }
+        // Capture de fenêtre : la syntaxe doit passer (sur ce PC, pas de jeu : on vise l'Explorateur et une fenêtre absente)
+        for exe in ["explorer.exe", "RainbowSix.exe"] {
+            let source = source_fenetre(exe, 30);
+            let r = Command::new(ffmpeg(&stock)).args(["-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", &source, "-t", "2", "-f", "null", "-"]).output().unwrap();
+            let err = String::from_utf8_lossy(&r.stderr);
+            println!("Capture de fenêtre {exe} ({source}) : {} {}", r.status, err.lines().last().unwrap_or(""));
+            assert!(!err.contains("Option not found") && !err.contains("Error parsing") && !err.contains("No such filter"), "{err}");
+        }
         // Vraie capture de l'écran : le PC de GitHub n'a pas forcément de bureau utilisable, on affiche seulement le résultat
-        match demarrer(&stock, "Test écran") {
+        match demarrer(&stock, "Test écran", None) {
             Ok(e) => {
                 std::thread::sleep(Duration::from_secs(5));
                 println!("Capture de l'écran : OK ({:?}), morceaux : {}", e.encodeur, morceaux_recents(&e.dossier, 30).len());
@@ -1215,6 +1278,8 @@ mod tests {
         assert!(texte.contains("h264_nvenc") && texte.contains("-segment_wrap 124"));
         assert!(texte.contains("framerate=120") && texte.contains("-b:v 60M") && texte.contains("-g 240"));
         // Réglages « qualité » : profil High, images B, débit max 1,5 fois le débit visé
+        assert_eq!(source_fenetre("RainbowSix.exe", 60), "gfxcapture=window_exe=(?i)rainbowsix.exe$:window_class=R6Game:max_framerate=60:capture_cursor=0:display_border=0");
+        assert_eq!(source_fenetre("FortniteClient-Win64-Shipping.exe", 120), "gfxcapture=window_exe=(?i)fortniteclient-win64-shipping.exe$:max_framerate=120:capture_cursor=0:display_border=0");
         assert!(texte.contains("-profile:v high") && texte.contains("-tune hq") && texte.contains("-bf 2") && texte.contains("-maxrate 90M"));
         assert!(!texte.contains("-tune ll") && !texte.contains("cbr"));
         assert_eq!(Qualite::depuis("standard", 60), Qualite { debit_mbps: 12, ips: 60, crf: 26 });

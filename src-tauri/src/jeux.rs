@@ -379,25 +379,26 @@ fn lancer_clips_si_besoin(app: &AppHandle, etat: &Etat, pid: u32) {
     if !etat.stock.donnees.lock().unwrap().reglages.clips || !crate::clips::installe(&etat.stock) {
         return;
     }
-    let jeu = {
+    let (jeu, exe) = {
         let mut session = etat.session.lock().unwrap();
         match session.as_mut().filter(|s| s.pid == pid && !s.clips_lances && s.enregistreur.is_none()) {
             Some(s) => {
                 s.clips_lances = true;
-                s.profil.clone()
+                (s.profil.clone(), s.exe.clone())
             }
             None => return,
         }
     };
-    demarrer_clips(app, pid, &jeu);
+    demarrer_clips(app, pid, &jeu, &exe);
 }
 
-fn demarrer_clips(app: &AppHandle, pid: u32, jeu: &str) {
+fn demarrer_clips(app: &AppHandle, pid: u32, jeu: &str, exe: &str) {
     let app = app.clone();
     let jeu = jeu.to_string();
+    let exe = exe.to_string();
     let _ = thread::Builder::new().name("clips".into()).spawn(move || {
         let etat = app.state::<Arc<Etat>>();
-        let resultat = crate::clips::demarrer(&etat.stock, &jeu);
+        let resultat = crate::clips::demarrer(&etat.stock, &jeu, Some(&exe));
         let mut session = etat.session.lock().unwrap();
         match (session.as_mut(), resultat) {
             // La partie est toujours là : l'enregistrement lui appartient (sinon il s'arrête en étant lâché)
@@ -435,6 +436,11 @@ fn surveiller_clips(app: &AppHandle, etat: &Etat, pid: u32) {
                     let mort = !e.vivant();
                     if mort || e.image_figee() {
                         e.raison = if mort { "FFmpeg arrêté" } else { "image figée" };
+                        true
+                    } else if !e.fenetre && !e.fenetre_reessayee && s.debut.elapsed() > Duration::from_secs(45) {
+                        // La fenêtre du jeu n'existait pas encore au lancement : un essai de plus, une fois en jeu
+                        e.fenetre_reessayee = true;
+                        e.raison = "essai de la capture de fenêtre";
                         true
                     } else {
                         false
