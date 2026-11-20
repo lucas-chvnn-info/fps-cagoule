@@ -110,21 +110,43 @@ fn groupe_app() -> Option<HANDLE> {
 
 /// Priorité haute sur la carte graphique pour un outil de l'app (capture des clips), comme OBS :
 /// quand le jeu occupe la carte à 100 %, la capture reçoit quand même chaque image
-pub fn priorite_gpu_haute(enfant: &std::process::Child) {
+/// Renvoie le code de Windows (0 = accepté), pour le journal des clips.
+pub fn priorite_gpu_haute(enfant: &std::process::Child) -> Option<i32> {
     use std::os::windows::io::AsRawHandle;
     use windows_sys::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryW};
     type Fonction = unsafe extern "system" fn(HANDLE, i32) -> i32;
     const HAUTE: i32 = 4; // D3DKMT_SCHEDULINGPRIORITYCLASS_HIGH
+    // Au-delà de « normale », Windows demande le privilège d'augmenter les priorités (l'app est administrateur)
+    activer_privilege("SeIncreaseBasePriorityPrivilege");
     let nom: Vec<u16> = "gdi32.dll\0".encode_utf16().collect();
     unsafe {
         let h = LoadLibraryW(nom.as_ptr());
         if h.is_null() {
-            return;
+            return None;
         }
-        if let Some(f) = GetProcAddress(h, b"D3DKMTSetProcessSchedulingPriorityClass\0".as_ptr()) {
-            let f: Fonction = std::mem::transmute(f);
-            f(enfant.as_raw_handle() as HANDLE, HAUTE);
+        let f: Fonction = std::mem::transmute(GetProcAddress(h, b"D3DKMTSetProcessSchedulingPriorityClass\0".as_ptr())?);
+        Some(f(enfant.as_raw_handle() as HANDLE, HAUTE))
+    }
+}
+
+/// Active un privilège du jeton de l'app (déjà détenu en administrateur, mais désactivé par défaut)
+fn activer_privilege(nom: &str) -> bool {
+    use windows_sys::Win32::Security::{AdjustTokenPrivileges, LookupPrivilegeValueW, LUID_AND_ATTRIBUTES, SE_PRIVILEGE_ENABLED, TOKEN_ADJUST_PRIVILEGES, TOKEN_PRIVILEGES, TOKEN_QUERY};
+    use windows_sys::Win32::System::Threading::OpenProcessToken;
+    let nom_w: Vec<u16> = nom.encode_utf16().chain(std::iter::once(0)).collect();
+    unsafe {
+        let mut jeton: HANDLE = std::ptr::null_mut();
+        if OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &mut jeton) == 0 {
+            return false;
         }
+        let mut p: TOKEN_PRIVILEGES = std::mem::zeroed();
+        p.PrivilegeCount = 1;
+        let ok = LookupPrivilegeValueW(std::ptr::null(), nom_w.as_ptr(), &mut p.Privileges[0].Luid) != 0 && {
+            p.Privileges[0] = LUID_AND_ATTRIBUTES { Luid: p.Privileges[0].Luid, Attributes: SE_PRIVILEGE_ENABLED };
+            AdjustTokenPrivileges(jeton, 0, &p, 0, std::ptr::null_mut(), std::ptr::null_mut()) != 0
+        };
+        CloseHandle(jeton);
+        ok
     }
 }
 

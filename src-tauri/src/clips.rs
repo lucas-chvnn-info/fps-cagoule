@@ -344,7 +344,12 @@ fn lancer_ffmpeg(
         .map_err(|e| format!("FFmpeg ne démarre pas : {e}"))?;
     crate::systeme::attacher_a_l_app(&enfant);
     // Comme OBS : priorité haute sur la carte graphique, sinon le jeu la monopolise et la capture rate des images
-    crate::systeme::priorite_gpu_haute(&enfant);
+    let code = crate::systeme::priorite_gpu_haute(&enfant);
+    noter(stock, &format!("Priorité de la capture sur la carte graphique : {}", match code {
+        Some(0) => "haute (acceptée)".to_string(),
+        Some(c) => format!("refusée par Windows (code {:#x})", c as u32),
+        None => "indisponible".to_string(),
+    }));
     let capture = match (son, enfant.stdin.take()) {
         (Some((_, demarrer)), Some(entree)) => Some(demarrer(Box::new(entree))),
         _ => None,
@@ -1108,6 +1113,14 @@ mod tests {
         supprimer(&stock, &montage.to_string_lossy()).unwrap();
         supprimer(&stock, &clip.to_string_lossy()).unwrap();
         let _ = fs::remove_dir_all(&dossier);
+        // Méthodes de capture disponibles dans ce FFmpeg (ddagrab = Desktop Duplication, gfxcapture = Windows Graphics Capture)
+        let filtres = Command::new(ffmpeg(&stock)).args(["-hide_banner", "-filters"]).output().unwrap();
+        let filtres = String::from_utf8_lossy(&filtres.stdout);
+        println!("ddagrab : {}, gfxcapture : {}", filtres.contains("ddagrab"), filtres.contains("gfxcapture"));
+        if filtres.contains("gfxcapture") {
+            let aide = Command::new(ffmpeg(&stock)).args(["-hide_banner", "-h", "filter=gfxcapture"]).output().unwrap();
+            println!("{}", String::from_utf8_lossy(&aide.stdout));
+        }
         // Vraie capture de l'écran : le PC de GitHub n'a pas forcément de bureau utilisable, on affiche seulement le résultat
         match demarrer(&stock, "Test écran") {
             Ok(e) => {

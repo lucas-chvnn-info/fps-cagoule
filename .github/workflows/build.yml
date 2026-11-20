@@ -23,7 +23,7 @@ jobs:
       - run: npm test
       - run: npm run presentmon
       - name: Tests Rust (sur un vrai Windows)
-        run: cargo test --manifest-path src-tauri/Cargo.toml
+        run: cargo test --manifest-path src-tauri/Cargo.toml -- --nocapture
       - name: Analyse du PC de GitHub passée dans l'évaluation
         run: node scripts/verifier-analyse.mjs src-tauri/target/analyse.json
       - name: Benchmark du PC de GitHub (référence des points)
