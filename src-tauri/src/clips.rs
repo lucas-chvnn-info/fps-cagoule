@@ -384,8 +384,10 @@ fn lancer_ffmpeg(
         .stdin(if son.is_some() { Stdio::piped() } else { Stdio::null() })
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
-        // Priorité normale (en « basse », la capture ratait une image sur deux pendant les parties chargées)
-        .creation_flags(CREATE_NO_WINDOW)
+        // Priorité haute, comme le jeu : FPS Cagoule passe le jeu en priorité haute, et une capture restée en
+        // « normale » passait après lui (une image sur deux ratée à 200 FPS). Elle prend très peu de processeur :
+        // l'encodage se fait sur la puce vidéo de la carte graphique.
+        .creation_flags(CREATE_NO_WINDOW | 0x0000_0080) // HIGH_PRIORITY_CLASS
         .spawn()
         .map_err(|e| format!("FFmpeg ne démarre pas : {e}"))?;
     crate::systeme::attacher_a_l_app(&enfant);
