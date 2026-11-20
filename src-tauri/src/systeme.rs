@@ -110,9 +110,8 @@ fn groupe_app() -> Option<HANDLE> {
 
 /// Priorité haute sur la carte graphique pour un outil de l'app (capture des clips), comme OBS :
 /// quand le jeu occupe la carte à 100 %, la capture reçoit quand même chaque image
-/// Renvoie le code de Windows (0 = accepté), pour le journal des clips.
-pub fn priorite_gpu_haute(enfant: &std::process::Child) -> Option<i32> {
-    use std::os::windows::io::AsRawHandle;
+/// Renvoie le code de Windows (0 = accepté), pour le journal des clips. Le processus doit déjà utiliser la carte.
+pub fn priorite_gpu_haute_pid(pid: u32) -> Option<i32> {
     use windows_sys::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryW};
     type Fonction = unsafe extern "system" fn(HANDLE, i32) -> i32;
     const HAUTE: i32 = 4; // D3DKMT_SCHEDULINGPRIORITYCLASS_HIGH
@@ -125,7 +124,8 @@ pub fn priorite_gpu_haute(enfant: &std::process::Child) -> Option<i32> {
             return None;
         }
         let f: Fonction = std::mem::transmute(GetProcAddress(h, b"D3DKMTSetProcessSchedulingPriorityClass\0".as_ptr())?);
-        Some(f(enfant.as_raw_handle() as HANDLE, HAUTE))
+        let processus = Poignee::ouvrir(PROCESS_SET_INFORMATION | PROCESS_QUERY_LIMITED_INFORMATION, pid)?;
+        Some(f(processus.0, HAUTE))
     }
 }
 

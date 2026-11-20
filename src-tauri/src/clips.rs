@@ -351,10 +351,11 @@ impl Drop for Enregistreur {
     }
 }
 
-/// Sources essayées dans l'ordre : fenêtre du jeu (si connue), puis écran entier
+/// Sources essayées dans l'ordre : écran entier, puis fenêtre du jeu (si connue) en secours.
+/// La capture de fenêtre ne donnait pas plus d'images avec R6 et perdait la fenêtre quand le jeu la recrée.
 fn sources(avec_fenetre: bool) -> Vec<bool> {
     if avec_fenetre {
-        vec![true, false]
+        vec![false, true]
     } else {
         vec![false]
     }
@@ -388,13 +389,6 @@ fn lancer_ffmpeg(
         .spawn()
         .map_err(|e| format!("FFmpeg ne démarre pas : {e}"))?;
     crate::systeme::attacher_a_l_app(&enfant);
-    // Comme OBS : priorité haute sur la carte graphique, sinon le jeu la monopolise et la capture rate des images
-    let code = crate::systeme::priorite_gpu_haute(&enfant);
-    noter(stock, &format!("Priorité de la capture sur la carte graphique : {}", match code {
-        Some(0) => "haute (acceptée)".to_string(),
-        Some(c) => format!("refusée par Windows (code {:#x})", c as u32),
-        None => "indisponible".to_string(),
-    }));
     let capture = match (son, enfant.stdin.take()) {
         (Some((_, demarrer)), Some(entree)) => Some(demarrer(Box::new(entree))),
         _ => None,
@@ -410,6 +404,27 @@ fn lancer_ffmpeg(
             return Err(erreur.lines().last().unwrap_or("FFmpeg s'est arrêté").to_string());
         }
         std::thread::sleep(Duration::from_millis(200));
+    }
+    // Comme OBS : priorité haute sur la carte graphique, sinon le jeu (200 FPS) la monopolise et la capture rate une
+    // image sur deux. Demandée maintenant que FFmpeg utilise la carte : avant, Windows répond « paramètre invalide ».
+    {
+        let pid = enfant.id();
+        let stock_journal = stock.dossier().to_path_buf();
+        std::thread::spawn(move || {
+            let mut code = None;
+            for _ in 0..5 {
+                code = crate::systeme::priorite_gpu_haute_pid(pid);
+                if code == Some(0) {
+                    break;
+                }
+                std::thread::sleep(Duration::from_secs(2));
+            }
+            noter_dans(&stock_journal, &format!("Priorité de la capture sur la carte graphique : {}", match code {
+                Some(0) => "haute (acceptée)".to_string(),
+                Some(c) => format!("refusée par Windows (code {:#x})", c as u32),
+                None => "indisponible".to_string(),
+            }));
+        });
     }
     // Messages d'erreur lus au fil de l'eau (FFmpeg ne se bloque pas sur un tuyau plein) : on garde le dernier
     if let Some(e) = enfant.stderr.take() {
@@ -460,7 +475,8 @@ pub fn demarrer(stock: &Stockage, jeu: &str, exe: Option<&str>) -> Result<Enregi
                         raison: "",
                         exe: exe.map(String::from),
                         fenetre,
-                        fenetre_reessayee: fenetre,
+                        // Pas de nouvel essai de la fenêtre en cours de partie : l'écran entier est le choix voulu
+                        fenetre_reessayee: true,
                     });
                 }
                 Err(e) => {
@@ -508,9 +524,14 @@ fn morceaux_recents(dossier: &Path, secondes: u32) -> Vec<PathBuf> {
 /// Journal des clips (%APPDATA%\ch.lucas-chvnn.fps-cagoule\journal-clips.txt, bouton « Journal » de la page Clips) : replays trouvés et lus, clips auto faits ou ratés.
 /// Petit fichier texte (gardé sous 300 Ko) pour comprendre un clip auto qui ne vient pas.
 pub fn noter(stock: &Stockage, message: &str) {
-    let f = stock.dossier().join("journal-clips.txt");
+    noter_dans(&stock.dossier(), message)
+}
+
+/// Comme `noter`, depuis un fil qui n'a que le dossier de l'app
+pub fn noter_dans(dossier: &Path, message: &str) {
+    let f = dossier.join("journal-clips.txt");
     if fs::metadata(&f).map(|m| m.len() > 300_000).unwrap_or(false) {
-        let _ = fs::rename(&f, stock.dossier().join("journal-clips.ancien.txt"));
+        let _ = fs::rename(&f, dossier.join("journal-clips.ancien.txt"));
     }
     if let Ok(mut fichier) = fs::OpenOptions::new().create(true).append(true).open(&f) {
         let _ = writeln!(fichier, "{} {message}", date_texte());
