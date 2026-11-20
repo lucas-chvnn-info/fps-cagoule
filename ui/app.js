@@ -2972,6 +2972,7 @@ $('#btn-clips-defaut').addEventListener('click', async (e) => {
 });
 
 $('#btn-clips-dossier').addEventListener('click', (e) => appel('clips_ouvrir', { chemin: null }, e.currentTarget).catch(() => {}));
+$('#btn-clips-journal').addEventListener('click', (e) => appel('clips_journal', {}, e.currentTarget).catch(() => {}));
 
 listen('clip', () => {
   toast('Clip enregistré', 3000);

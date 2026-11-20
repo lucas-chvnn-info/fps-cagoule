@@ -697,6 +697,12 @@ mod tests {
         std::fs::create_dir_all(jeu.join("MatchReplay").join("Match-2026-11-17")).unwrap();
         let trouves = dossiers_replays(&jeu.join("pas-de-documents"), Some(&jeu.join("RainbowSix.exe")), &[]);
         assert_eq!(trouves, vec![jeu.join("MatchReplay")]);
+        // Jeu lancé depuis une copie (AppData\Local\ubisoft\r6s\multiexe) : trouvé par le dossier d'installation (Steam)
+        let installe = jeu.join("steamapps").join("common").join("Tom Clancy's Rainbow Six Siege");
+        std::fs::create_dir_all(installe.join("MatchReplay")).unwrap();
+        let ailleurs = jeu.join("multiexe").join("RainbowSix.exe");
+        let trouves = dossiers_replays(&jeu.join("pas-de-documents"), Some(&ailleurs), &[installe.clone()]);
+        assert!(trouves.contains(&installe.join("MatchReplay")), "{trouves:?}");
         let _ = std::fs::remove_dir_all(&jeu);
     }
 

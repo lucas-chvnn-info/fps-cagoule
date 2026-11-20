@@ -147,6 +147,22 @@ fn paires_vdf(texte: &str) -> Vec<(String, String)> {
         .collect()
 }
 
+/// Dossiers des jeux installés dans les bibliothèques Steam (steamapps\common\…), sans lire leurs manifestes
+pub fn dossiers_steam() -> Vec<PathBuf> {
+    let Some(racine) = steam_racine() else { return vec![] };
+    let mut bibliotheques = vec![racine.clone()];
+    if let Ok(t) = fs::read_to_string(racine.join(r"steamapps\libraryfolders.vdf")) {
+        bibliotheques.extend(paires_vdf(&t).into_iter().filter(|(k, _)| k == "path").map(|(_, v)| PathBuf::from(v)));
+    }
+    let mut vues = HashSet::new();
+    bibliotheques
+        .into_iter()
+        .filter(|b| vues.insert(b.to_string_lossy().to_lowercase()))
+        .filter_map(|b| fs::read_dir(b.join(r"steamapps\common")).ok())
+        .flat_map(|l| l.flatten().map(|e| e.path()).collect::<Vec<_>>())
+        .collect()
+}
+
 fn steam(avec_exes: bool) -> Vec<JeuTrouve> {
     let Some(racine) = steam_racine() else { return vec![] };
     let mut bibliotheques = vec![racine.clone()];

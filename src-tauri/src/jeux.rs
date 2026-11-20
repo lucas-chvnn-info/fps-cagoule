@@ -428,7 +428,18 @@ fn surveiller_clips(app: &AppHandle, etat: &Etat, pid: u32) {
         let mut session = etat.session.lock().unwrap();
         match session.as_mut() {
             Some(s) => {
-                let arrete = s.enregistreur.as_mut().is_some_and(|e| e.relances < RELANCES_MAX && (!e.vivant() || e.image_figee()));
+                let arrete = s.enregistreur.as_mut().is_some_and(|e| {
+                    if e.relances >= RELANCES_MAX {
+                        return false;
+                    }
+                    let mort = !e.vivant();
+                    if mort || e.image_figee() {
+                        e.raison = if mort { "FFmpeg arrêté" } else { "image figée" };
+                        true
+                    } else {
+                        false
+                    }
+                });
                 if arrete {
                     s.enregistreur.take()
                 } else {
@@ -443,7 +454,11 @@ fn surveiller_clips(app: &AppHandle, etat: &Etat, pid: u32) {
     let _ = thread::Builder::new().name("clips".into()).spawn(move || {
         let etat = app.state::<Arc<Etat>>();
         let r = enregistreur.relancer(&etat.stock);
-        crate::clips::noter(&etat.stock, &format!("Capture relancée ({}e fois){}", enregistreur.relances, r.as_ref().err().map(|e| format!(" : {e}")).unwrap_or_default()));
+        let derniere = enregistreur.derniere_erreur.lock().unwrap().clone().unwrap_or_default();
+        crate::clips::noter(
+            &etat.stock,
+            &format!("Capture relancée ({}e fois, {}{}){}", enregistreur.relances, enregistreur.raison, if derniere.is_empty() { String::new() } else { format!(" : {derniere}") }, r.as_ref().err().map(|e| format!(" — relance ratée : {e}")).unwrap_or_default()),
+        );
         let mut session = etat.session.lock().unwrap();
         if let Some(s) = session.as_mut().filter(|s| s.pid == pid) {
             if enregistreur.relances >= RELANCES_MAX || r.is_err() {
@@ -480,7 +495,11 @@ fn surveiller_replays(app: &AppHandle, etat: &Etat, pid: u32) {
             use windows_sys::Win32::UI::Shell::FOLDERID_Documents;
             let Some(documents) = crate::jeux_config::dossier_connu(&FOLDERID_Documents) else { return };
             let exe = systeme::chemin_exe(pid).map(PathBuf::from);
-            let trouves = crate::replays_r6::dossiers_replays(&documents, exe.as_deref(), &crate::bibliotheques::dossiers_ubisoft());
+            // R6 peut tourner depuis une copie (AppData\Local\ubisoft\r6s\multiexe) : les replays restent dans
+            // le dossier d'installation, cherché aussi dans Ubisoft Connect et les bibliothèques Steam
+            let mut installs = crate::bibliotheques::dossiers_ubisoft();
+            installs.extend(crate::bibliotheques::dossiers_steam());
+            let trouves = crate::replays_r6::dossiers_replays(&documents, exe.as_deref(), &installs);
             if let Some(s) = etat.session.lock().unwrap().as_mut().filter(|s| s.pid == pid) {
                 // Noté une fois (puis seulement quand un dossier apparaît)
                 if !s.replays_cherches || !trouves.is_empty() {

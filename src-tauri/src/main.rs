@@ -584,6 +584,16 @@ fn clips_poster_discord(app: AppHandle, chemin: String, titre: String) -> Res<()
     liens::reposter(&etat(&app).stock, &chemin, &titre)
 }
 
+/// Ouvre le journal des clips (Bloc-notes)
+#[tauri::command(async)]
+fn clips_journal(app: AppHandle) -> Res<()> {
+    let f = etat(&app).stock.dossier().join("journal-clips.txt");
+    if !f.is_file() {
+        clips::noter(&etat(&app).stock, "Journal ouvert (rien à signaler pour l'instant)");
+    }
+    lancement::ouvrir(&f.to_string_lossy(), "", None)
+}
+
 /// Retire le clip du web
 #[tauri::command(async)]
 fn clips_ne_plus_partager(app: AppHandle, chemin: String) -> Res<()> {
@@ -948,6 +958,7 @@ fn main() {
             clips_dossier_regler,
             clips_exporter,
             clips_partager,
+            clips_journal,
             partage_regler,
             clips_poster_discord,
             clips_ne_plus_partager,

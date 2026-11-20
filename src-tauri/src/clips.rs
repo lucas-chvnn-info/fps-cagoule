@@ -269,6 +269,8 @@ pub struct Enregistreur {
     fige: bool,
     /// Dernier message d'erreur de FFmpeg (capture d'écran perdue…)
     pub derniere_erreur: Arc<Mutex<Option<String>>>,
+    /// Raison de la dernière relance (pour le journal)
+    pub raison: &'static str,
 }
 
 impl Enregistreur {
@@ -402,6 +404,7 @@ pub fn demarrer(stock: &Stockage, jeu: &str) -> Result<Enregistreur, String> {
                     depuis: Instant::now(),
                     fige: false,
                     derniere_erreur,
+                    raison: "",
                 })
             }
             Err(e) => erreurs.push(e),
@@ -442,7 +445,7 @@ fn morceaux_recents(dossier: &Path, secondes: u32) -> Vec<PathBuf> {
     liste.into_iter().rev().take(n).rev().map(|(_, p)| p).collect()
 }
 
-/// Journal des clips (%APPDATA%\FPS Cagoule\journal-clips.txt) : replays trouvés et lus, clips auto faits ou ratés.
+/// Journal des clips (%APPDATA%\ch.lucas-chvnn.fps-cagoule\journal-clips.txt, bouton « Journal » de la page Clips) : replays trouvés et lus, clips auto faits ou ratés.
 /// Petit fichier texte (gardé sous 300 Ko) pour comprendre un clip auto qui ne vient pas.
 pub fn noter(stock: &Stockage, message: &str) {
     let f = stock.dossier().join("journal-clips.txt");
