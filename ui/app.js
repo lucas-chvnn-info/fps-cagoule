@@ -3966,6 +3966,9 @@ const ICONES_NOUVEAUTES = {
 };
 
 const NOUVEAUTES = {
+  '0.27.7': [
+    { icone: 'clips', titre: 'Des clips vraiment fluides', texte: 'Tes clips gardent enfin leurs 60 images par seconde, en plein écran comme en fenêtré. Le son reste calé.' },
+  ],
   '0.27.6': [
     { icone: 'clips', titre: 'Des clips vraiment fluides', texte: 'Tes clips gardent enfin leurs 60 images par seconde : avant, la moitié étaient des copies. Le son reste calé.' },
   ],
