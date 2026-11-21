@@ -168,9 +168,12 @@ pub struct Qualite {
 }
 
 impl Qualite {
-    /// Standard 12, haute 20, ultra 40 Mbit/s à 60 images/s ; ×1,5 à 120 images/s
+    /// Standard 12, haute 20, ultra 40 Mbit/s, toujours à 60 images/s : la capture de Windows plafonne vers
+    /// 65 images vraiment nouvelles par seconde en jeu (mesuré), le 120 donnait des fichiers lourds sans gain.
+    /// `ips` est gardé pour les anciens réglages (120) mais ignoré.
     pub fn depuis(niveau: &str, ips: u32) -> Self {
-        let ips = if ips >= 120 { 120 } else { 60 };
+        let _ = ips;
+        let ips = 60;
         let (base, crf) = match niveau {
             "standard" => (12, 26),
             "ultra" => (40, 19),
@@ -1300,17 +1303,18 @@ mod tests {
     #[test]
     fn arguments_nvidia_avec_son() {
         let f = crate::audio::Format { frequence: 48000, canaux: 2, flottant: true };
-        let a = arguments(&source_ecran(120), Some(f), Encodeur::Nvidia, Qualite::depuis("ultra", 120), 1_000_000, Path::new(r"C:\t"));
+        let a = arguments(&source_ecran(60), Some(f), Encodeur::Nvidia, Qualite::depuis("ultra", 120), 1_000_000, Path::new(r"C:\t"));
         let texte = a.join(" ");
         assert!(texte.contains("-f f32le -ar 48000 -ac 2 -i pipe:0"));
         assert!(texte.contains("[1:v]setpts=PTS-(1000000/1000000)/TB[v]"));
         assert!(texte.contains("-use_wallclock_as_timestamps 1 -f lavfi") && texte.contains("-fps_mode vfr"));
         assert!(texte.contains("h264_nvenc") && texte.contains("-segment_wrap 124"));
-        assert!(texte.contains("framerate=120") && texte.contains("-b:v 60M") && texte.contains("-g 240"));
+        // 120 i/s demandé par un ancien réglage : ramené à 60
+        assert!(texte.contains("framerate=60") && texte.contains("-b:v 40M") && texte.contains("-g 120"));
         // Réglages « qualité » : profil High, images B, débit max 1,5 fois le débit visé
         assert_eq!(source_fenetre("RainbowSix.exe", 60), "gfxcapture=window_exe=(?i)rainbowsix.exe$:window_class=R6Game:max_framerate=60:capture_cursor=0:display_border=0");
         assert_eq!(source_fenetre("FortniteClient-Win64-Shipping.exe", 120), "gfxcapture=window_exe=(?i)fortniteclient-win64-shipping.exe$:max_framerate=120:capture_cursor=0:display_border=0");
-        assert!(texte.contains("-profile:v high") && texte.contains("-tune hq") && texte.contains("-bf 2") && texte.contains("-maxrate 90M"));
+        assert!(texte.contains("-profile:v high") && texte.contains("-tune hq") && texte.contains("-bf 2") && texte.contains("-maxrate 60M"));
         assert!(!texte.contains("-tune ll") && !texte.contains("cbr"));
         assert_eq!(Qualite::depuis("standard", 60), Qualite { debit_mbps: 12, ips: 60, crf: 26 });
         assert_eq!(Qualite::depuis("inconnu", 90).debit_mbps, 20);
