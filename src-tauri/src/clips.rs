@@ -225,14 +225,13 @@ pub fn arguments(source_video: &str, audio: Option<crate::audio::Format>, encode
         Encodeur::Intel => "hwmap=derive_device=qsv,format=qsv,",
         Encodeur::Logiciel => "hwdownload,format=bgra,format=yuv420p,",
     };
-    // Son et image horodatés avec la même horloge (temps réel), ramenée à base_us
-    let mut graphe = format!("[{v}:v]{conversion}setpts=PTS-({base_us}/1000000)/TB[v]");
+    // Son et image horodatés avec la même horloge (temps réel), ramenée à base_us.
+    // Chacun dans son propre circuit (-filter:v / -filter:a) : réunis dans un seul graphe, l'image attendait le son
+    // (qui arrive par paquets) et repartait par à-coups : ~30 images/s au lieu de 60 (reproduit : 278 contre 479 en 8 s)
+    a.extend(["-copyts".to_string(), "-map".into(), format!("{v}:v"), "-filter:v".into(), format!("{conversion}setpts=PTS-({base_us}/1000000)/TB")]);
     if audio.is_some() {
-        graphe.push_str(&format!(";[0:a]asetpts=PTS-({base_us}/1000000)/TB,aresample=async=1000[a]"));
-    }
-    a.extend(["-copyts".to_string(), "-filter_complex".to_string(), graphe, "-map".into(), "[v]".into()]);
-    if audio.is_some() {
-        a.extend(["-map", "[a]", "-c:a", "aac", "-b:a", "160k"].iter().map(|s| s.to_string()));
+        a.extend(["-map".to_string(), "0:a".into(), "-filter:a".into(), format!("asetpts=PTS-({base_us}/1000000)/TB,aresample=async=1000")]);
+        a.extend(["-c:a", "aac", "-b:a", "160k"].iter().map(|s| s.to_string()));
     }
     // Une image clé toutes les 2 s : les morceaux du tampon commencent tous par une image complète
     let gop = (qualite.ips * MORCEAU_S).to_string();
@@ -1306,7 +1305,8 @@ mod tests {
         let a = arguments(&source_ecran(60), Some(f), Encodeur::Nvidia, Qualite::depuis("ultra", 120), 1_000_000, Path::new(r"C:\t"));
         let texte = a.join(" ");
         assert!(texte.contains("-f f32le -ar 48000 -ac 2 -i pipe:0"));
-        assert!(texte.contains("[1:v]setpts=PTS-(1000000/1000000)/TB[v]"));
+        assert!(texte.contains("-map 1:v -filter:v setpts=PTS-(1000000/1000000)/TB") && texte.contains("-map 0:a -filter:a asetpts="));
+        assert!(!texte.contains("filter_complex"));
         assert!(texte.contains("-use_wallclock_as_timestamps 1 -f lavfi") && texte.contains("-fps_mode vfr"));
         assert!(texte.contains("h264_nvenc") && texte.contains("-segment_wrap 124"));
         // 120 i/s demandé par un ancien réglage : ramené à 60
