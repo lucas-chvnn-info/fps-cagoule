@@ -198,6 +198,15 @@ pub fn source_ecran(ips: u32) -> String {
     format!("ddagrab=output_idx=0:framerate={ips}:draw_mouse=0")
 }
 
+/// Heure du son : comptée en échantillons depuis le départ, pas à l'arrivée de chaque paquet dans le tuyau.
+/// À l'arrivée, un paquet en retard de 0,1 à 0,25 s (le jeu occupe le PC) faisait croire à un trou :
+/// FFmpeg le comblait par du silence puis jetait le rattrapage → son haché (442 blancs dans un clip de 3 min).
+/// Recalage sur l'horloge du PC (registre 0 = décalage) : plus tôt dès qu'un paquet arrive en avance sur le compte,
+/// plus tard seulement au-delà de 0,5 s de retard (son vraiment perdu), jamais pour un simple paquet en retard.
+pub fn filtre_son(base_us: i64) -> String {
+    format!("asetpts='st(1,PTS-N/SR/TB);if(eq(N,0)+lt(ld(1),ld(0))+gt(ld(1)-ld(0),0.5/TB),st(0,ld(1)));N/SR/TB+ld(0)-({base_us}/1000000)/TB'")
+}
+
 /// Arguments FFmpeg de l'enregistrement. `base_us` : instant de référence (µs depuis 1970) commun au son et à l'image.
 pub fn arguments(source_video: &str, audio: Option<crate::audio::Format>, encodeur: Encodeur, qualite: Qualite, base_us: i64, sortie: &Path) -> Vec<String> {
     let mut a: Vec<String> = ["-hide_banner", "-loglevel", "error", "-y"].iter().map(|s| s.to_string()).collect();
@@ -230,7 +239,7 @@ pub fn arguments(source_video: &str, audio: Option<crate::audio::Format>, encode
     // (qui arrive par paquets) et repartait par à-coups : ~30 images/s au lieu de 60 (reproduit : 278 contre 479 en 8 s)
     a.extend(["-copyts".to_string(), "-map".into(), format!("{v}:v"), "-filter:v".into(), format!("{conversion}setpts=PTS-({base_us}/1000000)/TB")]);
     if audio.is_some() {
-        a.extend(["-map".to_string(), "0:a".into(), "-filter:a".into(), format!("asetpts=PTS-({base_us}/1000000)/TB,aresample=async=1000")]);
+        a.extend(["-map".to_string(), "0:a".into(), "-filter:a".into(), filtre_son(base_us)]);
         a.extend(["-c:a", "aac", "-b:a", "160k"].iter().map(|s| s.to_string()));
     }
     // Une image clé toutes les 2 s : les morceaux du tampon commencent tous par une image complète
@@ -1305,7 +1314,8 @@ mod tests {
         let a = arguments(&source_ecran(60), Some(f), Encodeur::Nvidia, Qualite::depuis("ultra", 120), 1_000_000, Path::new(r"C:\t"));
         let texte = a.join(" ");
         assert!(texte.contains("-f f32le -ar 48000 -ac 2 -i pipe:0"));
-        assert!(texte.contains("-map 1:v -filter:v setpts=PTS-(1000000/1000000)/TB") && texte.contains("-map 0:a -filter:a asetpts="));
+        assert!(texte.contains("-map 1:v -filter:v setpts=PTS-(1000000/1000000)/TB") && texte.contains("-map 0:a -filter:a asetpts='st(1,PTS-N/SR/TB)"));
+        assert!(!texte.contains("aresample=async=1000"));
         assert!(!texte.contains("filter_complex"));
         assert!(texte.contains("-use_wallclock_as_timestamps 1 -f lavfi") && texte.contains("-fps_mode vfr"));
         assert!(texte.contains("h264_nvenc") && texte.contains("-segment_wrap 124"));
