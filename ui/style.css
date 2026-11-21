@@ -1078,6 +1078,8 @@ kbd { font: 600 12px/1 inherit; padding: 3px 7px; border-radius: 6px; background
 
 /* Galerie des clips : dossiers par jeu, recherche et filtres */
 .clips-outils { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.clips-menu { padding: 5px 8px; font-size: 13px; max-width: 190px; }
+.clips-menu.actif { border-color: var(--accent-clair); color: var(--accent-clair); }
 .clips-fil { display: flex; align-items: center; gap: 10px; margin-right: auto; min-width: 0; }
 .clips-fil strong { font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .clips-fil .discret { font-size: 13px; white-space: nowrap; }

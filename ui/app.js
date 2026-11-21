@@ -2626,10 +2626,19 @@ function afficherClips() {
   }
   $('#clips-outils').hidden = false;
   const recherche = vueClips.recherche.trim().toLowerCase();
-  const filtres = (c) => (!vueClips.filtre || genreClip(c) === vueClips.filtre) && (!recherche || `${c.nom} ${c.jeu}`.toLowerCase().includes(recherche));
+  const filtres = (c) => {
+    const d = detailsClip(c);
+    return (
+      (!vueClips.filtre || genreClip(c) === vueClips.filtre) &&
+      (!vueClips.carte || d.carte === vueClips.carte) &&
+      (!vueClips.operateur || d.operateur === vueClips.operateur) &&
+      (!recherche || `${c.nom} ${c.jeu}`.toLowerCase().includes(recherche))
+    );
+  };
   document.querySelectorAll('#clips-filtres button').forEach((b) => b.classList.toggle('actif', b.dataset.filtre === vueClips.filtre));
+  remplirMenus(clipsListe.filter((c) => !vueClips.jeu || c.jeu === vueClips.jeu));
   // Accueil de la galerie : un dossier par jeu (sauf pendant une recherche ou un filtre)
-  if (!vueClips.jeu && !recherche && !vueClips.filtre) {
+  if (!vueClips.jeu && !recherche && !vueClips.filtre && !vueClips.carte && !vueClips.operateur) {
     $('#clips-fil').innerHTML = `<strong>Tous les jeux</strong><span class="discret">${clipsListe.length} clip${clipsListe.length > 1 ? 's' : ''}</span>`;
     const jeux = [...new Set(clipsListe.map((c) => c.jeu))];
     jeux.forEach((jeu, i) => grille.append(dossierJeu(jeu, clipsListe.filter((c) => c.jeu === jeu), i)));
@@ -2793,7 +2802,43 @@ $('#btn-partage-valider').addEventListener('click', async (e) => {
   } catch {}
 });
 
-const vueClips = { jeu: null, filtre: '', recherche: '' };
+const vueClips = { jeu: null, filtre: '', recherche: '', carte: '', operateur: '' };
+
+/** Cartes de R6 (le reste d'un nom de clip auto est l'opérateur) */
+const CARTES_R6 = new Set(['Bank', 'Bartlett', 'Border', 'Chalet', 'Clubhouse', 'Coastline', 'Consulate', 'Emerald Plains', 'Favela', 'Fortress', 'Hereford', 'House', 'Kafe', 'Kanal', 'Lair', 'Nighthaven Labs', 'Oregon', 'Outback', 'Presidential Plane', 'Skyscraper', 'Stadium', 'Stadium Bravo', 'Theme Park', 'Tower', 'Villa', 'Yacht', 'Litoral']);
+
+/** Carte et opérateur d'après le nom d'un clip auto (« 3K · Rauora · Outback · Pseudo », opérateur ou carte parfois absents) */
+function detailsClip(c) {
+  const t = c.nom.split(' · ').map((x) => x.trim());
+  if (t.length < 3 || !/^(2K|3K|4K|ACE)$/.test(t[0])) return { carte: '', operateur: '' };
+  const milieu = t.slice(1, -1);
+  const carte = milieu.find((x) => CARTES_R6.has(x)) || (milieu.length === 2 ? milieu[1] : '');
+  const operateur = milieu.find((x) => x !== carte) || '';
+  return { carte, operateur };
+}
+
+/** Menus Carte / Opérateur : remplis avec ce qu'il y a dans les clips (du jeu ouvert), les plus fréquents d'abord */
+function remplirMenus(clips) {
+  for (const [cle, id, tous] of [['carte', '#clips-carte', 'Toutes les cartes'], ['operateur', '#clips-operateur', 'Tous les opérateurs']]) {
+    const comptes = new Map();
+    for (const c of clips) {
+      const v = detailsClip(c)[cle];
+      if (v) comptes.set(v, (comptes.get(v) || 0) + 1);
+    }
+    if (vueClips[cle] && !comptes.has(vueClips[cle])) comptes.set(vueClips[cle], 0);
+    const menu = $(id);
+    menu.innerHTML = `<option value="">${tous}</option>` + [...comptes].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([v, n]) => `<option value="${esc(v)}">${esc(v)} (${n})</option>`).join('');
+    menu.value = vueClips[cle];
+    menu.hidden = comptes.size === 0;
+    menu.classList.toggle('actif', !!vueClips[cle]);
+  }
+}
+for (const [cle, id] of [['carte', '#clips-carte'], ['operateur', '#clips-operateur']]) {
+  $(id).addEventListener('change', (e) => {
+    vueClips[cle] = e.target.value;
+    afficherClips();
+  });
+}
 
 $('#clips-recherche').addEventListener('input', (e) => {
   vueClips.recherche = e.target.value;
@@ -2807,7 +2852,7 @@ $('#clips-filtres').addEventListener('click', (e) => {
 });
 $('#clips-fil').addEventListener('click', (e) => {
   if (!e.target.closest('[data-retour]')) return;
-  Object.assign(vueClips, { jeu: null, filtre: '', recherche: '' });
+  Object.assign(vueClips, { jeu: null, filtre: '', recherche: '', carte: '', operateur: '' });
   $('#clips-recherche').value = '';
   afficherClips();
 });
