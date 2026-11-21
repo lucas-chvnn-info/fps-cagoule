@@ -4165,6 +4165,9 @@ const ICONES_NOUVEAUTES = {
 };
 
 const NOUVEAUTES = {
+  '0.28.1': [
+    { icone: 'clips', titre: 'Aperçu Discord', texte: 'Les longs clips s\'affichent maintenant aussi dans Discord, avec leur vignette.' },
+  ],
   '0.28.0': [
     { icone: 'clips', titre: 'Réglages plus clairs', texte: 'Les réglages des clips tiennent en une ligne, et s\'ouvrent en trois blocs quand tu en as besoin.' },
     { icone: 'clips', titre: 'Filtre carte et opérateur', texte: 'Retrouve tous tes clips sur Outback ou avec Rauora en deux clics.' },
