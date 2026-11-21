@@ -4095,6 +4095,10 @@ const ICONES_NOUVEAUTES = {
 };
 
 const NOUVEAUTES = {
+  '0.27.9': [
+    { icone: 'clips', titre: 'Choisis tes sons', texte: 'Jeu, voix Discord et micro, chacun sur sa piste : règle leurs volumes dans l\'éditeur.' },
+    { icone: 'clips', titre: 'Discord tout seul', texte: 'Tes 3K, 4K ou ACE partent sur ton salon Discord sans rien toucher.' },
+  ],
   '0.27.8': [
     { icone: 'clips', titre: 'Un son propre', texte: 'Fini les petites coupures dans le son de tes clips, même quand le jeu fait travailler le PC à fond.' },
   ],
