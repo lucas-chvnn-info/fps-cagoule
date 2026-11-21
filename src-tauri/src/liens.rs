@@ -46,9 +46,14 @@ fn echapper(t: &str) -> String {
     t.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
 }
 
-/// Page du lien : lecteur, et balises lues par Discord pour montrer la vidéo dans la conversation
-pub fn page(titre: &str, url: &str, id: &str) -> String {
+/// Au-delà, Discord abandonne la vidéo en cours de téléchargement et n'affiche aucun aperçu (vu : arrêt vers 105 Mo)
+pub const LIMITE_DISCORD: u64 = 80 * 1024 * 1024;
+
+/// Page du lien : lecteur, et balises lues par Discord pour montrer la vidéo dans la conversation.
+/// `allegee` : la vidéo montrée dans Discord est la version légère (<id>-discord.mp4), la page garde l'originale.
+pub fn page(titre: &str, url: &str, id: &str, allegee: bool) -> String {
     let t = echapper(titre);
+    let apercu = if allegee { format!("{id}-discord") } else { id.to_string() };
     format!(
         r##"<!doctype html>
 <html lang="fr">
@@ -63,8 +68,8 @@ pub fn page(titre: &str, url: &str, id: &str) -> String {
 <meta property="og:type" content="video.other">
 <meta property="og:url" content="{url}/{id}">
 <meta property="og:image" content="{url}/{id}.jpg">
-<meta property="og:video" content="{url}/{id}.mp4">
-<meta property="og:video:secure_url" content="{url}/{id}.mp4">
+<meta property="og:video" content="{url}/{apercu}.mp4">
+<meta property="og:video:secure_url" content="{url}/{apercu}.mp4">
 <meta property="og:video:type" content="video/mp4">
 <meta property="og:video:width" content="1280">
 <meta property="og:video:height" content="720">
@@ -165,12 +170,24 @@ fn partager_un(stock: &Stockage, source: &Path, titre: &str, progression: impl F
     let id = identifiant();
     // Copie sous un nom provisoire : le lien ne marche qu'une fois la vidéo complète
     let provisoire = dossier.join(format!(".{id}.mp4"));
-    if let Err(e) = clips::version_web(stock, &source, &provisoire, progression) {
+    // Clip lourd (long, plusieurs sons…) : une version légère en plus, pour l'aperçu dans Discord
+    let lourd = fs::metadata(&source).map(|m| m.len()).unwrap_or(0) > LIMITE_DISCORD;
+    let part = if lourd { 0.6 } else { 1.0 };
+    if let Err(e) = clips::version_web(stock, &source, &provisoire, |f| progression(f * part)) {
         let _ = fs::remove_file(&provisoire);
         return Err(e);
     }
+    let mut allegee = false;
+    if lourd || fs::metadata(&provisoire).map(|m| m.len()).unwrap_or(0) > LIMITE_DISCORD {
+        let leger = dossier.join(format!("{id}-discord.mp4"));
+        match clips::version_discord(stock, &source, &leger, |f| progression(part + f * (1.0 - part) * 0.95)) {
+            Ok(()) => allegee = true,
+            // Sans version légère, le lien marche quand même (seul l'aperçu Discord peut manquer)
+            Err(e) => clips::noter(stock, &format!("Version légère pour Discord ratée : {e}")),
+        }
+    }
     clips::image_partage(stock, &source, &dossier.join(format!("{id}.jpg")));
-    fs::write(dossier.join(format!("{id}.html")), page(titre, &url, &id)).map_err(|e| e.to_string())?;
+    fs::write(dossier.join(format!("{id}.html")), page(titre, &url, &id, allegee)).map_err(|e| e.to_string())?;
     fs::rename(&provisoire, dossier.join(format!("{id}.mp4"))).map_err(|e| e.to_string())?;
     stock.donnees.lock().unwrap().partages.insert(cle(&source), id.clone());
     stock.sauver();
@@ -194,8 +211,8 @@ pub fn retirer(stock: &Stockage, chemin: &str) -> Result<(), String> {
     let id = stock.donnees.lock().unwrap().partages.remove(&cle(&source));
     stock.sauver();
     if let (Some(id), Some((dossier, _))) = (id, reglage(stock)) {
-        for ext in ["mp4", "jpg", "html"] {
-            let _ = fs::remove_file(dossier.join(format!("{id}.{ext}")));
+        for ext in ["mp4", "jpg", "html", "discord.mp4"] {
+            let _ = fs::remove_file(dossier.join(if ext == "discord.mp4" { format!("{id}-discord.mp4") } else { format!("{id}.{ext}") }));
         }
     }
     Ok(())
@@ -211,7 +228,8 @@ mod tests {
         assert_eq!(a.len(), 10);
         assert_ne!(a, b);
         assert!(a.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit()));
-        let p = page("3K · Kaid · <Oregon>", "https://clips.exemple.ch", "abc");
+        let p = page("3K · Kaid · <Oregon>", "https://clips.exemple.ch", "abc", false);
+        assert!(page("x", "https://clips.exemple.ch", "abc", true).contains(r#"og:video" content="https://clips.exemple.ch/abc-discord.mp4""#));
         assert!(p.contains(r#"content="https://clips.exemple.ch/abc.mp4""#));
         assert!(p.contains("3K · Kaid · &lt;Oregon&gt;"));
         assert!(webhook_valide("https://discord.com/api/webhooks/1234567890/abcdefghijklmnop"));

@@ -1048,6 +1048,68 @@ pub fn version_web(stock: &Stockage, source: &Path, sortie: &Path, progression: 
     Err(format!("Copie du clip impossible : {erreur}"))
 }
 
+/// Version légère d'un clip pour l'aperçu dans Discord : 720p, environ 75 Mo au plus (le débit dépend de la durée),
+/// seulement le son « Tout ». Préparée sur le PC puis copiée vers `sortie`. `progression(0..1)`.
+pub fn version_discord(stock: &Stockage, source: &Path, sortie: &Path, progression: impl Fn(f64)) -> Result<(), String> {
+    let duree = infos_video(stock, source).1.max(1.0);
+    let son = !pistes_son(stock, source).0.is_empty();
+    let kbps = ((75.0 * 8.0 * 1024.0 / duree) as u64).saturating_sub(130).clamp(700, 6000);
+    let (debit, maxi, tampon) = (format!("{kbps}k"), format!("{}k", kbps * 5 / 4), format!("{}k", kbps * 2));
+    let local = stock.dossier().join("partage-en-cours");
+    let _ = fs::create_dir_all(&local);
+    let temp = local.join(format!("{}-discord.mp4", cle_clip(source, "tmp").trim_end_matches(".tmp")));
+    let mut erreur = String::new();
+    for encodeur in [encodeur_conseille(), Encodeur::Logiciel] {
+        let video: Vec<&str> = match encodeur {
+            Encodeur::Nvidia => vec!["-c:v", "h264_nvenc", "-preset", "p5", "-rc", "vbr", "-b:v", &debit, "-maxrate", &maxi, "-bufsize", &tampon],
+            Encodeur::Amd => vec!["-c:v", "h264_amf", "-quality", "quality", "-rc", "vbr_peak", "-b:v", &debit, "-maxrate", &maxi],
+            Encodeur::Intel => vec!["-c:v", "h264_qsv", "-preset", "medium", "-b:v", &debit, "-maxrate", &maxi, "-pix_fmt", "nv12"],
+            Encodeur::Logiciel => vec!["-c:v", "libx264", "-preset", "veryfast", "-b:v", &debit, "-maxrate", &maxi, "-bufsize", &tampon, "-pix_fmt", "yuv420p"],
+        };
+        let mut cmd = Command::new(ffmpeg(stock));
+        cmd.args(["-hide_banner", "-loglevel", "error", "-y", "-nostats", "-progress", "pipe:1", "-i"]).arg(source).args(["-map", "0:v:0", "-vf", "scale=-2:720"]);
+        if son {
+            cmd.args(["-map", "0:a:0", "-c:a", "aac", "-b:a", "128k"]);
+        }
+        let mut enfant = cmd
+            .args(&video)
+            .args(["-movflags", "+faststart"])
+            .arg(&temp)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .creation_flags(CREATE_NO_WINDOW)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+        crate::systeme::attacher_a_l_app(&enfant);
+        if let Some(out) = enfant.stdout.take() {
+            use std::io::BufRead;
+            for ligne in std::io::BufReader::new(out).lines().map_while(Result::ok) {
+                if let Some(us) = ligne.strip_prefix("out_time_us=").and_then(|v| v.trim().parse::<f64>().ok()) {
+                    progression((us / 1e6 / duree * 0.9).clamp(0.0, 0.9));
+                }
+            }
+        }
+        let mut sortie_err = String::new();
+        if let Some(mut e) = enfant.stderr.take() {
+            let _ = e.read_to_string(&mut sortie_err);
+        }
+        let ok = enfant.wait().map(|s| s.success()).unwrap_or(false);
+        if ok && temp.is_file() {
+            let r = fs::copy(&temp, sortie).map(|_| ()).map_err(|e| format!("Copie vers le serveur impossible : {e}"));
+            let _ = fs::remove_file(&temp);
+            if r.is_err() {
+                let _ = fs::remove_file(sortie);
+            }
+            progression(1.0);
+            return r;
+        }
+        let _ = fs::remove_file(&temp);
+        erreur = sortie_err.lines().last().unwrap_or("").to_string();
+    }
+    Err(format!("Version légère impossible : {erreur}"))
+}
+
 /// Grande image du clip pour l'aperçu des liens (Discord…)
 pub fn image_partage(stock: &Stockage, source: &Path, sortie: &Path) {
     let _ = Command::new(ffmpeg(stock))
@@ -1528,6 +1590,12 @@ mod tests {
         // Montage : les sons séparés restent
         let m = exporter(stock, &clip.to_string_lossy(), &[(0.0, 1.0), (2.0, 3.0)], false, None, |_| {}).expect("montage à plusieurs sons");
         assert_eq!(pistes_son(stock, &m), (vec!["Tout".to_string(), "Jeu et PC".into(), "Discord".into(), "Micro".into()], vec![1.0, 0.0, 0.5]));
+        let leger = dossier.join("leger.mp4");
+        version_discord(stock, &clip, &leger, |_| {}).expect("version légère pour Discord");
+        let (titres_leger, _) = pistes_son(stock, &leger);
+        assert_eq!(titres_leger.len(), 1, "une seule piste son dans la version légère");
+        assert!(fs::metadata(&leger).unwrap().len() < crate::liens::LIMITE_DISCORD);
+        let _ = fs::remove_file(&leger);
         let (separes, fichiers, v) = extraire_pistes(stock, &m.to_string_lossy()).expect("sons pour l'éditeur");
         assert_eq!((separes.len(), fichiers.iter().filter(|f| f.is_file()).count(), v.len()), (3, 3, 3));
         supprimer(stock, &m.to_string_lossy()).unwrap();
