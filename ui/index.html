@@ -327,48 +327,45 @@
           <button id="btn-clips-journal" class="discret-btn" title="Ce que l'app a fait pour tes clips auto (replays lus, clips faits ou ratés)">Journal</button></div>
       </header>
       <div class="carte clips-reglages">
-        <label class="bascule clips-interrupteur"><input type="checkbox" id="clips-actif"><span></span><div><strong>Enregistrer mes parties</strong><small id="clips-etat-texte"></small></div></label>
+        <div class="clips-tete">
+          <label class="bascule clips-interrupteur"><input type="checkbox" id="clips-actif"><span></span><div><strong>Enregistrer mes parties</strong><small id="clips-etat-texte"></small></div></label>
+          <button id="btn-clips-reglages" class="petit discret-btn clips-replier" aria-expanded="false" aria-controls="clips-corps"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg><span>Réglages</span></button>
+        </div>
         <div id="clips-installation" class="clips-installation" hidden>
           <div class="barre"><div id="clips-barre"></div></div>
           <small id="clips-installation-texte">Téléchargement de l'enregistreur…</small>
         </div>
-        <div class="clips-options">
-          <div class="clips-option">
-            <span class="etiquette-option">Durée gardée</span>
-            <div class="choix-duree" id="clips-duree">
+        <button id="clips-resume" class="clips-resume" title="Ouvrir les réglages"></button>
+        <div id="clips-corps" class="clips-corps" hidden>
+          <section class="clips-bloc clips-grise">
+            <h3><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3" class="plein"/></svg>Enregistrement</h3>
+            <div class="clips-ligne"><span class="etiquette-option">Durée gardée</span><div class="choix-duree" id="clips-duree">
               <button data-duree="30">30 s</button><button data-duree="60">1 min</button><button data-duree="180">3 min</button>
-            </div>
-          </div>
-          <div class="clips-option">
-            <span class="etiquette-option">Touche</span>
-            <button id="clips-touche" class="touche-clavier" title="Clique puis appuie sur la touche voulue">F8</button>
-          </div>
-        </div>
-        <div class="clips-options">
-          <div class="clips-option">
-            <span class="etiquette-option">Qualité</span>
-            <div class="choix-duree" id="clips-qualite">
+            </div></div>
+            <div class="clips-ligne"><span class="etiquette-option">Touche</span><button id="clips-touche" class="touche-clavier" title="Clique puis appuie sur la touche voulue">F8</button></div>
+            <div class="clips-ligne"><span class="etiquette-option">Qualité</span><div class="choix-duree" id="clips-qualite">
               <button data-qualite="standard" title="12 Mbit/s : fichiers légers">Standard</button><button data-qualite="haute" title="20 Mbit/s : conseillé">Haute</button><button data-qualite="ultra" title="40 Mbit/s : presque sans perte, fichiers lourds">Ultra</button>
-            </div>
-          </div>
-          <span id="clips-poids" class="etiquette-option"></span>
-        </div>
-        <div class="clips-options">
-          <div class="clips-option">
-            <span class="etiquette-option">Sons</span>
-            <div class="choix-duree" id="clips-sons" aria-label="Sons enregistrés">
+            </div></div>
+            <small id="clips-poids" class="clips-aide"></small>
+            <div class="clips-ligne"><span class="etiquette-option">Sons</span><div class="choix-duree" id="clips-sons" aria-label="Sons enregistrés">
               <button data-son="pc" title="Le jeu, la musique et tout ce que tu entends (sans Discord)">Jeu et PC</button><button data-son="discord" title="Les voix de tes potes sur Discord, sur une piste à part">Discord</button><button data-son="micro" title="Ta voix, sur une piste à part">Micro</button>
-            </div>
-          </div>
-          <span id="clips-sons-aide" class="etiquette-option"></span>
-        </div>
-        <div class="clips-options clips-auto-ligne">
-          <label class="bascule clips-auto" title="À chaque fin de manche, FPS Cagoule lit le replay de R6 et garde tes multi-kills. Le « Match Replay » doit être activé dans R6."><input type="checkbox" id="clips-auto"><span></span> Clips auto dans R6</label>
-          <div class="choix-duree" id="clips-kills" aria-label="Multi-kills à garder">
+            </div></div>
+            <small id="clips-sons-aide" class="clips-aide"></small>
+          </section>
+          <section class="clips-bloc clips-grise">
+            <h3><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 3 5 14h6l-1 7 8-11h-6z"/></svg>Clips auto</h3>
+            <label class="bascule clips-auto" title="À chaque fin de manche, FPS Cagoule lit le replay de R6 et garde tes multi-kills."><input type="checkbox" id="clips-auto"><span></span> Dans Rainbow Six Siege</label>
+            <div class="clips-ligne"><span class="etiquette-option">Garder</span><div class="choix-duree" id="clips-kills" aria-label="Multi-kills à garder">
             <button data-kills="2">2K</button><button data-kills="3">3K</button><button data-kills="4">4K</button><button data-kills="5">ACE</button>
-          </div>
-        </div>
-        <div class="clips-dossier">
+          </div></div>
+            <div class="clips-ligne" id="discord-auto"><span class="etiquette-option" title="Le clip est partagé et posté dans ton salon Discord sans rien toucher">Sur Discord</span><div class="choix-duree" id="discord-kills" aria-label="Multi-kills postés tout seuls sur Discord">
+            <button data-kills="2">2K</button><button data-kills="3">3K</button><button data-kills="4">4K</button><button data-kills="5">ACE</button>
+          </div></div>
+            <small class="clips-aide">Le « Match Replay » doit être activé dans R6.</small>
+          </section>
+          <section class="clips-bloc clips-bloc-large">
+            <h3><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18a4 4 0 0 1-.6-7.96A6 6 0 0 1 18 9a4.5 4.5 0 0 1-.5 9z"/></svg>Rangement et partage</h3>
+            <div class="clips-dossier">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
           <span id="clips-dossier-chemin" class="chemin-dossier"></span>
           <button id="btn-clips-changer" class="petit">Changer</button>
@@ -400,21 +397,19 @@
           <button id="btn-partage-valider" class="petit principal">Valider</button>
           <button id="btn-partage-annuler" class="petit discret-btn">Annuler</button>
         </div>
-        <div class="clips-options clips-auto-ligne" id="discord-auto">
-          <span class="etiquette-option" title="Après un clip auto, il est partagé et posté dans ton salon Discord sans rien toucher">Poster tout seul sur Discord</span>
-          <div class="choix-duree" id="discord-kills" aria-label="Multi-kills postés tout seuls sur Discord">
-            <button data-kills="2">2K</button><button data-kills="3">3K</button><button data-kills="4">4K</button><button data-kills="5">ACE</button>
-          </div>
+          </section>
         </div>
       </div>
       <div id="clips-outils" class="clips-outils" hidden>
         <div id="clips-fil" class="clips-fil"></div>
         <label class="recherche"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg><input type="search" id="clips-recherche" placeholder="Rechercher un clip…" aria-label="Rechercher un clip"></label>
+        <div class="clips-filtres-ligne">
         <div class="choix-duree" id="clips-filtres" aria-label="Filtrer par multi-kill">
           <button data-filtre="2K">2K</button><button data-filtre="3K">3K</button><button data-filtre="4K">4K</button><button data-filtre="ACE">ACE</button>
         </div>
         <select id="clips-carte" class="clips-menu" aria-label="Filtrer par carte" hidden><option value="">Toutes les cartes</option></select>
         <select id="clips-operateur" class="clips-menu" aria-label="Filtrer par opérateur" hidden><option value="">Tous les opérateurs</option></select>
+        </div>
       </div>
       <div id="clips-grille" class="clips-grille"></div>
     </section>

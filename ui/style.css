@@ -967,6 +967,28 @@ main { position: relative; }
 
 /* ---------- Clips ---------- */
 .clips-reglages { display: flex; flex-direction: column; gap: 16px; }
+.clips-tete { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.clips-replier { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.clips-replier svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+.clips-replier.actif { color: var(--accent-clair); }
+.clips-resume { display: flex; flex-wrap: wrap; gap: 6px; padding: 0; margin: -4px 0 0 58px; background: none; border: 0; box-shadow: none; text-align: left; cursor: pointer; transition: opacity .25s; }
+.clips-resume span { padding: 4px 11px; border-radius: 999px; background: var(--fond); border: 1px solid var(--bordure); color: var(--discret); font-size: 12.5px; transition: color .2s, border-color .2s; }
+.clips-resume:hover span { color: var(--texte); border-color: var(--accent-clair); }
+.clips-resume.inactif { opacity: .45; }
+.clips-corps { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: 14px; animation: apparition .25s ease; }
+.clips-bloc { display: flex; flex-direction: column; gap: 12px; padding: 14px 16px; border-radius: 12px; background: var(--fond); border: 1px solid var(--bordure); min-width: 0; }
+.clips-bloc-large { grid-column: 1 / -1; }
+.clips-bloc h3 { margin: 0 0 2px; font-size: 13.5px; font-weight: 600; display: flex; align-items: center; gap: 8px; color: var(--texte); }
+.clips-bloc h3 svg { width: 16px; height: 16px; fill: none; stroke: var(--accent-clair); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.clips-bloc h3 svg .plein { fill: var(--accent-clair); stroke: none; }
+.clips-ligne { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.clips-ligne > .etiquette-option { width: 112px; flex-shrink: 0; }
+.clips-aide { color: var(--discret); font-size: 12px; margin: -6px 0 0 124px; opacity: .8; }
+.clips-bloc > .clips-aide:last-child { margin-left: 0; }
+.clips-aide:empty { display: none; }
+.clips-grise { transition: opacity .25s; }
+.clips-grise.inactif { opacity: .45; }
+.clips-filtres-ligne { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; width: 100%; }
 .clips-interrupteur { align-items: center; }
 .clips-interrupteur strong { display: block; font-size: 16px; }
 .clips-interrupteur small { color: var(--discret); font-size: 13px; }

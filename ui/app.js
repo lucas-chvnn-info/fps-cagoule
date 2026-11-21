@@ -2596,7 +2596,7 @@ function afficherClips() {
         : clipsEtat?.probleme
           ? `Enregistrement impossible : ${clipsEtat.probleme}`
           : `Prêt : appuie sur ${touche} en jeu`;
-  document.querySelectorAll('.clips-options').forEach((o) => o.classList.toggle('inactif', !reglages.clips));
+  document.querySelectorAll('.clips-grise').forEach((o) => o.classList.toggle('inactif', !reglages.clips));
   document.querySelectorAll('#clips-qualite button').forEach((b) => b.classList.toggle('actif', b.dataset.qualite === (reglages.clips_qualite || 'haute')));
   // Poids d'une minute de clip : débit (Mbit/s) × 60 s ÷ 8, plus le son
   const debit = { standard: 12, haute: 20, ultra: 40 }[reglages.clips_qualite] || 20;
@@ -2609,6 +2609,18 @@ function afficherClips() {
   document.querySelectorAll('#discord-kills button').forEach((b) => b.classList.toggle('actif', webhook && (reglages.discord_auto_kills || []).includes(Number(b.dataset.kills))));
   $('#discord-auto').classList.toggle('sans-webhook', !webhook);
   $('#discord-auto').title = webhook ? '' : 'Règle d\'abord le partage avec un webhook Discord';
+  // Résumé des réglages (réglages repliés)
+  const multis = (l) => [...l].sort().map((n) => (n >= 5 ? 'ACE' : `${n}K`)).join(' ');
+  const resume = [
+    dureeTexte(reglages.clips_duree_s),
+    reglages.clips_touche?.nom || 'F8',
+    { standard: 'Standard', haute: 'Haute', ultra: 'Ultra' }[reglages.clips_qualite] || 'Haute',
+    sons.length ? sons.map((s) => ({ pc: 'Jeu', discord: 'Discord', micro: 'Micro' })[s]).join(' + ') : 'Sans son',
+    reglages.clips_auto && reglages.clips_auto_kills?.length ? `Auto ${multis(reglages.clips_auto_kills)}` : 'Clips auto coupés',
+    webhook && reglages.discord_auto_kills?.length ? `Discord ${multis(reglages.discord_auto_kills)}` : null,
+  ].filter(Boolean);
+  $('#clips-resume').innerHTML = resume.map((t) => `<span>${esc(t)}</span>`).join('');
+  $('#clips-resume').classList.toggle('inactif', !reglages.clips);
   afficherPartage();
   if (clipsEtat) {
     $('#clips-dossier-chemin').textContent = clipsEtat.dossier;
@@ -2944,6 +2956,18 @@ function discordRegle() {
   return !!(partageRegle() && reglages.partage_discord);
 }
 
+/* Réglages des clips : repliés en un résumé, dépliés en trois blocs */
+function ouvrirReglagesClips(ouvert) {
+  $('#clips-corps').hidden = !ouvert;
+  $('#clips-resume').hidden = ouvert;
+  $('#btn-clips-reglages').setAttribute('aria-expanded', String(ouvert));
+  $('#btn-clips-reglages').classList.toggle('actif', ouvert);
+  try { localStorage.setItem('clipsReglages', ouvert ? '1' : '0'); } catch {}
+}
+$('#btn-clips-reglages').addEventListener('click', () => ouvrirReglagesClips($('#clips-corps').hidden));
+$('#clips-resume').addEventListener('click', () => ouvrirReglagesClips(true));
+try { ouvrirReglagesClips(localStorage.getItem('clipsReglages') === '1'); } catch { ouvrirReglagesClips(false); }
+
 $('#clips-sons').addEventListener('click', (e) => {
   const b = e.target.closest('[data-son]');
   if (!b) return;
@@ -3019,6 +3043,7 @@ async function validerDossier(bouton, connexion = false) {
     if (msg.startsWith('connexion:')) {
       // Le serveur veut un identifiant : on le demande une fois, Windows le retient ensuite
       $('#clips-dossier-saisie').value = msg.slice('connexion:'.length);
+      ouvrirReglagesClips(true);
       $('#clips-connexion').hidden = false;
       $('#clips-identifiant').focus();
     } else toast(`Erreur : ${msg}`, 7000);
@@ -4140,6 +4165,10 @@ const ICONES_NOUVEAUTES = {
 };
 
 const NOUVEAUTES = {
+  '0.28.0': [
+    { icone: 'clips', titre: 'Réglages plus clairs', texte: 'Les réglages des clips tiennent en une ligne, et s\'ouvrent en trois blocs quand tu en as besoin.' },
+    { icone: 'clips', titre: 'Filtre carte et opérateur', texte: 'Retrouve tous tes clips sur Outback ou avec Rauora en deux clics.' },
+  ],
   '0.27.9': [
     { icone: 'clips', titre: 'Choisis tes sons', texte: 'Jeu, voix Discord et micro, chacun sur sa piste : règle leurs volumes dans l\'éditeur.' },
     { icone: 'clips', titre: 'Discord tout seul', texte: 'Tes 3K, 4K ou ACE partent sur ton salon Discord sans rien toucher.' },
