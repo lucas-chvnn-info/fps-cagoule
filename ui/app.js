@@ -3966,6 +3966,9 @@ const ICONES_NOUVEAUTES = {
 };
 
 const NOUVEAUTES = {
+  '0.27.8': [
+    { icone: 'clips', titre: 'Un son propre', texte: 'Fini les petites coupures dans le son de tes clips, même quand le jeu fait travailler le PC à fond.' },
+  ],
   '0.27.7': [
     { icone: 'clips', titre: 'Des clips vraiment fluides', texte: 'Tes clips gardent enfin leurs 60 images par seconde, en plein écran comme en fenêtré. Le son reste calé.' },
   ],
