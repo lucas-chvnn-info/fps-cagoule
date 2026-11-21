@@ -607,13 +607,31 @@ struct ProgressionExport {
 
 /// Exporte le montage d'un clip (passages gardés, en secondes)
 #[tauri::command(async)]
-fn clips_exporter(app: AppHandle, chemin: String, morceaux: Vec<(f64, f64)>, remplacer: Option<bool>) -> Res<String> {
+fn clips_exporter(app: AppHandle, chemin: String, morceaux: Vec<(f64, f64)>, remplacer: Option<bool>, volumes: Option<Vec<f64>>) -> Res<String> {
     let e = etat(&app);
     let app2 = app.clone();
-    let sortie = clips::exporter(&e.stock, &chemin, &morceaux, remplacer.unwrap_or(false), move |fraction| {
+    let sortie = clips::exporter(&e.stock, &chemin, &morceaux, remplacer.unwrap_or(false), volumes.as_deref(), move |fraction| {
         let _ = app2.emit("clips_export", ProgressionExport { fraction });
     })?;
     Ok(sortie.to_string_lossy().into())
+}
+
+#[derive(Serialize)]
+struct PistesClip {
+    titres: Vec<String>,
+    fichiers: Vec<String>,
+    volumes: Vec<f64>,
+}
+
+/// Sons séparés d'un clip (jeu, Discord, micro), à écouter dans l'éditeur avec chacun son volume
+#[tauri::command(async)]
+fn clips_pistes(app: AppHandle, chemin: String) -> Res<PistesClip> {
+    let e = etat(&app);
+    let (titres, fichiers, volumes) = clips::extraire_pistes(&e.stock, &chemin)?;
+    if let Some(d) = fichiers.first().and_then(|f| f.parent()) {
+        let _ = app.asset_protocol_scope().allow_directory(d, false);
+    }
+    Ok(PistesClip { titres, fichiers: fichiers.iter().map(|f| f.to_string_lossy().into()).collect(), volumes })
 }
 
 #[derive(Serialize, Clone)]
@@ -957,6 +975,7 @@ fn main() {
             clips_parcourir,
             clips_dossier_regler,
             clips_exporter,
+            clips_pistes,
             clips_partager,
             clips_journal,
             partage_regler,

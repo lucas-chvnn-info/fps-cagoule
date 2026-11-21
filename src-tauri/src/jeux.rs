@@ -573,6 +573,7 @@ fn surveiller_replays(app: &AppHandle, etat: &Etat, pid: u32) {
                     crate::clips::noter(&etat.stock, &format!("{nom} : clip auto « {titre} » ({duree:.0} s) → {}", chemin.display()));
                     crate::clips::ajouter_marqueurs(&etat.stock, &chemin, &reperes_manche(&manche, modifie, fin, duree));
                     signaler_clip(&app, &etat.stock, &chemin);
+                    poster_auto(&app, &etat.stock, &chemin, &titre, kills);
                 }
                 Err(e) => {
                     crate::clips::noter(&etat.stock, &format!("{nom} : clip auto « {titre} » raté ({e})"));
@@ -595,6 +596,35 @@ fn reperes_manche(manche: &crate::replays_r6::Manche, ecriture: SystemTime, fin:
             (t <= secondes).then(|| crate::clips::Marqueur { t, genre: e.genre.into(), detail: e.detail, headshot: e.headshot })
         })
         .collect()
+}
+
+#[derive(serde::Serialize, Clone)]
+struct PosteAuto {
+    chemin: String,
+    titre: String,
+    lien: Option<String>,
+    erreur: Option<String>,
+}
+
+/// Clip auto choisi pour Discord (3K, 4K, ACE…) : partagé et posté tout seul dans le salon réglé
+fn poster_auto(app: &AppHandle, stock: &crate::config::Stockage, chemin: &std::path::Path, titre: &str, kills: u8) {
+    let voulu = {
+        let r = &stock.donnees.lock().unwrap().reglages;
+        r.discord_auto_kills.contains(&kills) && r.partage_discord.as_deref().is_some_and(crate::liens::webhook_valide)
+    };
+    if !voulu {
+        return;
+    }
+    let chemin_texte = chemin.to_string_lossy().to_string();
+    let (lien, erreur) = match crate::liens::partager(stock, &chemin_texte, titre, |_| {}) {
+        Ok(p) => match p.discord {
+            Some(Err(e)) => (Some(p.lien), Some(format!("lien créé mais pas posté sur Discord ({e})"))),
+            _ => (Some(p.lien), None),
+        },
+        Err(e) => (None, Some(e)),
+    };
+    crate::clips::noter(stock, &format!("Discord auto « {titre} » : {}", erreur.as_deref().unwrap_or("posté")));
+    let _ = app.emit("clip_poste", PosteAuto { chemin: chemin_texte, titre: titre.into(), lien, erreur });
 }
 
 /// Clip enregistré : prévient l'interface, et dit si le dossier choisi (serveur) était injoignable

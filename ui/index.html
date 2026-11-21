@@ -353,6 +353,15 @@
           </div>
           <span id="clips-poids" class="etiquette-option"></span>
         </div>
+        <div class="clips-options">
+          <div class="clips-option">
+            <span class="etiquette-option">Sons</span>
+            <div class="choix-duree" id="clips-sons" aria-label="Sons enregistrés">
+              <button data-son="pc" title="Le jeu, la musique et tout ce que tu entends (sans Discord)">Jeu et PC</button><button data-son="discord" title="Les voix de tes potes sur Discord, sur une piste à part">Discord</button><button data-son="micro" title="Ta voix, sur une piste à part">Micro</button>
+            </div>
+          </div>
+          <span id="clips-sons-aide" class="etiquette-option"></span>
+        </div>
         <div class="clips-options clips-auto-ligne">
           <label class="bascule clips-auto" title="À chaque fin de manche, FPS Cagoule lit le replay de R6 et garde tes multi-kills. Le « Match Replay » doit être activé dans R6."><input type="checkbox" id="clips-auto"><span></span> Clips auto dans R6</label>
           <div class="choix-duree" id="clips-kills" aria-label="Multi-kills à garder">
@@ -390,6 +399,12 @@
           <input id="partage-discord" type="password" spellcheck="false" placeholder="Webhook Discord (facultatif)" aria-label="Webhook du salon Discord" title="Salon Discord → Modifier le salon → Intégrations → Webhooks → Copier l'URL du webhook">
           <button id="btn-partage-valider" class="petit principal">Valider</button>
           <button id="btn-partage-annuler" class="petit discret-btn">Annuler</button>
+        </div>
+        <div class="clips-options clips-auto-ligne" id="discord-auto">
+          <span class="etiquette-option" title="Après un clip auto, il est partagé et posté dans ton salon Discord sans rien toucher">Poster tout seul sur Discord</span>
+          <div class="choix-duree" id="discord-kills" aria-label="Multi-kills postés tout seuls sur Discord">
+            <button data-kills="2">2K</button><button data-kills="3">3K</button><button data-kills="4">4K</button><button data-kills="5">ACE</button>
+          </div>
         </div>
       </div>
       <div id="clips-outils" class="clips-outils" hidden>
@@ -572,6 +587,7 @@
         <button id="ed-retirer-zone" class="petit" disabled>Retirer</button>
         <button id="ed-garder-zone" class="petit" disabled>Garder seulement</button>
       </div>
+      <div id="ed-sons" class="ed-zone ed-sons" hidden></div>
       <div id="ed-progression" class="ed-progression" hidden><div class="barre"><div id="ed-barre"></div></div><small>Export du montage…</small></div>
     </div>
   </div>

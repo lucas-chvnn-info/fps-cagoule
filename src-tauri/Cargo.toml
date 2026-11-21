@@ -44,9 +44,14 @@ windows-sys = { version = "0.61", features = [
   "Win32_Security_Credentials",
   "Win32_NetworkManagement_WNet",
   "Win32_System_JobObjects",
+  "Win32_System_Pipes",
+  "Win32_System_IO",
+  "Win32_Storage_FileSystem",
 ] }
 # Capture du son du PC pour les clips (interfaces COM de WASAPI)
-windows = { version = "0.61", features = ["Win32_Media_Audio", "Win32_System_Com", "Win32_System_Com_StructuredStorage", "Win32_System_Variant"] }
+windows = { version = "0.61", features = ["Win32_Foundation", "Win32_Media_Audio", "Win32_Security", "Win32_System_Com", "Win32_System_Com_StructuredStorage", "Win32_System_Threading", "Win32_System_Variant"] }
+# Objets COM écrits en Rust (fin de l'ouverture du son d'un seul programme)
+windows-core = "0.61"
 
 # Binaire le plus petit possible : il tourne en permanence en arrière-plan
 [profile.release]

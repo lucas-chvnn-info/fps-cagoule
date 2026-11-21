@@ -2602,6 +2602,13 @@ function afficherClips() {
   const debit = { standard: 12, haute: 20, ultra: 40 }[reglages.clips_qualite] || 20;
   $('#clips-poids').textContent = `≈ ${Math.round((debit * 60) / 8 + 1)} Mo par minute`;
   document.querySelectorAll('#clips-kills button').forEach((b) => b.classList.toggle('actif', (reglages.clips_auto_kills || []).includes(Number(b.dataset.kills))));
+  const sons = reglages.clips_sons || ['pc', 'discord'];
+  document.querySelectorAll('#clips-sons button').forEach((b) => b.classList.toggle('actif', sons.includes(b.dataset.son)));
+  $('#clips-sons-aide').textContent = sons.length > 1 ? 'Chacun sur sa piste : volumes réglables dans l\'éditeur' : sons.length ? '' : 'Clips sans son';
+  const webhook = discordRegle();
+  document.querySelectorAll('#discord-kills button').forEach((b) => b.classList.toggle('actif', webhook && (reglages.discord_auto_kills || []).includes(Number(b.dataset.kills))));
+  $('#discord-auto').classList.toggle('sans-webhook', !webhook);
+  $('#discord-auto').title = webhook ? '' : 'Règle d\'abord le partage avec un webhook Discord';
   afficherPartage();
   if (clipsEtat) {
     $('#clips-dossier-chemin').textContent = clipsEtat.dossier;
@@ -2888,6 +2895,39 @@ $('#clips-qualite').addEventListener('click', (e) => {
   if (clipsEtat?.enregistrement) toast('Nouvelle qualité dès ta prochaine partie.');
 });
 
+function discordRegle() {
+  return !!(partageRegle() && reglages.partage_discord);
+}
+
+$('#clips-sons').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-son]');
+  if (!b) return;
+  const liste = new Set(reglages.clips_sons || ['pc', 'discord']);
+  liste.has(b.dataset.son) ? liste.delete(b.dataset.son) : liste.add(b.dataset.son);
+  reglages.clips_sons = ['pc', 'discord', 'micro'].filter((s) => liste.has(s));
+  sauverReglages();
+  afficherClips();
+  if (clipsEtat?.enregistrement) toast('Nouveaux sons dès ta prochaine partie.');
+});
+
+$('#discord-kills').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-kills]');
+  if (!b) return;
+  if (!discordRegle()) return toast('Règle d\'abord le partage avec un webhook Discord (Partage → Régler).');
+  const n = Number(b.dataset.kills);
+  const liste = new Set(reglages.discord_auto_kills || []);
+  liste.has(n) ? liste.delete(n) : liste.add(n);
+  reglages.discord_auto_kills = [...liste].sort();
+  sauverReglages();
+  afficherClips();
+});
+
+listen('clip_poste', (e) => {
+  const { titre, erreur } = e.payload;
+  toast(erreur ? `Discord : ${erreur}` : `« ${titre} » posté sur Discord.`, 6000);
+  chargerClips();
+});
+
 $('#clips-kills').addEventListener('click', (e) => {
   const b = e.target.closest('[data-kills]');
   if (!b) return;
@@ -3016,6 +3056,7 @@ $('#ed-plus-partager').addEventListener('click', async (e) => {
 });
 
 function ouvrirEditeur(c) {
+  arreterSons();
   Object.assign(ed, { clip: c, duree: 0, passages: [], choisi: -1, historique: [], zone: null });
   $('#editeur-titre').textContent = c.nom;
   majPartageEditeur();
@@ -3023,10 +3064,80 @@ function ouvrirEditeur(c) {
   video.src = window.__TAURI__.core.convertFileSrc(c.chemin);
   $('#editeur').hidden = false;
   dessinerEditeur();
+  chargerSons(c);
 }
+
+/* Sons séparés (jeu, Discord, micro) : chacun joué à part, calé sur la vidéo, avec son volume */
+async function chargerSons(c) {
+  let r;
+  try {
+    r = await invoke('clips_pistes', { chemin: c.chemin });
+  } catch {
+    return;
+  }
+  if (ed.clip !== c || !r.titres.length) return;
+  const audios = r.fichiers.map((f) => {
+    const a = new Audio(window.__TAURI__.core.convertFileSrc(f));
+    a.preload = 'auto';
+    return a;
+  });
+  const volumes = r.volumes.map((v) => Math.round(v * 100));
+  ed.sons = { audios, volumes, initiaux: [...volumes] };
+  $('#ed-sons').innerHTML =
+    '<span class="ed-zone-titre">Sons</span>' +
+    r.titres
+      .map((t, i) => `<label class="ed-son">${esc(t || `Son ${i + 1}`)}<input type="range" min="0" max="150" step="5" value="${volumes[i]}" data-i="${i}" aria-label="Volume : ${esc(t)}"><output>${volumes[i]} %</output></label>`)
+      .join('');
+  $('#ed-sons').hidden = false;
+  appliquerVolume();
+  synchroniserSons(true);
+  dessinerEditeur();
+}
+
+function arreterSons() {
+  for (const a of ed.sons?.audios || []) {
+    a.pause();
+    a.removeAttribute('src');
+    a.load();
+  }
+  ed.sons = null;
+  $('#ed-sons').hidden = true;
+  $('#ed-sons').innerHTML = '';
+  appliquerVolume(); // le son revient à la vidéo
+}
+
+function sonsModifies() {
+  return !!ed.sons && ed.sons.volumes.some((v, i) => v !== ed.sons.initiaux[i]);
+}
+
+function synchroniserSons(forcer) {
+  if (!ed.sons) return;
+  for (const a of ed.sons.audios) {
+    if (forcer || Math.abs(a.currentTime - video.currentTime) > 0.15) {
+      try { a.currentTime = video.currentTime; } catch {}
+    }
+    a.playbackRate = video.playbackRate;
+    if (video.paused || video.seeking) a.pause();
+    else if (a.paused) a.play().catch(() => {});
+  }
+}
+for (const ev of ['play', 'playing', 'pause', 'seeked']) video.addEventListener(ev, () => synchroniserSons(true));
+video.addEventListener('timeupdate', () => synchroniserSons(false));
+video.addEventListener('ratechange', () => synchroniserSons(false));
+video.addEventListener('waiting', () => ed.sons?.audios.forEach((a) => a.pause()));
+
+$('#ed-sons').addEventListener('input', (e) => {
+  const i = Number(e.target.dataset.i);
+  if (!ed.sons || Number.isNaN(i)) return;
+  ed.sons.volumes[i] = Number(e.target.value);
+  e.target.nextElementSibling.textContent = `${e.target.value} %`;
+  appliquerVolume();
+  dessinerEditeur();
+});
 
 function fermerEditeur() {
   if (pleinEcran) basculerPleinEcran();
+  arreterSons();
   video.pause();
   video.removeAttribute('src');
   video.load();
@@ -3065,7 +3176,9 @@ function dessinerEditeur() {
     .join('');
   const garde = morceauxGardes().reduce((t, [a, b]) => t + b - a, 0);
   $('#ed-final').textContent = ed.duree ? `Montage : ${horloge(garde)}` : '';
-  $('#ed-exporter').disabled = !ed.duree || garde < 0.2 || ed.passages.every((p) => p.garde);
+  const sansCoupe = ed.passages.every((p) => p.garde);
+  $('#ed-exporter').disabled = !ed.duree || garde < 0.2 || (sansCoupe && !sonsModifies());
+  $('#ed-exporter').textContent = sansCoupe && sonsModifies() ? 'Enregistrer les sons' : 'Exporter';
   $('#ed-supprimer').disabled = !ed.duree;
   $('#ed-annuler').disabled = !ed.historique.length;
   dessinerZone();
@@ -3166,15 +3279,28 @@ const ICONE_SON = (n) =>
   `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z"/>${
     n === 0 ? '<path d="M17 9l5 6M22 9l-5 6"/>' : `<path d="M16.5 9.5a3.5 3.5 0 0 1 0 5"/>${n > 50 ? '<path d="M19 7a7 7 0 0 1 0 10"/>' : ''}`
   }</svg>`;
-function regleVolume(niveau, muet = video.muted) {
+const son = { niveau: 60, muet: false };
+/** Volume général : sur la vidéo, ou sur chaque son séparé (× son propre volume) */
+function appliquerVolume() {
+  const coupe = son.muet || son.niveau === 0;
+  if (ed.sons) {
+    video.muted = true;
+    ed.sons.audios.forEach((a, i) => (a.volume = coupe ? 0 : Math.min(1, (son.niveau / 100) * (ed.sons.volumes[i] / 100))));
+  } else {
+    video.volume = son.niveau / 100;
+    video.muted = coupe;
+  }
+}
+function regleVolume(niveau, muet = son.muet) {
   niveau = Math.min(Math.max(Math.round(niveau), 0), 100);
-  video.volume = niveau / 100;
-  video.muted = muet || niveau === 0;
+  son.niveau = niveau;
+  son.muet = muet || niveau === 0;
+  appliquerVolume();
   $('#ed-volume').value = niveau;
   $('#ed-volume').style.setProperty('--niveau', `${niveau}%`);
-  $('#ed-muet').innerHTML = ICONE_SON(video.muted ? 0 : niveau);
-  $('#ed-muet').title = video.muted ? 'Remettre le son (M)' : 'Couper le son (M)';
-  try { localStorage.setItem('volumeClips', JSON.stringify({ niveau, muet: video.muted && niveau > 0 })); } catch {}
+  $('#ed-muet').innerHTML = ICONE_SON(son.muet ? 0 : niveau);
+  $('#ed-muet').title = son.muet ? 'Remettre le son (M)' : 'Couper le son (M)';
+  try { localStorage.setItem('volumeClips', JSON.stringify({ niveau, muet: son.muet && niveau > 0 })); } catch {}
 }
 try {
   const v = JSON.parse(localStorage.getItem('volumeClips') || 'null');
@@ -3183,7 +3309,7 @@ try {
   regleVolume(60, false);
 }
 $('#ed-volume').addEventListener('input', (e) => regleVolume(Number(e.target.value), false));
-$('#ed-muet').addEventListener('click', () => regleVolume(Number($('#ed-volume').value) || 60, !video.muted));
+$('#ed-muet').addEventListener('click', () => regleVolume(Number($('#ed-volume').value) || 60, !son.muet));
 video.addEventListener('wheel', (e) => {
   e.preventDefault();
   regleVolume(Number($('#ed-volume').value) + (e.deltaY < 0 ? 5 : -5), false);
@@ -3309,8 +3435,8 @@ document.addEventListener('keydown', (e) => {
     O: () => borneZone('b', video.currentTime),
     ArrowUp: () => regleVolume(Number($('#ed-volume').value) + 5, false),
     ArrowDown: () => regleVolume(Number($('#ed-volume').value) - 5, false),
-    m: () => regleVolume(Number($('#ed-volume').value) || 60, !video.muted),
-    M: () => regleVolume(Number($('#ed-volume').value) || 60, !video.muted),
+    m: () => regleVolume(Number($('#ed-volume').value) || 60, !son.muet),
+    M: () => regleVolume(Number($('#ed-volume').value) || 60, !son.muet),
     f: basculerPleinEcran,
     F: basculerPleinEcran,
     Escape: () => (pleinEcran ? basculerPleinEcran() : fermerEditeur()),
@@ -3334,7 +3460,10 @@ $('#ed-remplacer').addEventListener('change', (e) => {
 
 $('#ed-exporter').addEventListener('click', async (e) => {
   const bouton = e.currentTarget;
-  const remplacer = $('#ed-remplacer').checked;
+  // Seuls les sons changent : le clip est mis à jour sur place
+  const seulementSons = ed.passages.every((p) => p.garde);
+  const remplacer = seulementSons || $('#ed-remplacer').checked;
+  const volumes = ed.sons ? ed.sons.volumes.map((v) => v / 100) : null;
   video.pause();
   // Le lecteur lâche le fichier : Windows refuse de remplacer un clip encore ouvert
   if (remplacer) {
@@ -3345,9 +3474,9 @@ $('#ed-exporter').addEventListener('click', async (e) => {
   $('#ed-barre').style.width = '0%';
   bouton.classList.add('chargement');
   try {
-    const sortie = await invoke('clips_exporter', { chemin: ed.clip.chemin, morceaux: morceauxGardes(), remplacer });
+    const sortie = await invoke('clips_exporter', { chemin: ed.clip.chemin, morceaux: morceauxGardes(), remplacer, volumes });
     const aCote = /\(montage( \d+)?\)\.mp4$/i.test(sortie);
-    toast(!aCote ? 'Clip raccourci.' : remplacer ? 'Clip encore ouvert : le montage est à côté de l\'original.' : 'Montage exporté à côté du clip d\'origine.', 5000);
+    toast(!aCote ? (seulementSons ? 'Sons du clip enregistrés.' : 'Clip raccourci.') : remplacer ? 'Clip encore ouvert : le montage est à côté de l\'original.' : 'Montage exporté à côté du clip d\'origine.', 5000);
     fermerEditeur();
     chargerClips();
   } catch (err) {

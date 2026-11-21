@@ -208,13 +208,14 @@ pub fn filtre_son(base_us: i64) -> String {
 }
 
 /// Arguments FFmpeg de l'enregistrement. `base_us` : instant de référence (µs depuis 1970) commun au son et à l'image.
-pub fn arguments(source_video: &str, audio: Option<crate::audio::Format>, encodeur: Encodeur, qualite: Qualite, base_us: i64, sortie: &Path) -> Vec<String> {
+/// `audio` : une entrée par piste son (format, et « pipe:0 » ou le nom d'un tuyau nommé).
+pub fn arguments(source_video: &str, audio: &[(crate::audio::Format, String)], encodeur: Encodeur, qualite: Qualite, base_us: i64, sortie: &Path) -> Vec<String> {
     let mut a: Vec<String> = ["-hide_banner", "-loglevel", "error", "-y"].iter().map(|s| s.to_string()).collect();
-    if let Some(f) = audio {
+    for (f, entree) in audio {
         a.extend(
             [
                 "-thread_queue_size", "4096", "-use_wallclock_as_timestamps", "1", "-f", f.ffmpeg(),
-                "-ar", &f.frequence.to_string(), "-ac", &f.canaux.to_string(), "-i", "pipe:0",
+                "-ar", &f.frequence.to_string(), "-ac", &f.canaux.to_string(), "-i", entree,
             ]
             .iter()
             .map(|s| s.to_string()),
@@ -224,7 +225,7 @@ pub fn arguments(source_video: &str, audio: Option<crate::audio::Format>, encode
     // sinon les images qui attendent un instant repartent groupées avec presque la même heure, FFmpeg en jette une
     // sur deux et recopie la précédente (~32 vraies images/s mesurées, contre 60 pour la capture seule)
     a.extend(["-thread_queue_size", "64", "-use_wallclock_as_timestamps", "1", "-f", "lavfi", "-i", source_video].iter().map(|s| s.to_string()));
-    let v = if audio.is_some() { 1 } else { 0 };
+    let v = audio.len();
     // Images de la capture d'écran (D3D11) : directes pour NVIDIA et AMD, converties pour Intel et le processeur
     // Images de la carte graphique (D3D11), écran entier ou fenêtre du jeu
     let capture_ecran = source_video.starts_with("ddagrab") || source_video.starts_with("gfxcapture");
@@ -238,8 +239,12 @@ pub fn arguments(source_video: &str, audio: Option<crate::audio::Format>, encode
     // Chacun dans son propre circuit (-filter:v / -filter:a) : réunis dans un seul graphe, l'image attendait le son
     // (qui arrive par paquets) et repartait par à-coups : ~30 images/s au lieu de 60 (reproduit : 278 contre 479 en 8 s)
     a.extend(["-copyts".to_string(), "-map".into(), format!("{v}:v"), "-filter:v".into(), format!("{conversion}setpts=PTS-({base_us}/1000000)/TB")]);
-    if audio.is_some() {
-        a.extend(["-map".to_string(), "0:a".into(), "-filter:a".into(), filtre_son(base_us)]);
+    if !audio.is_empty() {
+        // Une piste par source (son du PC, Discord, micro), chacune horodatée de la même façon
+        for i in 0..audio.len() {
+            a.extend(["-map".to_string(), format!("{i}:a")]);
+        }
+        a.extend(["-filter:a".to_string(), filtre_son(base_us)]);
         a.extend(["-c:a", "aac", "-b:a", "160k"].iter().map(|s| s.to_string()));
     }
     // Une image clé toutes les 2 s : les morceaux du tampon commencent tous par une image complète
@@ -280,7 +285,9 @@ pub fn arguments(source_video: &str, audio: Option<crate::audio::Format>, encode
 
 pub struct Enregistreur {
     enfant: Child,
-    _son: Option<crate::audio::Capture>,
+    _son: Vec<crate::audio::Capture>,
+    /// Pistes son, choisies au début de la partie et gardées jusqu'au bout (mêmes pistes dans tous les morceaux)
+    sons: Sons,
     pub dossier: PathBuf,
     pub jeu: String,
     pub encodeur: Encodeur,
@@ -344,7 +351,7 @@ impl Enregistreur {
         let mut derniere = String::new();
         for fenetre in sources(self.exe.is_some()) {
             let source = source_de(fenetre, self.exe.as_deref(), self.qualite.ips);
-            match lancer_ffmpeg(stock, &source, self.encodeur, self.qualite, &self.dossier, self.base_us, &self.derniere_erreur) {
+            match lancer_ffmpeg(stock, &source, &self.sons, self.encodeur, self.qualite, &self.dossier, self.base_us, &self.derniere_erreur) {
                 Ok((enfant, son)) => {
                     self.enfant = enfant;
                     self._son = son;
@@ -384,20 +391,112 @@ fn source_de(fenetre: bool, exe: Option<&str>, ips: u32) -> String {
     }
 }
 
+/// Piste son d'un clip
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Piste {
+    Pc,
+    Discord,
+    Micro,
+}
+
+impl Piste {
+    pub fn titre(&self) -> &'static str {
+        match self {
+            Piste::Pc => "Jeu et PC",
+            Piste::Discord => "Discord",
+            Piste::Micro => "Micro",
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Sons {
+    pub pistes: Vec<Piste>,
+    /// Discord laissé hors du son du PC : sur sa propre piste, ou pas voulu du tout
+    pub sans_discord: bool,
+}
+
+/// Pistes à enregistrer d'après le réglage (« pc », « discord », « micro »). Discord fermé : pas de piste Discord.
+pub fn sons_choisis(choix: &[String], discord_ouvert: bool) -> Sons {
+    let veut = |n: &str| choix.iter().any(|c| c == n);
+    let mut pistes = Vec::new();
+    if veut("pc") {
+        pistes.push(Piste::Pc);
+    }
+    if veut("discord") && discord_ouvert {
+        pistes.push(Piste::Discord);
+    }
+    if veut("micro") {
+        pistes.push(Piste::Micro);
+    }
+    Sons { sans_discord: !veut("discord") || pistes.contains(&Piste::Discord), pistes }
+}
+
+static NUMERO_TUYAU: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+/// Ouvre les sources de son des pistes. Une piste qui ne s'ouvre pas reste muette (mêmes pistes partout),
+/// sauf s'il n'y en a qu'une : pas de son du tout, comme avant.
+fn ouvrir_sons(stock: &Stockage, sons: &Sons) -> Vec<(crate::audio::Format, impl FnOnce(Box<dyn Write + Send>, Option<String>) -> crate::audio::Capture)> {
+    use crate::audio::Source;
+    let discord = if sons.sans_discord || sons.pistes.contains(&Piste::Discord) { crate::audio::pid_discord() } else { None };
+    let mut ouvertes = Vec::new();
+    for piste in &sons.pistes {
+        let source = match piste {
+            Piste::Pc => Source::Pc { sauf: if sons.sans_discord { discord } else { None } },
+            Piste::Discord => discord.map_or(Source::Silence, Source::Programme),
+            Piste::Micro => Source::Micro,
+        };
+        let mut o = crate::audio::ouvrir(source);
+        if let (Err(e), Source::Pc { sauf: Some(_) }) = (&o, source) {
+            noter(stock, &format!("Son du PC sans Discord impossible ({e}) : Discord reste dans le son du PC"));
+            o = crate::audio::ouvrir(Source::Pc { sauf: None });
+        }
+        match o {
+            Ok(o) => ouvertes.push(o),
+            Err(e) => {
+                noter(stock, &format!("Piste « {} » muette : {e}", piste.titre()));
+                if sons.pistes.len() == 1 {
+                    break;
+                }
+                match crate::audio::ouvrir(Source::Silence) {
+                    Ok(o) => ouvertes.push(o),
+                    Err(_) => return Vec::new(),
+                }
+            }
+        }
+    }
+    ouvertes
+}
+
+#[allow(clippy::too_many_arguments)]
 fn lancer_ffmpeg(
     stock: &Stockage,
     source: &str,
+    sons: &Sons,
     encodeur: Encodeur,
     qualite: Qualite,
     dossier: &Path,
     base_us: i64,
     derniere_erreur: &Arc<Mutex<Option<String>>>,
-) -> Result<(Child, Option<crate::audio::Capture>), String> {
-    let son = crate::audio::ouvrir().ok();
-    let args = arguments(source, son.as_ref().map(|(f, _)| *f), encodeur, qualite, base_us, dossier);
+) -> Result<(Child, Vec<crate::audio::Capture>), String> {
+    let ouvertes = ouvrir_sons(stock, sons);
+    // Première piste par stdin, les suivantes par des tuyaux nommés (FFmpeg les lit comme des fichiers)
+    let mut entrees = Vec::new();
+    let mut tuyaux = Vec::new();
+    for (i, (f, _)) in ouvertes.iter().enumerate() {
+        if i == 0 {
+            entrees.push((*f, "pipe:0".to_string()));
+        } else {
+            let nom = format!(r"\\.\pipe\fps-cagoule-son-{}-{}", std::process::id(), NUMERO_TUYAU.fetch_add(1, std::sync::atomic::Ordering::Relaxed));
+            let t = crate::audio::Tuyau::creer(&nom).map_err(|e| format!("Tuyau du son : {e}"))?;
+            tuyaux.push((t, nom.clone()));
+            entrees.push((*f, nom));
+        }
+    }
+    let args = arguments(source, &entrees, encodeur, qualite, base_us, dossier);
     let mut enfant = Command::new(ffmpeg(stock))
         .args(&args)
-        .stdin(if son.is_some() { Stdio::piped() } else { Stdio::null() })
+        .stdin(if ouvertes.is_empty() { Stdio::null() } else { Stdio::piped() })
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
         // Priorité haute, comme le jeu : FPS Cagoule passe le jeu en priorité haute, et une capture restée en
@@ -407,10 +506,17 @@ fn lancer_ffmpeg(
         .spawn()
         .map_err(|e| format!("FFmpeg ne démarre pas : {e}"))?;
     crate::systeme::attacher_a_l_app(&enfant);
-    let capture = match (son, enfant.stdin.take()) {
-        (Some((_, demarrer)), Some(entree)) => Some(demarrer(Box::new(entree))),
-        _ => None,
-    };
+    let mut capture = Vec::new();
+    let mut tuyaux = tuyaux.into_iter();
+    for (i, (_, demarrer)) in ouvertes.into_iter().enumerate() {
+        if i == 0 {
+            if let Some(entree) = enfant.stdin.take() {
+                capture.push(demarrer(Box::new(entree), None));
+            }
+        } else if let Some((t, nom)) = tuyaux.next() {
+            capture.push(demarrer(Box::new(t), Some(nom)));
+        }
+    }
     // FFmpeg qui s'arrête tout de suite : encodeur ou capture refusés
     let limite = Instant::now() + Duration::from_secs(4);
     while Instant::now() < limite {
@@ -471,15 +577,21 @@ pub fn demarrer(stock: &Stockage, jeu: &str, exe: Option<&str>) -> Result<Enregi
         Qualite::depuis(&r.clips_qualite, r.clips_ips)
     };
     let derniere_erreur = Arc::new(Mutex::new(None));
+    let choix = stock.donnees.lock().unwrap().reglages.clips_sons.clone();
+    let sons = sons_choisis(&choix, crate::audio::pid_discord().is_some());
+    // Noms des pistes, lus à la sauvegarde d'un clip
+    let _ = fs::write(dossier.join("pistes.txt"), sons.pistes.iter().map(|p| p.titre()).collect::<Vec<_>>().join("\n"));
+    noter(stock, &format!("Pistes son : {}", if sons.pistes.is_empty() { "aucune".to_string() } else { sons.pistes.iter().map(|p| p.titre()).collect::<Vec<_>>().join(", ") }));
     for encodeur in [encodeur_conseille(), Encodeur::Logiciel] {
         for fenetre in sources(exe.is_some()) {
             let source = source_de(fenetre, exe, qualite.ips);
-            match lancer_ffmpeg(stock, &source, encodeur, qualite, &dossier, base_us, &derniere_erreur) {
+            match lancer_ffmpeg(stock, &source, &sons, encodeur, qualite, &dossier, base_us, &derniere_erreur) {
                 Ok((enfant, son)) => {
                     noter(stock, &format!("Capture : {}", if fenetre { "fenêtre du jeu" } else { "écran entier" }));
                     return Ok(Enregistreur {
                         enfant,
                         _son: son,
+                        sons: sons.clone(),
                         dossier,
                         jeu: jeu.into(),
                         encodeur,
@@ -585,6 +697,71 @@ pub fn premiers_pts(ts: &[u8]) -> (Option<u64>, Option<u64>) {
     (video, son)
 }
 
+/// Premier horodatage (90 kHz) de l'image et de chacune des `pistes` pistes son d'un flux MPEG-TS.
+/// Toutes les pistes son ont le même numéro de flux PES (0xC0) : on les distingue par leur PID, attribués dans
+/// l'ordre des pistes.
+pub fn premiers_pts_pistes(ts: &[u8], pistes: usize) -> (Option<u64>, Vec<Option<u64>>) {
+    let mut video = None;
+    let mut sons: Vec<(u16, u64)> = Vec::new();
+    for p in ts.chunks_exact(PAQUET_TS).take(400_000) {
+        if p[0] != 0x47 || p[1] & 0x40 == 0 {
+            continue;
+        }
+        let pid = (((p[1] & 0x1F) as u16) << 8) | p[2] as u16;
+        let mut debut = 4;
+        if p[3] & 0x20 != 0 {
+            debut += 1 + p[4] as usize;
+        }
+        let Some(pes) = p.get(debut..) else { continue };
+        if pes.len() < 14 || pes[..3] != [0, 0, 1] || pes[7] & 0x80 == 0 {
+            continue;
+        }
+        let b = &pes[9..14];
+        let pts = (((b[0] as u64 >> 1) & 7) << 30) | ((b[1] as u64) << 22) | ((b[2] as u64 >> 1) << 15) | ((b[3] as u64) << 7) | (b[4] as u64 >> 1);
+        match pes[3] {
+            0xE0..=0xEF if video.is_none() => video = Some(pts),
+            0xC0..=0xDF if !sons.iter().any(|(q, _)| *q == pid) => sons.push((pid, pts)),
+            _ => {}
+        }
+        if video.is_some() && sons.len() >= pistes {
+            break;
+        }
+    }
+    sons.sort_by_key(|(pid, _)| *pid);
+    let mut r: Vec<Option<u64>> = sons.into_iter().map(|(_, t)| Some(t)).collect();
+    r.resize(pistes, None);
+    (video, r)
+}
+
+/// Mélange des pistes [s0], [s1]… : piste [mix] (volumes appliqués, sans saturer) et copies intactes [p0], [p1]…
+pub fn filtre_mix(pistes: usize, volumes: &[f64]) -> String {
+    let mut f = String::new();
+    for i in 0..pistes {
+        let v = volumes.get(i).copied().unwrap_or(1.0).clamp(0.0, 4.0);
+        f.push_str(&format!("[s{i}]asplit=2[p{i}][q{i}];[q{i}]volume={v:.2}[r{i}];"));
+    }
+    for i in 0..pistes {
+        f.push_str(&format!("[r{i}]"));
+    }
+    f.push_str(&format!("amix=inputs={pistes}:normalize=0:duration=longest,alimiter=limit=0.95:level=0:latency=1[mix]"));
+    f
+}
+
+/// Réglages FFmpeg des pistes d'un clip à plusieurs sons : mélange d'abord (lu partout : galerie, Discord, Windows),
+/// puis chaque son à part (pour régler les volumes dans l'éditeur). `volumes` en fraction, gardés dans le fichier.
+fn sorties_pistes(cmd: &mut Command, titres: &[String], volumes: &[f64]) {
+    cmd.args(["-map", "[mix]"]);
+    for i in 0..titres.len() {
+        cmd.args(["-map", &format!("[p{i}]")]);
+    }
+    cmd.args(["-c:a", "aac", "-b:a", "160k", "-metadata:s:a:0", "title=Tout", "-disposition:a:0", "default"]);
+    for (i, t) in titres.iter().enumerate() {
+        cmd.args([format!("-metadata:s:a:{}", i + 1), format!("title={t}"), format!("-disposition:a:{}", i + 1), "0".into()]);
+    }
+    let v: Vec<String> = (0..titres.len()).map(|i| format!("{}", (volumes.get(i).copied().unwrap_or(1.0) * 100.0).round() as i64)).collect();
+    cmd.args(["-metadata".to_string(), format!("comment=sons:{}", v.join(","))]);
+}
+
 /// Réglage du son pour qu'il commence avec la première image (sinon décalé dans certains lecteurs, ex. celui de Windows).
 /// `decalage` : avance du son sur l'image, en secondes (négatif = le son commence après).
 pub fn alignement_son(decalage: f64) -> Option<String> {
@@ -630,10 +807,29 @@ pub fn sauver(stock: &Stockage, dossier_tampon: &Path, jeu: &str, secondes: u32,
     }
     // Chaque morceau commence par une image complète : pas de coupe au milieu, l'image démarre tout de suite.
     // Le son, lui, peut commencer un peu avant ou après : on l'aligne sur la première image.
-    let (pts_image, pts_son) = fs::read(&brut).map(|o| premiers_pts(&o)).unwrap_or((None, None));
+    let titres: Vec<String> = fs::read_to_string(dossier_tampon.join("pistes.txt"))
+        .map(|t| t.lines().filter(|l| !l.trim().is_empty()).map(String::from).collect())
+        .unwrap_or_default();
+    let octets = fs::read(&brut).unwrap_or_default();
+    let (pts_image, pts_son) = premiers_pts(&octets);
+    let (_, pts_pistes) = premiers_pts_pistes(&octets, titres.len());
+    drop(octets);
     let mut cmd = Command::new(ffmpeg(stock));
     cmd.args(["-hide_banner", "-loglevel", "error", "-y", "-i"]).arg(&brut).args(["-map", "0:v:0", "-c:v", "copy"]);
-    if pts_son.is_some() {
+    if titres.len() >= 2 && pts_pistes.iter().all(|p| p.is_some()) {
+        // Plusieurs sons : chacun aligné sur la première image, puis mélangés
+        let mut graphe = String::new();
+        for (i, pts) in pts_pistes.iter().enumerate() {
+            let decalage = match (pts_image, pts) {
+                (Some(v), Some(a)) => (v as f64 - *a as f64) / 90_000.0,
+                _ => 0.0,
+            };
+            graphe.push_str(&format!("[0:a:{i}]{}[s{i}];", alignement_son(decalage).unwrap_or_else(|| "anull".into())));
+        }
+        graphe.push_str(&filtre_mix(titres.len(), &[]));
+        cmd.args(["-filter_complex", &graphe]);
+        sorties_pistes(&mut cmd, &titres, &[]);
+    } else if pts_son.is_some() {
         cmd.args(["-map", "0:a:0"]);
         let decalage = match (pts_image, pts_son) {
             (Some(v), Some(a)) => (v as f64 - a as f64) / 90_000.0,
@@ -1006,15 +1202,88 @@ fn infos_video(stock: &Stockage, clip: &Path) -> (bool, f64) {
     (t.contains("Video:"), duree)
 }
 
-/// Le clip a-t-il une piste son (le PC peut ne pas avoir de sortie audio)
-fn a_du_son(stock: &Stockage, clip: &Path) -> bool {
+/// Pistes son décrites par FFmpeg (`ffmpeg -i`) : nom de chaque piste (vide s'il n'en a pas), et volumes gardés
+/// dans le fichier (« sons:100,50,… », en fraction). Clip à plusieurs sons : « Tout » d'abord, puis chaque son.
+pub fn lire_pistes(infos: &str) -> (Vec<String>, Vec<f64>) {
+    let mut titres: Vec<String> = Vec::new();
+    let mut volumes = Vec::new();
+    let mut dans_son = false;
+    for ligne in infos.lines() {
+        let t = ligne.trim();
+        if t.starts_with("Stream #") {
+            dans_son = t.contains(": Audio:");
+            if dans_son {
+                titres.push(String::new());
+            }
+            continue;
+        }
+        let Some((cle, valeur)) = t.split_once(':') else { continue };
+        let (cle, valeur) = (cle.trim(), valeur.trim());
+        if dans_son && (cle == "title" || cle == "name") {
+            if let Some(d) = titres.last_mut().filter(|d| d.is_empty()) {
+                *d = valeur.to_string();
+            }
+        }
+        if cle == "comment" {
+            if let Some(v) = valeur.strip_prefix("sons:") {
+                volumes = v.split(',').filter_map(|x| x.trim().parse::<f64>().ok()).map(|x| x / 100.0).collect();
+            }
+        }
+    }
+    (titres, volumes)
+}
+
+/// Pistes son d'un clip et volumes gardés (le PC peut ne pas avoir de sortie audio : aucune piste)
+pub fn pistes_son(stock: &Stockage, clip: &Path) -> (Vec<String>, Vec<f64>) {
     Command::new(ffmpeg(stock))
         .arg("-i")
         .arg(clip)
         .creation_flags(CREATE_NO_WINDOW)
         .output()
-        .map(|o| String::from_utf8_lossy(&o.stderr).contains("Audio:"))
-        .unwrap_or(false)
+        .map(|o| lire_pistes(&String::from_utf8_lossy(&o.stderr)))
+        .unwrap_or_default()
+}
+
+/// Sons séparés d'un clip (sans la piste « Tout ») : vide s'il n'a qu'un son
+fn sons_separes(titres: &[String]) -> Vec<String> {
+    if titres.len() >= 3 {
+        titres[1..].to_vec()
+    } else {
+        Vec::new()
+    }
+}
+
+/// Sons séparés d'un clip, copiés à part pour les écouter dans l'éditeur avec chacun son volume.
+/// Renvoie leurs noms, leurs fichiers et les volumes gardés dans le clip.
+pub fn extraire_pistes(stock: &Stockage, chemin: &str) -> Result<(Vec<String>, Vec<PathBuf>, Vec<f64>), String> {
+    let source = clip_valide(stock, chemin)?;
+    let (titres, volumes) = pistes_son(stock, &source);
+    let separes = sons_separes(&titres);
+    if separes.is_empty() {
+        return Ok((vec![], vec![], vec![]));
+    }
+    let dossier = stock.dossier().join("pistes");
+    // Pistes d'un clip ouvert avant : effacées (celles encore lues sont laissées)
+    if let Ok(l) = fs::read_dir(&dossier) {
+        for e in l.flatten() {
+            let _ = fs::remove_file(e.path());
+        }
+    }
+    fs::create_dir_all(&dossier).map_err(|e| e.to_string())?;
+    let id = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis());
+    let fichiers: Vec<PathBuf> = (1..=separes.len()).map(|k| dossier.join(format!("{id}-{k}.m4a"))).collect();
+    let mut cmd = Command::new(ffmpeg(stock));
+    cmd.args(["-hide_banner", "-loglevel", "error", "-y", "-i"]).arg(&source);
+    for (k, f) in fichiers.iter().enumerate() {
+        cmd.args(["-map", &format!("0:a:{}", k + 1), "-c", "copy", "-vn"]).arg(f);
+    }
+    let ok = cmd.creation_flags(CREATE_NO_WINDOW).status().map(|s| s.success()).unwrap_or(false);
+    if !ok || fichiers.iter().any(|f| !f.is_file()) {
+        return Err("Sons du clip illisibles".into());
+    }
+    let mut v = volumes;
+    v.resize(separes.len(), 1.0);
+    Ok((separes, fichiers, v))
 }
 
 /// Filtre FFmpeg qui garde les morceaux [début, fin] (en secondes) et les recolle
@@ -1039,6 +1308,31 @@ pub fn filtre_montage(morceaux: &[(f64, f64)], son: bool) -> String {
     f
 }
 
+/// Comme `filtre_montage`, pour un clip à plusieurs sons : chaque son est coupé pareil, puis mélangé
+/// avec ses `volumes` ([v], [mix], et chaque son [p0], [p1]…)
+pub fn filtre_montage_pistes(morceaux: &[(f64, f64)], pistes: usize, volumes: &[f64]) -> String {
+    let mut f = String::new();
+    for (i, (a, b)) in morceaux.iter().enumerate() {
+        f.push_str(&format!("[0:v]trim=start={a:.3}:end={b:.3},setpts=PTS-STARTPTS[v{i}];"));
+        for k in 0..pistes {
+            f.push_str(&format!("[0:a:{}]atrim=start={a:.3}:end={b:.3},asetpts=PTS-STARTPTS[a{i}_{k}];", k + 1));
+        }
+    }
+    for i in 0..morceaux.len() {
+        f.push_str(&format!("[v{i}]"));
+        for k in 0..pistes {
+            f.push_str(&format!("[a{i}_{k}]"));
+        }
+    }
+    f.push_str(&format!("concat=n={}:v=1:a={pistes}[v]", morceaux.len()));
+    for k in 0..pistes {
+        f.push_str(&format!("[s{k}]"));
+    }
+    f.push(';');
+    f.push_str(&filtre_mix(pistes, volumes));
+    f
+}
+
 /// Position d'un repère après le montage (None s'il tombe dans un passage retiré)
 pub fn deplacer_repere(t: f64, morceaux: &[(f64, f64)]) -> Option<f64> {
     let mut avant = 0.0;
@@ -1053,7 +1347,8 @@ pub fn deplacer_repere(t: f64, morceaux: &[(f64, f64)]) -> Option<f64> {
 
 /// Exporte le montage (morceaux gardés) dans un nouveau fichier « … (montage).mp4 ». `progression(0..1)`.
 /// Exporte le montage. `remplacer` : le montage prend la place du clip d'origine (même nom, même date)
-pub fn exporter(stock: &Stockage, chemin: &str, morceaux: &[(f64, f64)], remplacer: bool, progression: impl Fn(f64)) -> Result<PathBuf, String> {
+/// `volumes` : volume de chaque son séparé (clip à plusieurs sons), en fraction ; sinon ceux gardés dans le clip.
+pub fn exporter(stock: &Stockage, chemin: &str, morceaux: &[(f64, f64)], remplacer: bool, volumes: Option<&[f64]>, progression: impl Fn(f64)) -> Result<PathBuf, String> {
     let source = clip_valide(stock, chemin)?;
     let mut m: Vec<(f64, f64)> = morceaux.iter().copied().filter(|(a, b)| b - a >= 0.2 && *a >= 0.0).collect();
     m.sort_by(|x, y| x.0.total_cmp(&y.0));
@@ -1061,7 +1356,13 @@ pub fn exporter(stock: &Stockage, chemin: &str, morceaux: &[(f64, f64)], remplac
         return Err("Garde au moins un passage".into());
     }
     let total: f64 = m.iter().map(|(a, b)| b - a).sum();
-    let son = a_du_son(stock, &source);
+    let (titres, volumes_clip) = pistes_son(stock, &source);
+    let son = !titres.is_empty();
+    let separes = sons_separes(&titres);
+    let volumes: Vec<f64> = volumes.map(|v| v.to_vec()).unwrap_or(volumes_clip);
+    // Clip gardé en entier, seuls les volumes changent : l'image est recopiée telle quelle (quelques secondes)
+    let duree = infos_video(stock, &source).1;
+    let entier = !separes.is_empty() && m.len() == 1 && m[0].0 <= 0.05 && duree > 0.0 && m[0].1 >= duree - 0.05;
     let nom = source.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "clip".into());
     let dossier = source.parent().ok_or("Dossier introuvable")?;
     let mut sortie = dossier.join(format!("{nom} (montage).mp4"));
@@ -1071,20 +1372,32 @@ pub fn exporter(stock: &Stockage, chemin: &str, morceaux: &[(f64, f64)], remplac
         n += 1;
     }
     let mut derniere_erreur = String::new();
-    for encodeur in [encodeur_conseille(), Encodeur::Logiciel] {
+    let encodeurs: Vec<Option<Encodeur>> = if entier { vec![None] } else { vec![Some(encodeur_conseille()), Some(Encodeur::Logiciel)] };
+    for encodeur in encodeurs {
         let video: Vec<&str> = match encodeur {
+            None => vec!["-c:v", "copy"],
             // Débit plafonné (~12 Mb/s, 20 au plus) : sinon un clip HEVC de Medal devient un fichier de 1 Go
-            Encodeur::Nvidia => vec!["-c:v", "h264_nvenc", "-preset", "p5", "-rc", "vbr", "-cq", "22", "-b:v", "12M", "-maxrate", "20M", "-bufsize", "30M"],
-            Encodeur::Amd => vec!["-c:v", "h264_amf", "-quality", "quality", "-rc", "vbr_peak", "-b:v", "12M", "-maxrate", "20M"],
-            Encodeur::Intel => vec!["-c:v", "h264_qsv", "-preset", "medium", "-b:v", "12M", "-maxrate", "20M", "-pix_fmt", "nv12"],
-            Encodeur::Logiciel => vec!["-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-maxrate", "20M", "-bufsize", "30M", "-pix_fmt", "yuv420p"],
+            Some(Encodeur::Nvidia) => vec!["-c:v", "h264_nvenc", "-preset", "p5", "-rc", "vbr", "-cq", "22", "-b:v", "12M", "-maxrate", "20M", "-bufsize", "30M"],
+            Some(Encodeur::Amd) => vec!["-c:v", "h264_amf", "-quality", "quality", "-rc", "vbr_peak", "-b:v", "12M", "-maxrate", "20M"],
+            Some(Encodeur::Intel) => vec!["-c:v", "h264_qsv", "-preset", "medium", "-b:v", "12M", "-maxrate", "20M", "-pix_fmt", "nv12"],
+            Some(Encodeur::Logiciel) => vec!["-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-maxrate", "20M", "-bufsize", "30M", "-pix_fmt", "yuv420p"],
         };
         let mut cmd = Command::new(ffmpeg(stock));
-        cmd.args(["-hide_banner", "-loglevel", "error", "-y", "-nostats", "-progress", "pipe:1", "-i"])
-            .arg(&source)
-            .args(["-filter_complex", &filtre_montage(&m, son), "-map", "[v]"]);
-        if son {
-            cmd.args(["-map", "[a]", "-c:a", "aac", "-b:a", "160k"]);
+        cmd.args(["-hide_banner", "-loglevel", "error", "-y", "-nostats", "-progress", "pipe:1", "-i"]).arg(&source);
+        if entier {
+            // Mêmes sons, nouveaux volumes
+            let mut graphe: String = (0..separes.len()).map(|k| format!("[0:a:{}]anull[s{k}];", k + 1)).collect();
+            graphe.push_str(&filtre_mix(separes.len(), &volumes));
+            cmd.args(["-filter_complex", &graphe, "-map", "0:v:0"]);
+            sorties_pistes(&mut cmd, &separes, &volumes);
+        } else if !separes.is_empty() {
+            cmd.args(["-filter_complex", &filtre_montage_pistes(&m, separes.len(), &volumes), "-map", "[v]"]);
+            sorties_pistes(&mut cmd, &separes, &volumes);
+        } else {
+            cmd.args(["-filter_complex", &filtre_montage(&m, son), "-map", "[v]"]);
+            if son {
+                cmd.args(["-map", "[a]", "-c:a", "aac", "-b:a", "160k"]);
+            }
         }
         let mut enfant = cmd
             .args(&video)
@@ -1101,7 +1414,7 @@ pub fn exporter(stock: &Stockage, chemin: &str, morceaux: &[(f64, f64)], remplac
             use std::io::BufRead;
             for ligne in std::io::BufReader::new(out).lines().map_while(Result::ok) {
                 if let Some(us) = ligne.strip_prefix("out_time_us=").and_then(|v| v.trim().parse::<f64>().ok()) {
-                    progression((us / 1e6 / total).clamp(0.0, 1.0));
+                    progression((us / 1e6 / total.max(0.1)).clamp(0.0, 1.0));
                 }
             }
         }
@@ -1126,9 +1439,6 @@ pub fn exporter(stock: &Stockage, chemin: &str, morceaux: &[(f64, f64)], remplac
         }
         let _ = fs::remove_file(&sortie);
         derniere_erreur = erreur.lines().last().unwrap_or("").to_string();
-        if encodeur == Encodeur::Logiciel {
-            break;
-        }
     }
     Err(format!("Export impossible : {derniere_erreur}"))
 }
@@ -1153,6 +1463,78 @@ fn remplacer_original(stock: &Stockage, original: &Path, montage: &Path) -> Path
 mod tests {
     use super::*;
 
+    /// Trois sons (PC, Discord, micro) : stdin et deux tuyaux nommés vers FFmpeg, puis clip « Tout » + 3 sons séparés,
+    /// volumes changés sans recoder l'image, montage, et sons copiés pour l'éditeur
+    fn trois_pistes(stock: &Stockage, dossier: &Path) {
+        fs::create_dir_all(dossier).unwrap();
+        fs::write(dossier.join("pistes.txt"), "Jeu et PC\nDiscord\nMicro").unwrap();
+        let f = crate::audio::Format { frequence: 48000, canaux: 2, flottant: false };
+        let (n1, n2) = (format!(r"\\.\pipe\fps-cagoule-test-{}-1", std::process::id()), format!(r"\\.\pipe\fps-cagoule-test-{}-2", std::process::id()));
+        let t1 = crate::audio::Tuyau::creer(&n1).expect("tuyau 1");
+        let t2 = crate::audio::Tuyau::creer(&n2).expect("tuyau 2");
+        let base = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_micros() as i64;
+        let args = arguments("testsrc2=size=640x360:rate=60,realtime", &[(f, "pipe:0".into()), (f, n1), (f, n2)], Encodeur::Logiciel, Qualite::depuis("haute", 60), base, dossier);
+        let mut enfant = Command::new(ffmpeg(stock)).args(&args).stdin(Stdio::piped()).stderr(Stdio::piped()).spawn().unwrap();
+        let entree: Box<dyn Write + Send> = Box::new(enfant.stdin.take().unwrap());
+        // Chaque piste : un son différent (440, 660, 880 Hz), 10 ms à la fois, au rythme réel
+        let fils: Vec<_> = [(entree, 440.0), (Box::new(t1) as Box<dyn Write + Send>, 660.0), (Box::new(t2) as Box<dyn Write + Send>, 880.0)]
+            .into_iter()
+            .map(|(mut sortie, hz): (Box<dyn Write + Send>, f64)| {
+                std::thread::spawn(move || {
+                    let debut = Instant::now();
+                    let mut n: u64 = 0;
+                    while debut.elapsed() < Duration::from_secs(9) {
+                        let mut bloc = Vec::with_capacity(480 * 4);
+                        for _ in 0..480 {
+                            let v = ((n as f64 * hz * std::f64::consts::TAU / 48000.0).sin() * 8000.0) as i16;
+                            bloc.extend_from_slice(&v.to_le_bytes());
+                            bloc.extend_from_slice(&v.to_le_bytes());
+                            n += 1;
+                        }
+                        if sortie.write_all(&bloc).is_err() {
+                            break;
+                        }
+                        std::thread::sleep(Duration::from_millis(10));
+                    }
+                    sortie
+                })
+            })
+            .collect();
+        // Sons gardés ouverts jusqu'à la sauvegarde, comme pendant une vraie partie
+        let sorties: Vec<_> = fils.into_iter().map(|f| f.join().unwrap()).collect();
+        let clip = sauver(stock, dossier, "Test pistes", 4, None);
+        drop(sorties);
+        let _ = enfant.kill();
+        let mut erreur = String::new();
+        let _ = enfant.stderr.take().unwrap().read_to_string(&mut erreur);
+        let (clip, _) = clip.unwrap_or_else(|e| panic!("{e} / FFmpeg : {erreur}"));
+        let (titres, volumes) = pistes_son(stock, &clip);
+        println!("Pistes du clip : {titres:?} {volumes:?}");
+        assert_eq!(titres, vec!["Tout", "Jeu et PC", "Discord", "Micro"]);
+        // Les trois sons sont bien là (pas du silence) : niveau de chaque piste
+        for k in 0..4 {
+            let o = Command::new(ffmpeg(stock)).arg("-i").arg(&clip).args(["-map", &format!("0:a:{k}"), "-af", "volumedetect", "-f", "null", "-"]).output().unwrap();
+            let t = String::from_utf8_lossy(&o.stderr).to_string();
+            let niveau = t.split("mean_volume: ").nth(1).and_then(|r| r.split(' ').next()).and_then(|v| v.parse::<f64>().ok()).unwrap_or(-99.0);
+            println!("Piste {k} : {niveau} dB");
+            assert!(niveau > -40.0, "piste {k} muette : {t}");
+        }
+        // Discord coupé, micro à moitié : seule la piste « Tout » change, l'image est recopiée
+        let duree = infos_video(stock, &clip).1;
+        let r = exporter(stock, &clip.to_string_lossy(), &[(0.0, duree)], true, Some(&[1.0, 0.0, 0.5]), |_| {}).expect("nouveaux volumes");
+        assert_eq!(r, clip);
+        let (titres, volumes) = pistes_son(stock, &clip);
+        assert_eq!((titres.len(), volumes), (4, vec![1.0, 0.0, 0.5]));
+        // Montage : les sons séparés restent
+        let m = exporter(stock, &clip.to_string_lossy(), &[(0.0, 1.0), (2.0, 3.0)], false, None, |_| {}).expect("montage à plusieurs sons");
+        assert_eq!(pistes_son(stock, &m), (vec!["Tout".to_string(), "Jeu et PC".into(), "Discord".into(), "Micro".into()], vec![1.0, 0.0, 0.5]));
+        let (separes, fichiers, v) = extraire_pistes(stock, &m.to_string_lossy()).expect("sons pour l'éditeur");
+        assert_eq!((separes.len(), fichiers.iter().filter(|f| f.is_file()).count(), v.len()), (3, 3, 3));
+        supprimer(stock, &m.to_string_lossy()).unwrap();
+        supprimer(stock, &clip.to_string_lossy()).unwrap();
+        let _ = fs::remove_dir_all(dossier);
+    }
+
     #[test]
     fn noms_de_fichiers() {
         assert_eq!(nom_fichier("3K · Ace · Clubhouse"), "3K · Ace · Clubhouse");
@@ -1173,7 +1555,7 @@ mod tests {
         let format = crate::audio::Format { frequence: 48000, canaux: 2, flottant: true };
         let base = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_micros() as i64;
         // « realtime » : la mire avance au rythme réel, comme une vraie capture
-        let args = arguments("testsrc2=size=640x360:rate=60,realtime", Some(format), Encodeur::Logiciel, Qualite::depuis("haute", 60), base, &dossier);
+        let args = arguments("testsrc2=size=640x360:rate=60,realtime", &[(format, "pipe:0".into())], Encodeur::Logiciel, Qualite::depuis("haute", 60), base, &dossier);
         let mut enfant = Command::new(ffmpeg(&stock)).args(&args).stdin(Stdio::piped()).stderr(Stdio::piped()).spawn().unwrap();
         let mut entree = enfant.stdin.take().unwrap();
         let debut = Instant::now();
@@ -1199,15 +1581,16 @@ mod tests {
         assert!(liste(&stock, || {}).iter().any(|c| Path::new(&c.chemin) == clip && c.miniature.is_some()), "miniature absente");
         // Montage : deux passages gardés, repère déplacé
         ajouter_marqueurs(&stock, &clip, &[Marqueur { t: 3.0, genre: "kill".into(), detail: "x".into(), headshot: true }]);
-        let montage = exporter(&stock, &clip.to_string_lossy(), &[(0.0, 1.0), (2.5, 4.0)], false, |_| {}).expect("export du montage");
+        let montage = exporter(&stock, &clip.to_string_lossy(), &[(0.0, 1.0), (2.5, 4.0)], false, None, |_| {}).expect("export du montage");
         assert_eq!(marqueurs(&stock, &montage).first().map(|m| m.t), Some(1.5));
         // Montage qui remplace le clip : même chemin, plus de « (montage 2) » à côté
-        let remplace = exporter(&stock, &montage.to_string_lossy(), &[(0.0, 1.0)], true, |_| {}).expect("montage à la place");
+        let remplace = exporter(&stock, &montage.to_string_lossy(), &[(0.0, 1.0)], true, None, |_| {}).expect("montage à la place");
         assert_eq!(remplace, montage);
         assert!(!montage.with_file_name(format!("{} (montage).mp4", montage.file_stem().unwrap().to_string_lossy())).exists());
         supprimer(&stock, &montage.to_string_lossy()).unwrap();
         supprimer(&stock, &clip.to_string_lossy()).unwrap();
         let _ = fs::remove_dir_all(&dossier);
+        trois_pistes(&stock, &dossier);
         // Méthodes de capture disponibles dans ce FFmpeg (ddagrab = Desktop Duplication, gfxcapture = Windows Graphics Capture)
         let filtres = Command::new(ffmpeg(&stock)).args(["-hide_banner", "-filters"]).output().unwrap();
         let filtres = String::from_utf8_lossy(&filtres.stdout);
@@ -1309,9 +1692,48 @@ mod tests {
     }
 
     #[test]
+    fn pistes_choisies() {
+        let c = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        // Par défaut : son du PC et Discord à part
+        assert_eq!(sons_choisis(&c(&["pc", "discord"]), true), Sons { pistes: vec![Piste::Pc, Piste::Discord], sans_discord: true });
+        // Discord fermé : pas de piste Discord, et rien à retirer du son du PC
+        assert_eq!(sons_choisis(&c(&["pc", "discord"]), false), Sons { pistes: vec![Piste::Pc], sans_discord: false });
+        // Discord pas voulu : retiré du son du PC
+        assert_eq!(sons_choisis(&c(&["pc", "micro"]), true), Sons { pistes: vec![Piste::Pc, Piste::Micro], sans_discord: true });
+        assert!(sons_choisis(&[], true).pistes.is_empty());
+    }
+
+    #[test]
+    fn lecture_des_pistes() {
+        let infos = "  Metadata:\n    comment         : sons:100,50,0\n  Duration: 00:00:06.06\n  Stream #0:0[0x1](und): Video: h264\n    Metadata:\n      handler_name    : VideoHandler\n  Stream #0:1[0x2](und): Audio: aac\n    Metadata:\n      handler_name    : SoundHandler\n      name            : Tout\n  Stream #0:2[0x3](und): Audio: aac\n    Metadata:\n      name            : Jeu et PC\n  Stream #0:3[0x4](und): Audio: aac\n    Metadata:\n      title           : Discord\n  Stream #0:4[0x5](und): Audio: aac\n";
+        let (titres, volumes) = lire_pistes(infos);
+        assert_eq!(titres, vec!["Tout", "Jeu et PC", "Discord", ""]);
+        assert_eq!(volumes, vec![1.0, 0.5, 0.0]);
+        assert_eq!(sons_separes(&titres), vec!["Jeu et PC", "Discord", ""]);
+        // Ancien clip : une seule piste, pas de sons séparés
+        assert!(sons_separes(&lire_pistes("  Stream #0:1: Audio: aac\n").0).is_empty());
+    }
+
+    #[test]
+    fn filtres_des_pistes() {
+        assert_eq!(
+            filtre_mix(2, &[1.0, 0.5]),
+            "[s0]asplit=2[p0][q0];[q0]volume=1.00[r0];[s1]asplit=2[p1][q1];[q1]volume=0.50[r1];[r0][r1]amix=inputs=2:normalize=0:duration=longest,alimiter=limit=0.95:level=0:latency=1[mix]"
+        );
+        let f = filtre_montage_pistes(&[(0.0, 5.0), (8.0, 10.0)], 2, &[]);
+        assert!(f.starts_with("[0:v]trim=start=0.000:end=5.000,setpts=PTS-STARTPTS[v0];[0:a:1]atrim=start=0.000:end=5.000,asetpts=PTS-STARTPTS[a0_0];[0:a:2]atrim"));
+        assert!(f.contains("[v0][a0_0][a0_1][v1][a1_0][a1_1]concat=n=2:v=1:a=2[v][s0][s1];[s0]asplit"));
+        // Trois sources : stdin puis deux tuyaux nommés, l'image en dernier
+        let fm = crate::audio::Format { frequence: 48000, canaux: 2, flottant: false };
+        let a = arguments(&source_ecran(60), &[(fm, "pipe:0".into()), (fm, r"\\.\pipe\a".into()), (fm, r"\\.\pipe\b".into())], Encodeur::Nvidia, Qualite::depuis("haute", 60), 0, Path::new(r"C:\t")).join(" ");
+        assert!(a.contains(r"-f s16le -ar 48000 -ac 2 -i \\.\pipe\b"));
+        assert!(a.contains("-map 3:v -filter:v setpts") && a.contains("-map 0:a -map 1:a -map 2:a -filter:a asetpts="));
+    }
+
+    #[test]
     fn arguments_nvidia_avec_son() {
         let f = crate::audio::Format { frequence: 48000, canaux: 2, flottant: true };
-        let a = arguments(&source_ecran(60), Some(f), Encodeur::Nvidia, Qualite::depuis("ultra", 120), 1_000_000, Path::new(r"C:\t"));
+        let a = arguments(&source_ecran(60), &[(f, "pipe:0".into())], Encodeur::Nvidia, Qualite::depuis("ultra", 120), 1_000_000, Path::new(r"C:\t"));
         let texte = a.join(" ");
         assert!(texte.contains("-f f32le -ar 48000 -ac 2 -i pipe:0"));
         assert!(texte.contains("-map 1:v -filter:v setpts=PTS-(1000000/1000000)/TB") && texte.contains("-map 0:a -filter:a asetpts='st(1,PTS-N/SR/TB)"));
