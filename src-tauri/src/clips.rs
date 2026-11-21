@@ -208,7 +208,10 @@ pub fn arguments(source_video: &str, audio: Option<crate::audio::Format>, encode
             .map(|s| s.to_string()),
         );
     }
-    a.extend(["-thread_queue_size", "64", "-f", "lavfi", "-i", source_video].iter().map(|s| s.to_string()));
+    // Heure de chaque image prise à la capture (horloge du PC, comme le son), pas plus loin dans le traitement :
+    // sinon les images qui attendent un instant repartent groupées avec presque la même heure, FFmpeg en jette une
+    // sur deux et recopie la précédente (~32 vraies images/s mesurées, contre 60 pour la capture seule)
+    a.extend(["-thread_queue_size", "64", "-use_wallclock_as_timestamps", "1", "-f", "lavfi", "-i", source_video].iter().map(|s| s.to_string()));
     let v = if audio.is_some() { 1 } else { 0 };
     // Images de la capture d'écran (D3D11) : directes pour NVIDIA et AMD, converties pour Intel et le processeur
     // Images de la carte graphique (D3D11), écran entier ou fenêtre du jeu
@@ -219,8 +222,8 @@ pub fn arguments(source_video: &str, audio: Option<crate::audio::Format>, encode
         Encodeur::Intel => "hwmap=derive_device=qsv,format=qsv,",
         Encodeur::Logiciel => "hwdownload,format=bgra,format=yuv420p,",
     };
-    // Son et image horodatés avec la même horloge (temps réel), à partir de base_us
-    let mut graphe = format!("[{v}:v]{conversion}setpts=(RTCTIME-{base_us})/(1000000*TB)[v]");
+    // Son et image horodatés avec la même horloge (temps réel), ramenée à base_us
+    let mut graphe = format!("[{v}:v]{conversion}setpts=PTS-({base_us}/1000000)/TB[v]");
     if audio.is_some() {
         graphe.push_str(&format!(";[0:a]asetpts=PTS-({base_us}/1000000)/TB,aresample=async=1000[a]"));
     }
@@ -249,6 +252,8 @@ pub fn arguments(source_video: &str, audio: Option<crate::audio::Format>, encode
         Encodeur::Logiciel => vec!["-c:v", "libx264", "-preset", "superfast", "-profile:v", "high", "-crf", &crf, "-maxrate", &maxi, "-bufsize", &tampon],
     };
     a.extend(video.iter().map(|s| s.to_string()));
+    // Les images gardent leur heure : pas de recalage forcé sur 60 i/s (qui jette et recopie des images)
+    a.extend(["-fps_mode", "vfr"].iter().map(|s| s.to_string()));
     a.extend(
         [
             "-g", &gop, "-f", "segment", "-segment_time", &MORCEAU_S.to_string(), "-segment_format", "mpegts",
@@ -1156,7 +1161,8 @@ mod tests {
         // Image de test + silence envoyé comme le ferait la capture du son
         let format = crate::audio::Format { frequence: 48000, canaux: 2, flottant: true };
         let base = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_micros() as i64;
-        let args = arguments("testsrc2=size=640x360:rate=60", Some(format), Encodeur::Logiciel, Qualite::depuis("haute", 60), base, &dossier);
+        // « realtime » : la mire avance au rythme réel, comme une vraie capture
+        let args = arguments("testsrc2=size=640x360:rate=60,realtime", Some(format), Encodeur::Logiciel, Qualite::depuis("haute", 60), base, &dossier);
         let mut enfant = Command::new(ffmpeg(&stock)).args(&args).stdin(Stdio::piped()).stderr(Stdio::piped()).spawn().unwrap();
         let mut entree = enfant.stdin.take().unwrap();
         let debut = Instant::now();
@@ -1297,7 +1303,8 @@ mod tests {
         let a = arguments(&source_ecran(120), Some(f), Encodeur::Nvidia, Qualite::depuis("ultra", 120), 1_000_000, Path::new(r"C:\t"));
         let texte = a.join(" ");
         assert!(texte.contains("-f f32le -ar 48000 -ac 2 -i pipe:0"));
-        assert!(texte.contains("[1:v]setpts=(RTCTIME-1000000)/(1000000*TB)[v]"));
+        assert!(texte.contains("[1:v]setpts=PTS-(1000000/1000000)/TB[v]"));
+        assert!(texte.contains("-use_wallclock_as_timestamps 1 -f lavfi") && texte.contains("-fps_mode vfr"));
         assert!(texte.contains("h264_nvenc") && texte.contains("-segment_wrap 124"));
         assert!(texte.contains("framerate=120") && texte.contains("-b:v 60M") && texte.contains("-g 240"));
         // Réglages « qualité » : profil High, images B, débit max 1,5 fois le débit visé
