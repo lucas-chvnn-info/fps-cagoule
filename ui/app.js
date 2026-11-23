@@ -2602,9 +2602,9 @@ function afficherClips() {
   const debit = { standard: 12, haute: 20, ultra: 40 }[reglages.clips_qualite] || 20;
   $('#clips-poids').textContent = `≈ ${Math.round((debit * 60) / 8 + 1)} Mo par minute`;
   document.querySelectorAll('#clips-kills button').forEach((b) => b.classList.toggle('actif', (reglages.clips_auto_kills || []).includes(Number(b.dataset.kills))));
-  const sons = reglages.clips_sons || ['pc', 'discord'];
+  const sons = (reglages.clips_sons || ['pc']).filter((s) => s !== 'discord');
   document.querySelectorAll('#clips-sons button').forEach((b) => b.classList.toggle('actif', sons.includes(b.dataset.son)));
-  $('#clips-sons-aide').textContent = sons.length > 1 ? 'Chacun sur sa piste : volumes réglables dans l\'éditeur' : sons.length ? '' : 'Clips sans son';
+  $('#clips-sons-aide').textContent = sons.length > 1 ? 'Jeu et micro sur deux pistes : volumes réglables dans l\'éditeur' : sons.length ? 'Discord est compris dans le son du jeu' : 'Clips sans son';
   const webhook = discordRegle();
   document.querySelectorAll('#discord-kills button').forEach((b) => b.classList.toggle('actif', webhook && (reglages.discord_auto_kills || []).includes(Number(b.dataset.kills))));
   $('#discord-auto').classList.toggle('sans-webhook', !webhook);
@@ -2615,7 +2615,7 @@ function afficherClips() {
     dureeTexte(reglages.clips_duree_s),
     reglages.clips_touche?.nom || 'F8',
     { standard: 'Standard', haute: 'Haute', ultra: 'Ultra' }[reglages.clips_qualite] || 'Haute',
-    sons.length ? sons.map((s) => ({ pc: 'Jeu', discord: 'Discord', micro: 'Micro' })[s]).join(' + ') : 'Sans son',
+    sons.length ? sons.map((s) => ({ pc: 'Jeu', micro: 'Micro' })[s]).join(' + ') : 'Sans son',
     reglages.clips_auto && reglages.clips_auto_kills?.length ? `Auto ${multis(reglages.clips_auto_kills)}` : 'Clips auto coupés',
     webhook && reglages.discord_auto_kills?.length ? `Discord ${multis(reglages.discord_auto_kills)}` : null,
   ].filter(Boolean);
@@ -2971,9 +2971,9 @@ try { ouvrirReglagesClips(localStorage.getItem('clipsReglages') === '1'); } catc
 $('#clips-sons').addEventListener('click', (e) => {
   const b = e.target.closest('[data-son]');
   if (!b) return;
-  const liste = new Set(reglages.clips_sons || ['pc', 'discord']);
+  const liste = new Set(reglages.clips_sons || ['pc']);
   liste.has(b.dataset.son) ? liste.delete(b.dataset.son) : liste.add(b.dataset.son);
-  reglages.clips_sons = ['pc', 'discord', 'micro'].filter((s) => liste.has(s));
+  reglages.clips_sons = ['pc', 'micro'].filter((s) => liste.has(s));
   sauverReglages();
   afficherClips();
   if (clipsEtat?.enregistrement) toast('Nouveaux sons dès ta prochaine partie.');
@@ -4165,6 +4165,9 @@ const ICONES_NOUVEAUTES = {
 };
 
 const NOUVEAUTES = {
+  '0.28.2': [
+    { icone: 'clips', titre: 'Clips à la bonne taille', texte: 'Fini les clips d\'1 Go qui durent des heures : le son s\'arrête avec l\'image. Discord revient dans le son du jeu.' },
+  ],
   '0.28.1': [
     { icone: 'clips', titre: 'Aperçu Discord', texte: 'Les longs clips s\'affichent maintenant aussi dans Discord, avec leur vignette.' },
   ],

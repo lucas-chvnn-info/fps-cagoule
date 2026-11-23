@@ -416,20 +416,19 @@ pub struct Sons {
     pub sans_discord: bool,
 }
 
-/// Pistes à enregistrer d'après le réglage (« pc », « discord », « micro »). Discord fermé : pas de piste Discord.
-pub fn sons_choisis(choix: &[String], discord_ouvert: bool) -> Sons {
+/// Pistes à enregistrer d'après le réglage (« pc », « micro »).
+/// Discord reste dans le son du PC : sa capture à part (son d'un seul programme, Windows) a donné en 0.27.9 des clips
+/// dont le son remontait au début de la partie (plusieurs heures, 1 Go). Suspendue tant qu'elle n'est pas fiable.
+pub fn sons_choisis(choix: &[String], _discord_ouvert: bool) -> Sons {
     let veut = |n: &str| choix.iter().any(|c| c == n);
     let mut pistes = Vec::new();
     if veut("pc") {
         pistes.push(Piste::Pc);
     }
-    if veut("discord") && discord_ouvert {
-        pistes.push(Piste::Discord);
-    }
     if veut("micro") {
         pistes.push(Piste::Micro);
     }
-    Sons { sans_discord: !veut("discord") || pistes.contains(&Piste::Discord), pistes }
+    Sons { sans_discord: false, pistes }
 }
 
 static NUMERO_TUYAU: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
@@ -446,10 +445,11 @@ fn ouvrir_sons(stock: &Stockage, sons: &Sons) -> Vec<(crate::audio::Format, impl
             Piste::Discord => discord.map_or(Source::Silence, Source::Programme),
             Piste::Micro => Source::Micro,
         };
-        let mut o = crate::audio::ouvrir(source);
+        let journal = Some(stock.dossier().to_path_buf());
+        let mut o = crate::audio::ouvrir(source, piste.titre(), journal.clone());
         if let (Err(e), Source::Pc { sauf: Some(_) }) = (&o, source) {
             noter(stock, &format!("Son du PC sans Discord impossible ({e}) : Discord reste dans le son du PC"));
-            o = crate::audio::ouvrir(Source::Pc { sauf: None });
+            o = crate::audio::ouvrir(Source::Pc { sauf: None }, piste.titre(), journal.clone());
         }
         match o {
             Ok(o) => ouvertes.push(o),
@@ -458,7 +458,7 @@ fn ouvrir_sons(stock: &Stockage, sons: &Sons) -> Vec<(crate::audio::Format, impl
                 if sons.pistes.len() == 1 {
                     break;
                 }
-                match crate::audio::ouvrir(Source::Silence) {
+                match crate::audio::ouvrir(Source::Silence, piste.titre(), journal) {
                     Ok(o) => ouvertes.push(o),
                     Err(_) => return Vec::new(),
                 }
@@ -733,6 +733,29 @@ pub fn premiers_pts_pistes(ts: &[u8], pistes: usize) -> (Option<u64>, Vec<Option
     (video, r)
 }
 
+/// Durée de l'image d'un flux MPEG-TS (premier au dernier horodatage d'image, en secondes)
+pub fn duree_image_ts(ts: &[u8]) -> Option<f64> {
+    let (mut mini, mut maxi) = (u64::MAX, 0u64);
+    for p in ts.chunks_exact(PAQUET_TS) {
+        if p[0] != 0x47 || p[1] & 0x40 == 0 {
+            continue;
+        }
+        let mut debut = 4;
+        if p[3] & 0x20 != 0 {
+            debut += 1 + p[4] as usize;
+        }
+        let Some(pes) = p.get(debut..) else { continue };
+        if pes.len() < 14 || pes[..3] != [0, 0, 1] || pes[7] & 0x80 == 0 || !(0xE0..=0xEF).contains(&pes[3]) {
+            continue;
+        }
+        let b = &pes[9..14];
+        let pts = (((b[0] as u64 >> 1) & 7) << 30) | ((b[1] as u64) << 22) | ((b[2] as u64 >> 1) << 15) | ((b[3] as u64) << 7) | (b[4] as u64 >> 1);
+        mini = mini.min(pts);
+        maxi = maxi.max(pts);
+    }
+    (maxi > mini).then(|| (maxi - mini) as f64 / 90_000.0)
+}
+
 /// Mélange des pistes [s0], [s1]… : piste [mix] (volumes appliqués, sans saturer) et copies intactes [p0], [p1]…
 pub fn filtre_mix(pistes: usize, volumes: &[f64]) -> String {
     let mut f = String::new();
@@ -813,6 +836,7 @@ pub fn sauver(stock: &Stockage, dossier_tampon: &Path, jeu: &str, secondes: u32,
     let octets = fs::read(&brut).unwrap_or_default();
     let (pts_image, pts_son) = premiers_pts(&octets);
     let (_, pts_pistes) = premiers_pts_pistes(&octets, titres.len());
+    let duree_image = duree_image_ts(&octets);
     drop(octets);
     let mut cmd = Command::new(ffmpeg(stock));
     cmd.args(["-hide_banner", "-loglevel", "error", "-y", "-i"]).arg(&brut).args(["-map", "0:v:0", "-c:v", "copy"]);
@@ -839,6 +863,10 @@ pub fn sauver(stock: &Stockage, dossier_tampon: &Path, jeu: &str, secondes: u32,
             Some(filtre) => cmd.args(["-af", &filtre, "-c:a", "aac", "-b:a", "160k"]),
             None => cmd.args(["-c:a", "copy", "-bsf:a", "aac_adtstoasc"]),
         };
+    }
+    // Garde-fou : le clip s'arrête avec l'image, même si un son a dérapé (jamais de clip de plusieurs heures)
+    if let Some(d) = duree_image {
+        cmd.args(["-t", &format!("{:.3}", d + 0.1)]);
     }
     let statut = cmd
         .args(["-avoid_negative_ts", "make_zero", "-movflags", "+faststart"])
@@ -1762,12 +1790,9 @@ mod tests {
     #[test]
     fn pistes_choisies() {
         let c = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
-        // Par défaut : son du PC et Discord à part
-        assert_eq!(sons_choisis(&c(&["pc", "discord"]), true), Sons { pistes: vec![Piste::Pc, Piste::Discord], sans_discord: true });
-        // Discord fermé : pas de piste Discord, et rien à retirer du son du PC
-        assert_eq!(sons_choisis(&c(&["pc", "discord"]), false), Sons { pistes: vec![Piste::Pc], sans_discord: false });
-        // Discord pas voulu : retiré du son du PC
-        assert_eq!(sons_choisis(&c(&["pc", "micro"]), true), Sons { pistes: vec![Piste::Pc, Piste::Micro], sans_discord: true });
+        // Discord reste dans le son du PC (capture à part suspendue), même s'il était choisi en 0.27.9
+        assert_eq!(sons_choisis(&c(&["pc", "discord"]), true), Sons { pistes: vec![Piste::Pc], sans_discord: false });
+        assert_eq!(sons_choisis(&c(&["pc", "micro"]), true), Sons { pistes: vec![Piste::Pc, Piste::Micro], sans_discord: false });
         assert!(sons_choisis(&[], true).pistes.is_empty());
     }
 

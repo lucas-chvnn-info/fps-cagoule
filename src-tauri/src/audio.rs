@@ -71,6 +71,7 @@ unsafe fn lire_format(f: *const WAVEFORMATEX) -> Result<Format, String> {
 
 /// D'où vient le son d'une piste
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[allow(dead_code)] // Programme : capture de Discord à part, suspendue (voir clips::sons_choisis)
 pub enum Source {
     /// Tout le son du PC, sauf (si donné) un programme et ses enfants : Discord, enregistré à part ou pas du tout
     Pc { sauf: Option<u32> },
@@ -201,7 +202,9 @@ unsafe fn preparer(source: Source) -> Result<(IAudioClient, IAudioCaptureClient,
 /// Ouvre une source de son. Renvoie son format et une fonction qui démarre l'envoi vers `sortie`
 /// (`tuyau` : nom du tuyau nommé de `sortie`, s'il en est un). Tout se passe dans un fil dédié (les objets COM y restent).
 /// Une source qui ne s'ouvre pas renvoie une erreur ; `Source::Silence` s'ouvre toujours.
-pub fn ouvrir(source: Source) -> Result<(Format, impl FnOnce(Box<dyn Write + Send>, Option<String>) -> Capture), String> {
+/// `nom` et `journal` : le débit réel de la source est noté dans le journal des clips (toutes les 10 min et à la fin),
+/// pour repérer un son qui arrive plus vite ou moins vite que le temps réel.
+pub fn ouvrir(source: Source, nom: &'static str, journal: Option<std::path::PathBuf>) -> Result<(Format, impl FnOnce(Box<dyn Write + Send>, Option<String>) -> Capture), String> {
     let (envoi_format, reception_format) = mpsc::channel::<Result<Format, String>>();
     let (envoi_sortie, reception_sortie) = mpsc::channel::<Box<dyn Write + Send>>();
     let arret = Arc::new(AtomicBool::new(false));
@@ -226,10 +229,28 @@ pub fn ouvrir(source: Source) -> Result<(Format, impl FnOnce(Box<dyn Write + Sen
             let par_image = format.octets_par_image();
             let debut = Instant::now();
             let mut ecrites: u64 = 0;
+            let mut comblees: u64 = 0;
+            let mut ferme = false;
             let mut zeros = Vec::new();
+            let mut prochain_bilan = Duration::from_secs(60);
+            let bilan = |ecrites: u64, comblees: u64| {
+                if let Some(j) = &journal {
+                    let ecoule = debut.elapsed().as_secs_f64();
+                    let son = ecrites as f64 / format.frequence as f64;
+                    crate::clips::noter_dans(j, &format!(
+                        "Son « {nom} » : {son:.0} s envoyées en {ecoule:.0} s ({:.3} × le temps réel, dont {:.0} s de silence ajouté)",
+                        son / ecoule.max(0.001),
+                        comblees as f64 / format.frequence as f64
+                    ));
+                }
+            };
             while !arret_fil.load(Ordering::Relaxed) {
+                if debut.elapsed() >= prochain_bilan {
+                    bilan(ecrites, comblees);
+                    prochain_bilan += Duration::from_secs(600);
+                }
                 let mut recu = false;
-                if let Some((client, capture, _, _)) = &prepare {
+                if let Some((_, capture, _, _)) = &prepare {
                     while let Ok(n) = capture.GetNextPacketSize() {
                         if n == 0 {
                             break;
@@ -248,12 +269,15 @@ pub fn ouvrir(source: Source) -> Result<(Format, impl FnOnce(Box<dyn Write + Sen
                         };
                         let _ = capture.ReleaseBuffer(images);
                         if !ok {
-                            let _ = client.Stop();
-                            return; // FFmpeg arrêté
+                            ferme = true; // FFmpeg arrêté
+                            break;
                         }
                         ecrites += images as u64;
                         recu = true;
                     }
+                }
+                if ferme {
+                    break;
                 }
                 // Rien ne joue : Windows n'envoie rien, on comble avec du silence pour garder le rythme
                 let attendues = (debut.elapsed().as_secs_f64() * format.frequence as f64) as u64;
@@ -264,6 +288,7 @@ pub fn ouvrir(source: Source) -> Result<(Format, impl FnOnce(Box<dyn Write + Sen
                         break;
                     }
                     ecrites += manque as u64;
+                    comblees += manque as u64;
                 }
                 match prepare.as_ref().and_then(|p| p.3) {
                     Some(evenement) => {
@@ -272,6 +297,7 @@ pub fn ouvrir(source: Source) -> Result<(Format, impl FnOnce(Box<dyn Write + Sen
                     None => thread::sleep(Duration::from_millis(10)),
                 }
             }
+            bilan(ecrites, comblees);
             if let Some((client, _, _, evenement)) = &prepare {
                 let _ = client.Stop();
                 if let Some(e) = evenement {
