@@ -710,6 +710,37 @@ fn sessions(app: AppHandle) -> Vec<Session> {
 }
 
 #[derive(Serialize)]
+struct SantePc {
+    disque_libre: u64,
+    disque_total: u64,
+    allume_depuis_s: u64,
+    memoire_totale: u64,
+    memoire_libre: u64,
+    temp_gpu: Option<i32>,
+    /// Optimisations conseillées actives / disponibles (les « max » et « choix » à part, elles sont facultatives)
+    optimisations: usize,
+    optimisations_dispo: usize,
+}
+
+/// Santé du PC pour le tableau de bord : tout en lectures rapides (pas de réseau), appelée seulement quand il est affiché
+#[tauri::command(async)]
+fn sante_pc(app: AppHandle) -> SantePc {
+    let (disque_libre, disque_total) = systeme::disque_systeme();
+    let liste = tweaks::liste(&etat(&app).stock);
+    let conseilles: Vec<_> = liste.iter().filter(|t| t.disponible && t.tweak.niveau == "recommande").collect();
+    SantePc {
+        disque_libre,
+        disque_total,
+        allume_depuis_s: systeme::allume_depuis(),
+        memoire_totale: systeme::memoire_totale(),
+        memoire_libre: systeme::memoire_libre(),
+        temp_gpu: temperature_gpu(),
+        optimisations: conseilles.iter().filter(|t| t.actif).count(),
+        optimisations_dispo: conseilles.len(),
+    }
+}
+
+#[derive(Serialize)]
 struct Conso {
     app_mo: f64,
     interface_mo: f64,
@@ -976,6 +1007,7 @@ fn main() {
             clips_dossier_regler,
             clips_exporter,
             clips_pistes,
+            sante_pc,
             clips_partager,
             clips_journal,
             partage_regler,

@@ -28,7 +28,7 @@
       <div><strong>FPS Cagoule</strong><span id="version"></span></div>
     </div>
     <nav>
-      <button data-page="accueil" class="actif"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/></svg><span>Accueil</span></button>
+      <button data-page="accueil" class="actif"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="8" height="10" rx="1.5"/><rect x="13" y="3" width="8" height="6" rx="1.5"/><rect x="13" y="11" width="8" height="10" rx="1.5"/><rect x="3" y="15" width="8" height="6" rx="1.5"/></svg><span>Tableau de bord</span></button>
       <div class="groupe-nav" data-groupe="jeux">
         <button class="nav-groupe" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 9h10a4 4 0 0 1 4 4v1a3 3 0 0 1-5.4 1.8L14 14h-4l-1.6 1.8A3 3 0 0 1 3 14v-1a4 4 0 0 1 4-4z"/><path d="M8 11v3M6.5 12.5h3"/><circle cx="16" cy="12" r=".8"/></svg><span>Jeux</span><svg class="chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
         <div class="sous-menu"><div class="sous-menu-contenu">
@@ -65,9 +65,9 @@
     <button id="btn-coin-reglages" class="bouton-coin" data-page="reglages" title="Réglages" aria-label="Réglages"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
     <!-- Accueil -->
     <section id="page-accueil" class="page actif">
-      <header><h1>Accueil</h1><button id="btn-analyser" class="principal">Analyser mon PC</button></header>
+      <header><h1>Tableau de bord</h1><button id="btn-analyser" class="principal">Analyser mon PC</button></header>
       <div id="alertes" class="alertes"></div>
-      <div class="grille-accueil">
+      <div class="tableau">
         <div class="carte score-carte" id="carte-score">
           <div class="anneau-zone">
             <svg viewBox="0 0 120 120" class="anneau" aria-hidden="true">
@@ -84,6 +84,7 @@
         </div>
         <div class="carte" id="carte-jeu">
           <h2>Partie en cours</h2>
+          <div id="jeu-derniere" class="jeu-derniere" hidden></div>
           <div id="jeu-vide" class="jeu-vide"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 9h10a4 4 0 0 1 4 4v1a3 3 0 0 1-5.4 1.8L14 14h-4l-1.6 1.8A3 3 0 0 1 3 14v-1a4 4 0 0 1 4-4z"/><path d="M8 11v3M6.5 12.5h3"/><circle cx="16" cy="12" r=".8"/></svg><span>Lance un jeu, je m'occupe du reste</span></div>
           <div id="jeu-actif" hidden>
             <div class="jeu-ligne"><strong id="jeu-nom"></strong><span id="jeu-badge" class="badge accent">Boosté</span></div>
@@ -91,6 +92,28 @@
             <p id="jeu-temp" class="discret" hidden></p>
             <ul id="jeu-actions" class="liste-actions"></ul>
           </div>
+        </div>
+        <div class="carte tb-sante" id="carte-pc">
+          <div class="tb-titre"><h2>Santé du PC</h2><span id="tb-verdict" class="tb-verdict"></span></div>
+          <p class="tb-materiel"><span id="tb-gpu">–</span><span id="tb-cpu"></span></p>
+          <ul class="tb-controles" id="tb-controles"></ul>
+        </div>
+        <div class="carte tb-semaine" id="carte-semaine">
+          <h2>Cette semaine</h2>
+          <div class="tb-chiffres">
+            <div><strong id="tb-temps">–</strong><small>de jeu</small></div>
+            <div><strong id="tb-parties">–</strong><small>parties</small></div>
+            <div><strong id="tb-fps">–</strong><small>FPS moyen</small></div>
+          </div>
+          <div class="tb-jours" id="tb-jours" aria-label="Temps de jeu par jour"></div>
+        </div>
+        <div class="carte tb-clips" id="carte-clips">
+          <div class="tb-titre"><h2>Derniers clips</h2><span id="tb-clips-resume" class="discret"></span><button id="tb-clips-tout" class="petit discret-btn">Tout voir</button></div>
+          <div class="tb-clips-grille" id="tb-clips"></div>
+        </div>
+        <div class="carte tb-jouer" id="carte-jouer">
+          <div class="tb-titre"><h2>Jouer</h2><button id="tb-jeux-tout" class="petit discret-btn">Mes jeux</button></div>
+          <div class="tb-jeux" id="tb-jeux"></div>
         </div>
       </div>
       <div class="carte">

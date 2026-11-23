@@ -419,6 +419,22 @@ pub fn memoire_libre() -> u64 {
 }
 
 /// Mémoire vive installée (octets).
+/// Espace libre et taille du disque de Windows (C:), en octets
+pub fn disque_systeme() -> (u64, u64) {
+    let lecteur = std::env::var("SystemDrive").unwrap_or_else(|_| "C:".into());
+    let chemin: Vec<u16> = format!("{lecteur}\\").encode_utf16().chain(Some(0)).collect();
+    let (mut libre, mut total, mut libre_total) = (0u64, 0u64, 0u64);
+    unsafe {
+        windows_sys::Win32::Storage::FileSystem::GetDiskFreeSpaceExW(chemin.as_ptr(), &mut libre, &mut total, &mut libre_total);
+    }
+    (libre, total)
+}
+
+/// Secondes depuis le démarrage de Windows
+pub fn allume_depuis() -> u64 {
+    unsafe { windows_sys::Win32::System::SystemInformation::GetTickCount64() / 1000 }
+}
+
 pub fn memoire_totale() -> u64 {
     use windows_sys::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
     unsafe {

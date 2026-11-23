@@ -12,6 +12,7 @@
   --rouge: #ff5468;
   --orange: #ffb547;
   --bleu: #5cc8ff;
+  --vert: #3ddc97;
   --rayon: 14px;
   color-scheme: dark;
 }
@@ -91,6 +92,75 @@ main { flex: 1; overflow-y: auto; padding: 28px 32px 40px; }
   padding: 18px 20px;
 }
 .grille-accueil { display: grid; grid-template-columns: 300px 1fr; gap: 18px; }
+/* Tableau de bord */
+.tableau { display: grid; grid-template-columns: 280px minmax(0, 1fr) minmax(0, 1fr); gap: 18px; }
+.tableau > .carte { min-width: 0; }
+.tb-clips { grid-column: span 2; }
+.tb-jouer { grid-column: 1 / -1; }
+.tb-titre { display: flex; align-items: baseline; gap: 10px; }
+.tb-titre h2 { margin: 0; }
+.tb-titre > button { margin-left: auto; }
+.tb-titre .discret { font-size: 12.5px; }
+.tb-etiquette { display: block; color: var(--discret); font-size: 12px; margin-bottom: 2px; }
+.tb-verdict { margin-left: auto; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; border: 1px solid transparent; white-space: nowrap; }
+.tb-verdict.ok { color: var(--vert); border-color: rgba(61, 220, 151, .35); background: rgba(61, 220, 151, .08); }
+.tb-verdict.attention { color: var(--orange); border-color: rgba(255, 181, 71, .35); background: rgba(255, 181, 71, .08); }
+.tb-materiel { display: flex; flex-direction: column; gap: 1px; margin: 6px 0 14px; color: var(--discret); font-size: 12.5px; }
+.tb-materiel span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tb-controles { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 11px; }
+.tb-controle { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; align-items: center; column-gap: 10px; row-gap: 4px; font-size: 13.5px; }
+.tb-controle .etat { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; }
+.tb-controle .etat svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
+.tb-controle.tb-ok .etat { background: rgba(61, 220, 151, .12); color: var(--vert); }
+.tb-controle.tb-attention .etat { background: rgba(255, 181, 71, .14); color: var(--orange); }
+.tb-controle .valeur { color: var(--discret); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+.tb-controle .conseil, .tb-controle .tb-jauge { grid-column: 2 / -1; }
+.tb-controle .conseil { color: var(--orange); font-size: 12px; }
+.tb-controle button.conseil { justify-self: start; padding: 0; border: 0; background: none; box-shadow: none; color: var(--accent-clair); cursor: pointer; font-size: 12px; }
+.tb-controle button.conseil:hover { text-decoration: underline; }
+.tb-jauge { height: 5px; border-radius: 999px; background: var(--fond); border: 1px solid var(--bordure); overflow: hidden; }
+.tb-jauge span { display: block; height: 100%; width: 0; border-radius: 999px; background: var(--degrade); transition: width .6s ease; }
+.tb-jauge.haute span { background: var(--orange); }
+.tb-chiffres { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 12px 0 16px; }
+.tb-chiffres strong { display: block; white-space: nowrap; font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--texte); line-height: 1.1; }
+.tb-chiffres small { color: var(--discret); font-size: 12px; }
+.tb-jours { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; align-items: end; height: 96px; }
+.tb-jour { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 6px; height: 100%; cursor: default; }
+.tb-jour .barre-jour { width: 100%; max-width: 22px; min-height: 2px; border-radius: 4px 4px 0 0; background: var(--accent); transition: background .2s; }
+.tb-jour.vide .barre-jour { background: var(--bordure); }
+.tb-jour:hover .barre-jour { background: var(--accent-clair); }
+.tb-jour small { color: var(--discret); font-size: 11.5px; }
+.tb-jour.aujourdhui small { color: var(--texte); font-weight: 600; }
+.tb-clips-grille { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 12px; }
+.tb-clip { position: relative; display: block; padding: 0; border: 1px solid var(--bordure); border-radius: 10px; overflow: hidden; background: var(--fond) center / cover no-repeat; aspect-ratio: 16 / 9; cursor: pointer; transition: border-color .2s, transform .2s; }
+.tb-clip:hover { border-color: var(--accent-clair); transform: translateY(-2px); }
+.tb-clip span { position: absolute; left: 0; right: 0; bottom: 0; padding: 18px 8px 6px; font-size: 11.5px; text-align: left; color: #fff; background: linear-gradient(transparent, rgba(0, 0, 0, .8)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tb-clip b { position: absolute; top: 6px; left: 6px; padding: 2px 7px; border-radius: 999px; font-size: 11px; background: rgba(11, 12, 16, .8); color: var(--accent-clair); border: 1px solid rgba(111, 157, 255, .4); }
+.tb-vide { color: var(--discret); font-size: 13px; padding: 18px 0 6px; grid-column: 1 / -1; }
+.tb-jeux { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; margin-top: 12px; }
+.tb-jeu { position: relative; display: flex; align-items: flex-end; padding: 0; height: 84px; border: 1px solid var(--bordure); border-radius: 10px; overflow: hidden; background: var(--fond) center / cover no-repeat; cursor: pointer; transition: border-color .2s, transform .2s; }
+.tb-jeu:hover { border-color: var(--accent-clair); transform: translateY(-2px); }
+.tb-jeu span { width: 100%; padding: 16px 10px 7px; font-size: 13px; font-weight: 600; text-align: left; color: #fff; background: linear-gradient(transparent, rgba(0, 0, 0, .85)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tb-jeu .tb-jouer-icone { position: absolute; top: 8px; right: 8px; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); opacity: 0; transition: opacity .2s; }
+.tb-jeu:hover .tb-jouer-icone { opacity: 1; }
+.tb-jouer-icone svg { width: 12px; height: 12px; fill: #fff; margin-left: 2px; }
+.jeu-derniere { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.jeu-derniere .tb-etiquette { margin: 0; }
+.jeu-derniere .jeu-ligne strong { font-size: 17px; }
+.tb-derniere-chiffres { display: flex; gap: 22px; margin-top: 4px; }
+.tb-derniere-chiffres strong { display: block; font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.tb-derniere-chiffres small { color: var(--discret); font-size: 12px; }
+.tb-courbe { width: 100%; height: 56px; margin-top: 6px; }
+.tb-courbe path.ligne { fill: none; stroke: var(--accent-clair); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.tb-courbe path.aire { fill: var(--accent-fond); }
+@media (max-width: 1180px) {
+  .tableau { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .tb-clips { grid-column: 1 / -1; }
+}
+@media (max-width: 760px) {
+  .tableau { grid-template-columns: 1fr; }
+  .tb-clips-grille { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 .grille-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
 .grille-materiel { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 18px; }
 

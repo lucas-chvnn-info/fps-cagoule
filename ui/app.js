@@ -61,6 +61,7 @@ document.querySelectorAll('button[data-page]').forEach((b) =>
     ouvrirGroupe(b.closest('.groupe-nav'));
     document.querySelectorAll('.groupe-nav').forEach((g) => g.classList.toggle('contient-actif', g.contains(b)));
     $(`#page-${b.dataset.page}`).classList.add('actif');
+    if (b.dataset.page === 'accueil') chargerTableau();
     if (b.dataset.page === 'optimisations') {
       chargerTweaks();
       chargerDemarrage();
@@ -1353,10 +1354,19 @@ $('#btn-fermer-ajout').addEventListener('click', () => {
 
 /* ---------- Partie en cours ---------- */
 
+let jeuActuel = null;
 function afficherJeu(jeu) {
-  $('#jeu-vide').hidden = !!jeu;
+  const finie = !!jeuActuel && !jeu;
+  jeuActuel = jeu || null;
+  $('#jeu-vide').hidden = !!jeu || !!tableau.derniere;
+  $('#jeu-derniere').hidden = !!jeu || !tableau.derniere;
   $('#jeu-actif').hidden = !jeu;
-  if (!jeu) return;
+  $('#carte-jeu h2').textContent = !jeu && tableau.derniere ? 'Dernière partie' : 'Partie en cours';
+  if (!jeu) {
+    // Partie qui vient de finir : le tableau de bord se met à jour (dernière partie, semaine)
+    if (finie && tableau.charge) chargerTableau();
+    return;
+  }
   $('#jeu-nom').textContent = jeu.nom;
   $('#jeu-badge').hidden = !jeu.boost;
   $('#jeu-fps').textContent = jeu.fps ? Math.round(jeu.fps) : '–';
@@ -1375,6 +1385,223 @@ listen('temp_gpu', (e) => afficherTempJeu(e.payload));
 
 listen('jeu', (e) => afficherJeu(e.payload));
 listen('fps', (e) => ($('#jeu-fps').textContent = Math.round(e.payload)));
+
+/* ---------- Tableau de bord ---------- */
+
+const tableau = { derniere: null, charge: false, materiel: null, clipsLe: 0 };
+const JOURS_COURTS = ['dim.', 'lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.'];
+const ICONE_OK = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+const ICONE_ATTENTION = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 6v7M12 17.5v.5"/></svg>';
+const ICONE_JOUER = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15l12-7.5z"/></svg>';
+const go = (o) => o / 1024 ** 3;
+const nombre = (n, decimales = 1) => n.toLocaleString('fr-CH', { maximumFractionDigits: decimales });
+
+/** « aujourd'hui à 21:40 », « hier à 23:05 », sinon la date */
+function quand(ts) {
+  const d = new Date(ts * 1000);
+  const heure = d.toLocaleTimeString('fr-CH', { hour: '2-digit', minute: '2-digit' });
+  const jours = Math.round((new Date().setHours(0, 0, 0, 0) - new Date(d).setHours(0, 0, 0, 0)) / 864e5);
+  if (jours === 0) return `aujourd'hui à ${heure}`;
+  if (jours === 1) return `hier à ${heure}`;
+  return `${d.toLocaleDateString('fr-CH', { weekday: 'long', day: 'numeric', month: 'long' })}`;
+}
+
+const dureeLongue = (s) => (s >= 86400 ? `${Math.floor(s / 86400)} j ${Math.floor((s % 86400) / 3600)} h` : duree(s));
+
+async function chargerTableau() {
+  tableau.charge = true;
+  const [sessions, cartesJeux] = await Promise.all([invoke('sessions').catch(() => []), vignettes.size ? null : invoke('jeux_cartes').catch(() => null)]);
+  if (cartesJeux) vignettes = new Map(cartesJeux.map((c) => [c.nom, c]));
+  afficherSemaine(sessions);
+  afficherDerniere(sessions.filter((s) => s.duree_s >= 60).at(-1));
+  afficherJeuxRapides(sessions);
+  majSante();
+  // Liste des clips : lue au plus une fois par minute (elle peut être sur le serveur)
+  if (Date.now() - tableau.clipsLe > 60000) {
+    tableau.clipsLe = Date.now();
+    afficherClipsTableau(clipsListe.length ? clipsListe : await invoke('clips_liste').catch(() => []));
+  } else afficherClipsTableau(clipsListe);
+}
+
+function afficherSemaine(sessions) {
+  const aujourdhui = new Date().setHours(0, 0, 0, 0) / 1000;
+  const jours = [...Array(7)].map((_, i) => ({ debut: aujourdhui - (6 - i) * 86400, secondes: 0 }));
+  const semaine = sessions.filter((s) => s.debut >= jours[0].debut);
+  for (const s of semaine) {
+    const j = jours.findLast((j) => s.debut >= j.debut);
+    if (j) j.secondes += s.duree_s;
+  }
+  const total = semaine.reduce((t, s) => t + s.duree_s, 0);
+  const mesurees = semaine.filter((s) => s.moyenne > 0);
+  const poids = mesurees.reduce((t, s) => t + s.duree_s, 0);
+  $('#tb-temps').textContent = total ? duree(total) : '0 min';
+  $('#tb-parties').textContent = semaine.length;
+  $('#tb-fps').textContent = poids ? Math.round(mesurees.reduce((t, s) => t + s.moyenne * s.duree_s, 0) / poids) : '–';
+  const maxi = Math.max(...jours.map((j) => j.secondes), 1);
+  $('#tb-jours').innerHTML = jours
+    .map((j, i) => {
+      const nom = i === 6 ? 'auj.' : JOURS_COURTS[new Date(j.debut * 1000).getDay()];
+      const hauteur = j.secondes ? Math.max(6, Math.round((j.secondes / maxi) * 70)) : 2;
+      return `<div class="tb-jour${j.secondes ? '' : ' vide'}${i === 6 ? ' aujourdhui' : ''}" title="${nom} : ${j.secondes ? duree(j.secondes) + ' de jeu' : 'pas joué'}"><span class="barre-jour" style="height:${hauteur}px"></span><small>${nom}</small></div>`;
+    })
+    .join('');
+}
+
+/** Courbe des FPS d'une partie (petite, sans axes) */
+function miniCourbe(valeurs) {
+  if (!valeurs?.length || valeurs.length < 2) return '';
+  const l = 300, h = 56, maxi = Math.max(...valeurs, 1);
+  const pts = valeurs.map((v, i) => [(i / (valeurs.length - 1)) * l, h - 3 - (v / maxi) * (h - 8)]);
+  const ligne = pts.map(([x, y], i) => `${i ? 'L' : 'M'}${x.toFixed(1)} ${y.toFixed(1)}`).join('');
+  return `<svg class="tb-courbe" viewBox="0 0 ${l} ${h}" preserveAspectRatio="none" role="img" aria-label="FPS pendant la partie, de ${Math.min(...valeurs)} à ${maxi}"><title>FPS pendant la partie : de ${Math.min(...valeurs)} à ${maxi}</title><path class="aire" d="${ligne}L${l} ${h}L0 ${h}Z"/><path class="ligne" d="${ligne}" vector-effect="non-scaling-stroke"/></svg>`;
+}
+
+function afficherDerniere(s) {
+  tableau.derniere = s || null;
+  if (s) {
+    $('#jeu-derniere').innerHTML = `
+      <div class="jeu-ligne"><strong>${esc(s.jeu)}</strong>${s.boost ? '<span class="badge accent">Boosté</span>' : ''}</div>
+      <span class="tb-etiquette">${quand(s.debut)} · ${duree(s.duree_s)}${s.temp_gpu ? ` · carte graphique ${s.temp_gpu} °C au plus` : ''}</span>
+      ${s.moyenne > 0 ? `<div class="tb-derniere-chiffres"><div><strong>${Math.round(s.moyenne)}</strong><small>FPS moyen</small></div><div><strong>${Math.round(s.low1)}</strong><small>1 % low</small></div></div>` : ''}
+      ${miniCourbe(s.courbe)}`;
+  }
+  afficherJeu(jeuActuel);
+}
+
+async function majSante() {
+  if (!tableau.materiel) {
+    const [g, c] = await Promise.all([invoke('carte_graphique').catch(() => null), invoke('processeur').catch(() => null)]);
+    tableau.materiel = { g, c };
+    $('#tb-gpu').textContent = g?.nom || 'Carte graphique inconnue';
+    $('#tb-cpu').textContent = c?.nom || '';
+    $('#tb-gpu').title = $('#tb-gpu').textContent;
+    $('#tb-cpu').title = $('#tb-cpu').textContent;
+  }
+  const [s, conso] = await Promise.all([invoke('sante_pc').catch(() => null), invoke('conso').catch(() => null)]);
+  if (!s) return;
+  const controles = [];
+  if (s.temp_gpu)
+    controles.push({
+      nom: 'Carte graphique',
+      valeur: `${s.temp_gpu} °C`,
+      ok: s.temp_gpu < 83,
+      conseil: s.temp_gpu < 83 ? '' : 'Elle chauffe : vérifie la ventilation et la poussière.',
+    });
+  if (s.memoire_totale) {
+    const pc = Math.round((1 - s.memoire_libre / s.memoire_totale) * 100);
+    controles.push({
+      nom: 'Mémoire',
+      valeur: `${nombre(go(s.memoire_totale - s.memoire_libre))} / ${Math.round(go(s.memoire_totale))} Go`,
+      ok: pc < 85,
+      jauge: pc,
+      conseil: pc < 85 ? '' : 'Presque pleine : ferme les programmes inutiles avant de jouer.',
+    });
+  }
+  if (s.disque_total) {
+    const libre = go(s.disque_libre);
+    const ok = libre >= 20 && s.disque_libre / s.disque_total >= 0.08;
+    controles.push({
+      nom: 'Disque C:',
+      valeur: `${nombre(libre, libre >= 100 ? 0 : 1)} Go libres`,
+      ok,
+      conseil: ok ? '' : 'Peu de place : Windows et les jeux ralentissent.',
+      action: ok ? null : ['Nettoyer', 'nettoyage'],
+    });
+  }
+  const jours = s.allume_depuis_s / 86400;
+  controles.push({
+    nom: 'Allumé depuis',
+    valeur: dureeLongue(s.allume_depuis_s),
+    ok: jours < 7,
+    conseil: jours < 7 ? '' : 'Un redémarrage remet Windows au propre (mémoire, mises à jour).',
+  });
+  if (s.optimisations_dispo) {
+    const manque = s.optimisations_dispo - s.optimisations;
+    controles.push({
+      nom: 'Optimisations',
+      valeur: `${s.optimisations} / ${s.optimisations_dispo}`,
+      ok: manque <= 2,
+      conseil: manque <= 2 ? '' : `${manque} pas encore appliquées.`,
+      action: manque <= 2 ? null : ['Optimiser', 'optimisations'],
+    });
+  }
+  if (conso) {
+    const mo = conso.app_mo + conso.interface_mo + conso.presentmon_mo;
+    controles.push({ nom: 'FPS Cagoule', valeur: `${Math.round(mo)} Mo · ${nombre(conso.cpu)} % CPU`, ok: true });
+  }
+  const a_regarder = controles.filter((c) => !c.ok).length;
+  $('#tb-verdict').className = `tb-verdict ${a_regarder ? 'attention' : 'ok'}`;
+  $('#tb-verdict').textContent = a_regarder ? `${a_regarder} point${a_regarder > 1 ? 's' : ''} à regarder` : 'Tout va bien';
+  $('#tb-controles').innerHTML = controles
+    .map(
+      (c) => `<li class="tb-controle ${c.ok ? 'tb-ok' : 'tb-attention'}">
+        <span class="etat" title="${c.ok ? 'Tout va bien' : 'À regarder'}">${c.ok ? ICONE_OK : ICONE_ATTENTION}</span>
+        <span>${esc(c.nom)}</span><span class="valeur">${esc(c.valeur)}</span>
+        ${c.jauge != null ? `<div class="tb-jauge${c.jauge >= 85 ? ' haute' : ''}" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${c.jauge}" aria-label="${esc(c.nom)}"><span style="width:${c.jauge}%"></span></div>` : ''}
+        ${c.conseil ? (c.action ? `<button class="conseil" data-page-aller="${c.action[1]}">${esc(c.conseil)} ${esc(c.action[0])} →</button>` : `<span class="conseil">${esc(c.conseil)}</span>`) : ''}
+      </li>`
+    )
+    .join('');
+}
+
+$('#tb-controles').addEventListener('click', (e) => {
+  const page = e.target.closest('[data-page-aller]')?.dataset.pageAller;
+  if (page) document.querySelector(`button[data-page="${page}"]`)?.click();
+});
+
+function afficherClipsTableau(liste) {
+  const recents = [...liste].sort((a, b) => b.date - a.date);
+  const semaine = recents.filter((c) => c.date >= Date.now() / 1000 - 7 * 86400);
+  const multi = ['ACE', '4K', '3K'].map((g) => [g, semaine.filter((c) => genreClip(c) === g).length]).filter(([, n]) => n);
+  $('#tb-clips-resume').textContent = semaine.length ? `${semaine.length} cette semaine${multi.length ? ' · ' + multi.map(([g, n]) => `${n} ${g}`).join(' · ') : ''}` : '';
+  $('#tb-clips').innerHTML = recents.length
+    ? recents
+        .slice(0, 8)
+        .map(
+          (c, i) =>
+            `<button class="tb-clip" data-i="${i}" title="${esc(c.nom)}"${c.miniature ? ` style="background-image:url('${c.miniature}')"` : ''}>${genreClip(c) ? `<b>${genreClip(c)}</b>` : ''}<span>${esc(c.nom)}</span></button>`
+        )
+        .join('')
+    : `<p class="tb-vide">${reglages?.clips ? 'Pas encore de clip : en jeu, appuie sur ' + esc(reglages.clips_touche?.nom || 'F8') + '.' : 'Active l\'enregistrement dans Clips pour garder tes meilleurs moments.'}</p>`;
+  tableau.clipsRecents = recents.slice(0, 8);
+}
+
+$('#tb-clips').addEventListener('click', (e) => {
+  const c = tableau.clipsRecents?.[e.target.closest('.tb-clip')?.dataset.i];
+  if (!c) return;
+  document.querySelector('button[data-page="clips"]').click();
+  ouvrirEditeur(c);
+});
+$('#tb-clips-tout').addEventListener('click', () => document.querySelector('button[data-page="clips"]').click());
+$('#tb-jeux-tout').addEventListener('click', () => document.querySelector('button[data-page="jeux"]').click());
+
+function afficherJeuxRapides(sessions) {
+  const depuis = Date.now() / 1000 - 30 * 86400;
+  const temps = {};
+  for (const s of sessions.filter((s) => s.debut >= depuis)) temps[s.jeu] = (temps[s.jeu] || 0) + s.duree_s;
+  const jeux = profils
+    .map((p, i) => ({ p, i, v: vignettes.get(p.nom), t: temps[p.nom] || 0 }))
+    .filter((j) => j.v?.jouable)
+    .sort((a, b) => b.t - a.t)
+    .slice(0, 6);
+  $('#carte-jouer').hidden = !jeux.length;
+  $('#tb-jeux').innerHTML = jeux
+    .map(
+      (j) =>
+        `<button class="tb-jeu" data-i="${j.i}" title="Jouer à ${esc(j.p.nom)}${j.t ? ` · ${duree(j.t)} ces 30 derniers jours` : ''}"${j.v?.image ? ` style="background-image:url('${j.v.image}')"` : ''}><span class="tb-jouer-icone">${ICONE_JOUER}</span><span>${esc(j.p.nom)}</span></button>`
+    )
+    .join('');
+}
+
+$('#tb-jeux').addEventListener('click', (e) => {
+  const b = e.target.closest('.tb-jeu');
+  if (b) jouer(Number(b.dataset.i));
+});
+
+// Santé du PC : rafraîchie toutes les 15 s, seulement quand le tableau de bord est à l'écran
+setInterval(() => {
+  if (!document.hidden && $('#page-accueil').classList.contains('actif') && tableau.charge) majSante();
+}, 15000);
 
 /* ---------- Connexion ---------- */
 
@@ -4100,6 +4327,7 @@ async function init() {
     etape(0.8, 'Préparation de ton PC…');
     afficherProfils();
     afficherReglages();
+    chargerTableau();
     appliquerMode();
     afficherAlertes();
     invoke('demarrage_auto_get').then((v) => ($('#demarrage-auto').checked = v));
@@ -4165,6 +4393,9 @@ const ICONES_NOUVEAUTES = {
 };
 
 const NOUVEAUTES = {
+  '0.29.0': [
+    { icone: 'courbe', titre: 'Tableau de bord', texte: 'Ta dernière partie, ta semaine de jeu, tes derniers clips et la santé de ton PC, d\'un coup d\'œil.' },
+  ],
   '0.28.2': [
     { icone: 'clips', titre: 'Clips à la bonne taille', texte: 'Fini les clips d\'1 Go qui durent des heures : le son s\'arrête avec l\'image. Discord revient dans le son du jeu.' },
   ],
