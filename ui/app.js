@@ -1389,7 +1389,6 @@ listen('fps', (e) => ($('#jeu-fps').textContent = Math.round(e.payload)));
 /* ---------- Tableau de bord ---------- */
 
 const tableau = { derniere: null, charge: false, materiel: null, clipsLe: 0 };
-const JOURS_COURTS = ['dim.', 'lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.'];
 const ICONE_OK = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
 const ICONE_ATTENTION = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 6v7M12 17.5v.5"/></svg>';
 const ICONE_JOUER = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15l12-7.5z"/></svg>';
@@ -1423,13 +1422,42 @@ async function chargerTableau() {
   } else afficherClipsTableau(clipsListe);
 }
 
+const NOMS_JOURS = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
+
+/** Lundi 0 h de la semaine actuelle, moins `recul` semaines (secondes Unix) */
+function lundi(recul) {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7) - 7 * recul);
+  return d.getTime() / 1000;
+}
+
 function afficherSemaine(sessions) {
-  const aujourdhui = new Date().setHours(0, 0, 0, 0) / 1000;
-  const jours = [...Array(7)].map((_, i) => ({ debut: aujourdhui - (6 - i) * 86400, secondes: 0 }));
-  const semaine = sessions.filter((s) => s.debut >= jours[0].debut);
+  tableau.sessions = sessions;
+  dessinerSemaine();
+}
+
+/** Semaine du lundi au dimanche (tableau.recul semaines en arrière) : chiffres, et une barre par jour */
+function dessinerSemaine() {
+  const sessions = tableau.sessions || [];
+  const recul = (tableau.recul ??= 0);
+  // Les jours sont recalculés à partir de dates (pas de 86 400 s fixes : changements d'heure)
+  const jours = [...Array(7)].map((_, i) => {
+    const d = new Date(lundi(recul) * 1000);
+    d.setDate(d.getDate() + i);
+    return { debut: d.getTime() / 1000, date: d, secondes: 0, parties: 0, parJeu: {} };
+  });
+  const fin = (() => {
+    const d = new Date(jours[6].date);
+    d.setDate(d.getDate() + 1);
+    return d.getTime() / 1000;
+  })();
+  const semaine = sessions.filter((s) => s.debut >= jours[0].debut && s.debut < fin);
   for (const s of semaine) {
     const j = jours.findLast((j) => s.debut >= j.debut);
-    if (j) j.secondes += s.duree_s;
+    j.secondes += s.duree_s;
+    j.parties++;
+    j.parJeu[s.jeu] = (j.parJeu[s.jeu] || 0) + s.duree_s;
   }
   const total = semaine.reduce((t, s) => t + s.duree_s, 0);
   const mesurees = semaine.filter((s) => s.moyenne > 0);
@@ -1437,15 +1465,76 @@ function afficherSemaine(sessions) {
   $('#tb-temps').textContent = total ? duree(total) : '0 min';
   $('#tb-parties').textContent = semaine.length;
   $('#tb-fps').textContent = poids ? Math.round(mesurees.reduce((t, s) => t + s.moyenne * s.duree_s, 0) / poids) : '–';
+  const court = (d) => d.toLocaleDateString('fr-CH', { day: 'numeric', month: 'short' });
+  $('#tb-semaine-titre').textContent = recul === 0 ? 'Cette semaine' : recul === 1 ? 'Semaine dernière' : `Du ${court(jours[0].date)} au ${court(jours[6].date)}`;
+  $('#tb-semaine-titre').title = `Du lundi ${court(jours[0].date)} au dimanche ${court(jours[6].date)}`;
+  $('#tb-semaine-apres').disabled = recul === 0;
+  const premiere = sessions.reduce((m, s) => Math.min(m, s.debut), Infinity);
+  $('#tb-semaine-avant').disabled = !(premiere < jours[0].debut);
+  const maintenant = Date.now() / 1000;
   const maxi = Math.max(...jours.map((j) => j.secondes), 1);
+  tableau.jours = jours;
   $('#tb-jours').innerHTML = jours
     .map((j, i) => {
-      const nom = i === 6 ? 'auj.' : JOURS_COURTS[new Date(j.debut * 1000).getDay()];
-      const hauteur = j.secondes ? Math.max(6, Math.round((j.secondes / maxi) * 70)) : 2;
-      return `<div class="tb-jour${j.secondes ? '' : ' vide'}${i === 6 ? ' aujourdhui' : ''}" title="${nom} : ${j.secondes ? duree(j.secondes) + ' de jeu' : 'pas joué'}"><span class="barre-jour" style="height:${hauteur}px"></span><small>${nom}</small></div>`;
+      const futur = j.debut > maintenant;
+      const auj = maintenant >= j.debut && maintenant < (jours[i + 1]?.debut ?? fin);
+      const hauteur = j.secondes ? Math.max(6, Math.round((j.secondes / maxi) * 70)) : futur ? 70 : 2;
+      const nom = NOMS_JOURS[j.date.getDay()];
+      return `<div class="tb-jour${j.secondes ? '' : ' vide'}${auj ? ' aujourdhui' : ''}${futur ? ' futur' : ''}" data-i="${i}" tabindex="0" aria-label="${nom} : ${j.secondes ? duree(j.secondes) + ' de jeu' : futur ? 'à venir' : 'pas joué'}"><span class="barre-jour" style="height:${hauteur}px"></span><small>${auj ? 'auj.' : nom.slice(0, 3) + '.'}</small></div>`;
     })
     .join('');
+  cacherInfobulle();
 }
+
+function montrerInfobulle(el) {
+  const j = tableau.jours?.[el.dataset.i];
+  if (!j) return;
+  const bulle = $('#tb-infobulle');
+  const date = j.date.toLocaleDateString('fr-CH', { weekday: 'long', day: 'numeric', month: 'long' });
+  const futur = j.debut > Date.now() / 1000;
+  const principal = Object.entries(j.parJeu).sort((a, b) => b[1] - a[1])[0];
+  bulle.innerHTML = `<strong>${esc(date.charAt(0).toUpperCase() + date.slice(1))}</strong>${
+    futur
+      ? '<span>À venir</span>'
+      : j.secondes
+        ? `<span><b>${duree(j.secondes)}</b> de jeu · ${j.parties} partie${j.parties > 1 ? 's' : ''}</span>${principal ? `<br><span>Surtout ${esc(principal[0])}</span>` : ''}`
+        : '<span>Pas joué</span>'
+  }`;
+  document.querySelectorAll('.tb-jour.survol').forEach((x) => x.classList.remove('survol'));
+  el.classList.add('survol');
+  bulle.hidden = false;
+  // Au-dessus de la barre, sans sortir de la carte
+  const carte = $('#carte-semaine').getBoundingClientRect();
+  const barre = el.querySelector('.barre-jour').getBoundingClientRect();
+  const demi = bulle.offsetWidth / 2;
+  const x = Math.min(Math.max(barre.left + barre.width / 2 - carte.left, demi + 8), carte.width - demi - 8);
+  bulle.style.left = `${x}px`;
+  bulle.style.top = `${barre.top - carte.top - 8}px`;
+}
+
+function cacherInfobulle() {
+  $('#tb-infobulle').hidden = true;
+  document.querySelectorAll('.tb-jour.survol').forEach((x) => x.classList.remove('survol'));
+}
+
+$('#tb-jours').addEventListener('mouseover', (e) => {
+  const j = e.target.closest('.tb-jour');
+  if (j) montrerInfobulle(j);
+});
+$('#tb-jours').addEventListener('mouseleave', cacherInfobulle);
+$('#tb-jours').addEventListener('focusin', (e) => {
+  const j = e.target.closest('.tb-jour');
+  if (j) montrerInfobulle(j);
+});
+$('#tb-jours').addEventListener('focusout', cacherInfobulle);
+$('#tb-semaine-avant').addEventListener('click', () => {
+  tableau.recul++;
+  dessinerSemaine();
+});
+$('#tb-semaine-apres').addEventListener('click', () => {
+  tableau.recul = Math.max(0, tableau.recul - 1);
+  dessinerSemaine();
+});
 
 /** Courbe des FPS d'une partie (petite, sans axes) */
 function miniCourbe(valeurs) {
@@ -4393,6 +4482,9 @@ const ICONES_NOUVEAUTES = {
 };
 
 const NOUVEAUTES = {
+  '0.29.1': [
+    { icone: 'courbe', titre: 'Tes semaines de jeu', texte: 'Parcours tes semaines du lundi au dimanche avec les flèches, et survole un jour pour voir ton temps de jeu.' },
+  ],
   '0.29.0': [
     { icone: 'courbe', titre: 'Tableau de bord', texte: 'Ta dernière partie, ta semaine de jeu, tes derniers clips et la santé de ton PC, d\'un coup d\'œil.' },
   ],

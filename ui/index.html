@@ -99,13 +99,20 @@
           <ul class="tb-controles" id="tb-controles"></ul>
         </div>
         <div class="carte tb-semaine" id="carte-semaine">
-          <h2>Cette semaine</h2>
+          <div class="tb-titre tb-semaine-tete">
+            <h2 id="tb-semaine-titre">Cette semaine</h2>
+            <div class="tb-fleches">
+              <button id="tb-semaine-avant" class="petit discret-btn" aria-label="Semaine précédente" title="Semaine précédente"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></button>
+              <button id="tb-semaine-apres" class="petit discret-btn" aria-label="Semaine suivante" title="Semaine suivante"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg></button>
+            </div>
+          </div>
           <div class="tb-chiffres">
             <div><strong id="tb-temps">–</strong><small>de jeu</small></div>
             <div><strong id="tb-parties">–</strong><small>parties</small></div>
             <div><strong id="tb-fps">–</strong><small>FPS moyen</small></div>
           </div>
           <div class="tb-jours" id="tb-jours" aria-label="Temps de jeu par jour"></div>
+          <div class="tb-infobulle" id="tb-infobulle" role="tooltip" hidden></div>
         </div>
         <div class="carte tb-clips" id="carte-clips">
           <div class="tb-titre"><h2>Derniers clips</h2><span id="tb-clips-resume" class="discret"></span><button id="tb-clips-tout" class="petit discret-btn">Tout voir</button></div>

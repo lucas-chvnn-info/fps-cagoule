@@ -130,6 +130,21 @@ main { flex: 1; overflow-y: auto; padding: 28px 32px 40px; }
 .tb-jour.vide .barre-jour { background: var(--bordure); }
 .tb-jour:hover .barre-jour { background: var(--accent-clair); }
 .tb-jour small { color: var(--discret); font-size: 11.5px; }
+.tb-semaine { position: relative; }
+.tb-semaine-tete h2 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tb-fleches { margin-left: auto; display: flex; gap: 2px; }
+.tb-fleches button { padding: 4px 6px; line-height: 0; }
+.tb-fleches button:disabled { opacity: .3; cursor: default; }
+.tb-fleches svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.tb-jour { outline: none; border-radius: 6px; }
+.tb-jour:focus-visible { box-shadow: 0 0 0 2px var(--accent-clair); }
+.tb-jour.futur .barre-jour { background: transparent; border: 1px dashed var(--bordure); border-bottom: 0; }
+.tb-jour.futur small { opacity: .5; }
+.tb-jour.survol .barre-jour { background: var(--accent-clair); }
+.tb-infobulle { position: absolute; z-index: 5; padding: 8px 11px; border-radius: 10px; background: var(--panneau); border: 1px solid var(--bordure); box-shadow: 0 8px 24px rgba(0, 0, 0, .45); font-size: 12.5px; line-height: 1.45; pointer-events: none; white-space: nowrap; transform: translate(-50%, -100%); }
+.tb-infobulle strong { display: block; color: var(--texte); font-size: 13px; }
+.tb-infobulle span { color: var(--discret); }
+.tb-infobulle b { color: var(--texte); font-weight: 600; }
 .tb-jour.aujourdhui small { color: var(--texte); font-weight: 600; }
 .tb-clips-grille { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 12px; }
 .tb-clip { position: relative; display: block; padding: 0; border: 1px solid var(--bordure); border-radius: 10px; overflow: hidden; background: var(--fond) center / cover no-repeat; aspect-ratio: 16 / 9; cursor: pointer; transition: border-color .2s, transform .2s; }
