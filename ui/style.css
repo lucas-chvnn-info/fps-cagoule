@@ -93,8 +93,8 @@ main { flex: 1; overflow-y: auto; padding: 28px 32px 40px; }
 }
 .grille-accueil { display: grid; grid-template-columns: 300px 1fr; gap: 18px; }
 /* Tableau de bord */
-.tableau { display: grid; grid-template-columns: 280px minmax(0, 1fr) minmax(0, 1fr); gap: 18px; }
-.tableau > .carte { min-width: 0; }
+.tableau-bord { display: grid; grid-template-columns: 280px minmax(0, 1fr) minmax(0, 1fr); gap: 18px; }
+.tableau-bord > .carte { min-width: 0; }
 .tb-clips { grid-column: span 2; }
 .tb-jouer { grid-column: 1 / -1; }
 .tb-titre { display: flex; align-items: baseline; gap: 10px; }
@@ -169,11 +169,11 @@ main { flex: 1; overflow-y: auto; padding: 28px 32px 40px; }
 .tb-courbe path.ligne { fill: none; stroke: var(--accent-clair); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
 .tb-courbe path.aire { fill: var(--accent-fond); }
 @media (max-width: 1180px) {
-  .tableau { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .tableau-bord { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   .tb-clips { grid-column: 1 / -1; }
 }
 @media (max-width: 760px) {
-  .tableau { grid-template-columns: 1fr; }
+  .tableau-bord { grid-template-columns: 1fr; }
   .tb-clips-grille { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 .grille-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }

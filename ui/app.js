@@ -1418,8 +1418,9 @@ async function chargerTableau() {
   // Liste des clips : lue au plus une fois par minute (elle peut être sur le serveur)
   if (Date.now() - tableau.clipsLe > 60000) {
     tableau.clipsLe = Date.now();
-    afficherClipsTableau(clipsListe.length ? clipsListe : await invoke('clips_liste').catch(() => []));
-  } else afficherClipsTableau(clipsListe);
+    tableau.clips = clipsListe.length ? clipsListe : await invoke('clips_liste').catch(() => []);
+  }
+  afficherClipsTableau(clipsListe.length ? clipsListe : tableau.clips || []);
 }
 
 const NOMS_JOURS = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
