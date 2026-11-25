@@ -2,8 +2,8 @@
 // Les pages défilent seules ; un clic sur 1, 2 ou 3 arrête le défilement et garde la fenêtre ouverte.
 const { invoke } = window.__TAURI__.core;
 const esc = (t) => String(t ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
-// Icônes des opérateurs (r6operators, licence MIT, redessinées par Marco Vockner)
-const ICONES = new Set('ace alibi amaru aruni ash azami bandit blackbeard blitz brava buck capitao castle caveira clash deimos denari doc dokkaebi echo ela fenrir finka flores frost fuze glaz goyo gridlock grim hibana iana iq jackal jager kaid kali kapkan lesion lion maestro maverick melusi mira montagne mozzie mute nokk nomad oryx osa pulse ram rauora recrue rook sens sentry skopos sledge smoke solis striker tachanka thatcher thermite thorn thunderbird tubarao twitch valkyrie vigil wamai warden ying zero zofia'.split(' '));
+// Icônes des opérateurs (r6operators, licence MIT, redessinées par Marco Vockner ; Noor et Solid Snake ajoutés à part)
+const ICONES = new Set('ace alibi amaru aruni ash azami bandit blackbeard blitz brava buck capitao castle caveira clash deimos denari doc dokkaebi echo ela fenrir finka flores frost fuze glaz goyo gridlock grim hibana iana iq jackal jager kaid kali kapkan lesion lion maestro maverick melusi mira montagne mozzie mute nokk nomad noor oryx osa pulse ram rauora recrue rook sens sentry skopos sledge smoke solidsnake solis striker tachanka thatcher thermite thorn thunderbird tubarao twitch valkyrie vigil wamai warden ying zero zofia'.split(' '));
 const DEFILEMENT = 6500;
 let page = 1, defile, fermeture, manches = [], indice = 0;
 
