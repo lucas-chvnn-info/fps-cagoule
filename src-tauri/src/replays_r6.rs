@@ -354,6 +354,11 @@ fn decompresser(b: &[u8]) -> Result<Vec<u8>, String> {
 
 /// Lit une manche (.rec)
 pub fn lire(fichier: &[u8]) -> Result<Manche, String> {
+    lire_avec_flux(fichier).map(|(m, _)| m)
+}
+
+/// Lit une manche et garde son flux décompressé (pour les dégâts)
+pub fn lire_avec_flux(fichier: &[u8]) -> Result<(Manche, Vec<u8>), String> {
     if !fichier.starts_with(b"dissect") {
         return Err("Ce n'est pas un replay de Rainbow Six Siege".into());
     }
@@ -439,7 +444,7 @@ pub fn lire(fichier: &[u8]) -> Result<Manche, String> {
         .iter()
         .find(|j| (!profil_moi.is_empty() && j.profil == profil_moi) || (id_moi != 0 && j.id_entete == id_moi))
         .map(|j| j.pseudo.clone());
-    Ok(manche)
+    Ok((manche, donnees))
 }
 
 /// Parcourt les paquets dans l'ordre : joueurs (opérateur), changements d'opérateur, chrono, killfeed

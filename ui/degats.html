@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>Dégâts de la manche</title>
+  <style>
+    :root { --texte: #e9ecf2; --discret: #8b92a5; --accent: #6f9dff; --rouge: #ff7a8a; }
+    html, body { margin: 0; background: transparent; overflow: hidden; }
+    body { font: 13px/1.35 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; color: var(--texte); }
+    .carte {
+      margin: 6px; padding: 14px 16px 12px; border-radius: 16px;
+      background: rgba(14, 16, 22, .86); border: 1px solid rgba(255, 255, 255, .07);
+      opacity: 0; transform: translateX(-14px); transition: opacity .35s ease, transform .35s ease;
+    }
+    .carte.visible { opacity: 1; transform: none; }
+    .carte.sortie { opacity: 0; transform: translateX(-14px); transition-duration: .6s; }
+    .tete { color: var(--discret); font-size: 12px; }
+    .moi { display: flex; align-items: baseline; gap: 8px; margin: 2px 0 6px; }
+    .moi b { font-size: 34px; font-weight: 800; color: var(--accent); font-variant-numeric: tabular-nums; }
+    .moi span { color: var(--discret); }
+    .cibles { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 10px; }
+    .cibles span { padding: 1px 8px; border-radius: 999px; background: rgba(111, 157, 255, .14); font-size: 11.5px; }
+    .cibles span i { font-style: normal; color: var(--accent); font-weight: 700; margin-left: 4px; }
+    h2 { margin: 8px 0 3px; font-size: 11px; font-weight: 600; color: var(--discret); text-transform: uppercase; letter-spacing: .06em; }
+    .ligne { display: grid; grid-template-columns: 162px 1fr 34px; align-items: center; gap: 8px; height: 25px; }
+    .nom { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+    .nom small { margin-left: 5px; font-size: 11px; font-weight: 400; color: var(--discret); }
+    .ligne.toi .nom { color: var(--accent); font-weight: 700; }
+    .barre { height: 6px; border-radius: 3px; background: rgba(255, 255, 255, .06); overflow: hidden; }
+    .barre div { height: 100%; width: 0; border-radius: 3px; background: #4c5670; transition: width .7s cubic-bezier(.2, .8, .2, 1); }
+    .ligne.toi .barre div { background: var(--accent); }
+    .adverse .barre div { background: rgba(255, 122, 138, .55); }
+    .val { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .val small { color: var(--discret); font-weight: 400; }
+  </style>
+</head>
+<body>
+  <div class="carte" id="carte"></div>
+  <script src="degats.js"></script>
+</body>
+</html>

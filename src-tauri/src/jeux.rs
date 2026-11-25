@@ -61,6 +61,8 @@ pub struct Etat {
     pub presentmon: PathBuf,
     /// Touche de sauvegarde des clips (raccourci global)
     pub raccourci: Mutex<Option<crate::raccourci::Raccourci>>,
+    /// Dégâts de la dernière manche de R6 (fenêtre de fin de manche)
+    pub degats: Mutex<Option<crate::degats_r6::Bilan>>,
 }
 
 #[derive(Serialize, Clone)]
@@ -481,19 +483,26 @@ fn surveiller_clips(app: &AppHandle, etat: &Etat, pid: u32) {
     });
 }
 
-/// Clips automatiques dans R6 : à chaque fin de manche, le replay (.rec) est lu ; 2 kills ou plus du joueur
-/// donnent un clip « 3K · Ace · Clubhouse » qui part 15 s avant le premier kill
+/// Fins de manche dans R6 : le replay (.rec) de chaque manche est lu pour la fenêtre des dégâts et les clips
+/// automatiques (2 kills ou plus du joueur donnent un clip « 3K · Ace · Clubhouse » qui part 15 s avant le premier kill)
 fn surveiller_replays(app: &AppHandle, etat: &Etat, pid: u32) {
-    if !etat.stock.donnees.lock().unwrap().reglages.clips_auto {
+    let (clips_auto, degats) = {
+        let d = etat.stock.donnees.lock().unwrap();
+        (d.reglages.clips_auto, d.reglages.degats_fin_manche)
+    };
+    if !clips_auto && !degats {
         return;
     }
     let infos = {
         let session = etat.session.lock().unwrap();
-        session.as_ref().filter(|s| s.exe.to_lowercase().starts_with("rainbowsix")).and_then(|s| {
-            s.enregistreur.as_ref().map(|e| (s.debut_systeme, s.replays_vus.clone(), e.dossier.clone(), e.jeu.clone()))
+        session.as_ref().filter(|s| s.exe.to_lowercase().starts_with("rainbowsix")).map(|s| {
+            (s.debut_systeme, s.replays_vus.clone(), s.enregistreur.as_ref().filter(|_| clips_auto).map(|e| (e.dossier.clone(), e.jeu.clone())))
         })
     };
-    let Some((depuis, vus, tampon, jeu)) = infos else { return };
+    let Some((depuis, vus, enregistrement)) = infos else { return };
+    if enregistrement.is_none() && !degats {
+        return;
+    }
     // Dossiers des replays cherchés une fois par partie (puis tant qu'aucun n'existe : R6 le crée à la première manche)
     let dossiers = {
         let deja = etat.session.lock().unwrap().as_ref().map(|s| s.dossiers_replays.clone()).unwrap_or_default();
@@ -528,7 +537,7 @@ fn surveiller_replays(app: &AppHandle, etat: &Etat, pid: u32) {
         if let Some(s) = etat.session.lock().unwrap().as_mut().filter(|s| s.pid == pid) {
             s.replays_vus.push(fichier.clone());
         }
-        let (app, tampon, jeu) = (app.clone(), tampon.clone(), jeu.clone());
+        let (app, enregistrement) = (app.clone(), enregistrement.clone());
         let _ = thread::Builder::new().name("clip-auto".into()).spawn(move || {
             let etat = app.state::<Arc<Etat>>();
             let nom = fichier.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
@@ -536,10 +545,33 @@ fn surveiller_replays(app: &AppHandle, etat: &Etat, pid: u32) {
                 Ok(o) => o,
                 Err(e) => return crate::clips::noter(&etat.stock, &format!("{nom} : illisible ({e})")),
             };
-            let manche = match crate::replays_r6::lire(&octets) {
+            let (manche, flux) = match crate::replays_r6::lire_avec_flux(&octets) {
                 Ok(m) => m,
                 Err(e) => return crate::clips::noter(&etat.stock, &format!("{nom} : replay non lu ({e})")),
             };
+            drop(octets);
+            // Dégâts de la manche : calculés à part (moins d'une seconde) pour ne pas retarder le clip
+            if degats {
+                let (app, manche, nom) = (app.clone(), manche.clone(), nom.clone());
+                let _ = thread::Builder::new().name("degats".into()).spawn(move || {
+                    let etat = app.state::<Arc<Etat>>();
+                    let debut = Instant::now();
+                    match crate::degats_r6::bilan(&flux, &manche) {
+                        Some(b) => {
+                            let inconnus: u32 = b.coups.iter().filter(|c| c.tireur.is_none()).map(|c| c.degats).sum();
+                            let total: u32 = b.coups.iter().map(|c| c.degats).sum();
+                            crate::clips::noter(&etat.stock, &format!("{nom} : dégâts lus en {:.1} s ({} coups, {inconnus}/{total} PV sans tireur)", debut.elapsed().as_secs_f64(), b.coups.len()));
+                            *etat.degats.lock().unwrap() = Some(b);
+                            let _ = app.emit("degats", ());
+                            if etat.stock.donnees.lock().unwrap().reglages.degats_fin_manche {
+                                crate::fenetres::ouvrir_degats(&app);
+                            }
+                        }
+                        None => crate::clips::noter(&etat.stock, &format!("{nom} : dégâts illisibles")),
+                    }
+                });
+            }
+            let Some((tampon, jeu)) = enregistrement else { return };
             crate::clips::noter(&etat.stock, &format!("{nom} : compte {:?}, {} kill(s), titre {:?}", manche.moi, manche.mes_kills().len(), crate::replays_r6::titre_clip(&manche)));
             let manuels = {
                 let mut session = etat.session.lock().unwrap();

@@ -10,6 +10,7 @@ mod clips;
 mod config;
 mod demarrage;
 mod discord;
+mod degats_r6;
 mod dns;
 mod edition;
 mod ecrans;
@@ -502,6 +503,12 @@ fn autoriser_dossiers_clips(app: &AppHandle) {
     }
 }
 
+/// Dégâts de la dernière manche de R6 (lus par la fenêtre de fin de manche)
+#[tauri::command]
+fn degats_derniere(app: AppHandle) -> Option<degats_r6::Bilan> {
+    etat(&app).degats.lock().unwrap().clone()
+}
+
 /// Fenêtre Windows de choix d'un dossier (le chemin choisi est seulement renvoyé, pas encore gardé)
 #[tauri::command(async)]
 fn clips_parcourir(app: AppHandle) -> Option<String> {
@@ -935,6 +942,7 @@ fn main() {
                 fps_live: Arc::new(Mutex::new(None)),
                 presentmon,
                 raccourci: Mutex::new(None),
+                degats: Mutex::new(None),
             });
             // L'app a été coupée en pleine partie : on remet le plan d'alimentation d'avant
             jeux::restaurer_plan(&etat);
@@ -1004,6 +1012,7 @@ fn main() {
             clips_ouvrir,
             clips_supprimer,
             clips_parcourir,
+            degats_derniere,
             clips_dossier_regler,
             clips_exporter,
             clips_pistes,

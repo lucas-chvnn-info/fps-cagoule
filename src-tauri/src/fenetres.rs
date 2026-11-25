@@ -60,6 +60,70 @@ pub fn ouvrir_overlay(app: &AppHandle) {
     });
 }
 
+/// Change à chaque nouvelle manche : seule la dernière fenêtre ouverte se referme à son heure
+static GENERATION_DEGATS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+const DEGATS_TAILLE: (f64, f64) = (342.0, 470.0);
+const DEGATS_DUREE: std::time::Duration = std::time::Duration::from_secs(15);
+
+/// Dégâts de la manche, à gauche au milieu de l'écran pendant 15 s. Jamais activée (le jeu garde le clavier
+/// et ne se réduit pas), les clics la traversent.
+pub fn ouvrir_degats(app: &AppHandle) {
+    use std::sync::atomic::Ordering;
+    let generation = GENERATION_DEGATS.fetch_add(1, Ordering::SeqCst) + 1;
+    // Déjà ouverte : elle se met à jour seule (signal « degats » envoyé avec le nouveau bilan)
+    if app.get_webview_window("degats").is_none() {
+        let app2 = app.clone();
+        let _ = app.run_on_main_thread(move || {
+            let (mut x, mut y) = (24.0, 160.0);
+            if let Ok(Some(ecran)) = app2.primary_monitor() {
+                let echelle = ecran.scale_factor();
+                let p = ecran.position().to_logical::<f64>(echelle);
+                let t = ecran.size().to_logical::<f64>(echelle);
+                x = p.x + 24.0;
+                y = p.y + ((t.height - DEGATS_TAILLE.1) / 2.0).max(0.0);
+            }
+            let f = WebviewWindowBuilder::new(&app2, "degats", WebviewUrl::App("degats.html".into()))
+                .title("FPS Cagoule – dégâts")
+                .inner_size(DEGATS_TAILLE.0, DEGATS_TAILLE.1)
+                .position(x, y)
+                .decorations(false)
+                .transparent(true)
+                .shadow(false)
+                .always_on_top(true)
+                .skip_taskbar(true)
+                .resizable(false)
+                .focused(false)
+                .visible(false)
+                .build();
+            if let Ok(f) = f {
+                let _ = f.set_ignore_cursor_events(true);
+                afficher_sans_activer(&f);
+            }
+        });
+    }
+    let app3 = app.clone();
+    let _ = std::thread::Builder::new().name("degats-fermeture".into()).spawn(move || {
+        std::thread::sleep(DEGATS_DUREE);
+        if GENERATION_DEGATS.load(Ordering::SeqCst) == generation {
+            if let Some(f) = app3.get_webview_window("degats") {
+                let _ = f.destroy();
+            }
+        }
+    });
+}
+
+/// Affiche une fenêtre sans l'activer (WS_EX_NOACTIVATE + SW_SHOWNOACTIVATE)
+fn afficher_sans_activer(f: &tauri::WebviewWindow) {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{GetWindowLongPtrW, SetWindowLongPtrW, ShowWindow, GWL_EXSTYLE, SW_SHOWNOACTIVATE, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW};
+    let Ok(h) = f.hwnd() else { return };
+    let h = h.0 as windows_sys::Win32::Foundation::HWND;
+    unsafe {
+        let ex = GetWindowLongPtrW(h, GWL_EXSTYLE);
+        SetWindowLongPtrW(h, GWL_EXSTYLE, ex | (WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW) as isize);
+        ShowWindow(h, SW_SHOWNOACTIVATE);
+    }
+}
+
 pub fn fermer_overlay(app: &AppHandle) {
     if let Some(f) = app.get_webview_window("overlay") {
         let _ = f.destroy();

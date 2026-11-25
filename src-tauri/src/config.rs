@@ -16,6 +16,8 @@ pub struct Reglages {
     pub boost_max: bool,
     pub mesure_fps: bool,
     pub overlay: bool,
+    /// Fenêtre des dégâts à la fin de chaque manche de Rainbow Six Siege
+    pub degats_fin_manche: bool,
     pub maj_auto: bool,
     /// Appliquer les couleurs choisies dans « Écrans » pendant les parties
     pub couleurs_en_jeu: bool,
@@ -85,7 +87,7 @@ pub fn applis_fond_par_defaut() -> Vec<String> {
 
 impl Default for Reglages {
     fn default() -> Self {
-        Self { boost_auto: true, boost_max: false, mesure_fps: true, overlay: false, maj_auto: true, couleurs_en_jeu: false, fermer_applis: vec![], assistant_fait: false, mode_simple: false, oc_protection: true, priorite_basse: true, priorite_basse_applis: applis_fond_par_defaut(), discord: true, clips: false, clips_duree_s: 30, clips_touche: Touche::default(), clips_auto: true, clips_auto_kills: vec![2, 3, 4, 5], clips_dossier: None, clips_qualite: "haute".into(), clips_ips: 60, partage_dossier: None, partage_url: None, partage_discord: None, discord_auto_kills: vec![], clips_sons: vec!["pc".into()] }
+        Self { boost_auto: true, boost_max: false, mesure_fps: true, overlay: false, degats_fin_manche: true, maj_auto: true, couleurs_en_jeu: false, fermer_applis: vec![], assistant_fait: false, mode_simple: false, oc_protection: true, priorite_basse: true, priorite_basse_applis: applis_fond_par_defaut(), discord: true, clips: false, clips_duree_s: 30, clips_touche: Touche::default(), clips_auto: true, clips_auto_kills: vec![2, 3, 4, 5], clips_dossier: None, clips_qualite: "haute".into(), clips_ips: 60, partage_dossier: None, partage_url: None, partage_discord: None, discord_auto_kills: vec![], clips_sons: vec!["pc".into()] }
     }
 }
 
