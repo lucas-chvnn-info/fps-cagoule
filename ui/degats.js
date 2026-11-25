@@ -1,6 +1,7 @@
 // Fenêtre de fin de manche (R6) : 1 résumé, 2 zones touchées sur chaque ennemi, 3 dégâts donnés et reçus.
 // Les pages défilent seules ; un clic sur 1, 2 ou 3 arrête le défilement et garde la fenêtre ouverte.
 const { invoke } = window.__TAURI__.core;
+const esc = escOp;
 const DEFILEMENT = 6500;
 let page = 1, defile, fermeture, manches = [], indice = 0;
 

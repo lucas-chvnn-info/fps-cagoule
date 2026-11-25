@@ -27,6 +27,25 @@ pub struct PartieVue {
     pub moi: String,
     pub moi_pseudo: String,
     pub joueurs: Vec<JoueurVu>,
+    #[serde(default)]
+    pub map: Option<String>,
+    /// Ton résultat (parties vues depuis la version 0.30 : les anciennes relues n'ont que les joueurs)
+    #[serde(default)]
+    pub resultat: Option<Resultat>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Default, Debug, PartialEq)]
+pub struct Resultat {
+    pub manches: u32,
+    pub nous: u32,
+    pub eux: u32,
+    pub kills: u32,
+    pub morts: u32,
+    pub assists: u32,
+    pub degats: u32,
+    pub score: Option<u32>,
+    /// Opérateurs joués, dans l'ordre des manches
+    pub operateurs: Vec<String>,
 }
 
 #[derive(Serialize, Clone, Default, Debug, PartialEq)]
@@ -85,7 +104,7 @@ impl Rencontres {
         let pos = match self.parties.iter().position(|p| p.partie == partie) {
             Some(i) => i,
             None => {
-                self.parties.push(PartieVue { partie: partie.into(), date_ms, moi: mien, moi_pseudo: moi.pseudo.clone(), joueurs: vec![] });
+                self.parties.push(PartieVue { partie: partie.into(), date_ms, moi: mien, moi_pseudo: moi.pseudo.clone(), joueurs: vec![], map: m.map.clone(), resultat: None });
                 if self.parties.len() > MAX_PARTIES {
                     self.parties.sort_by_key(|p| p.date_ms);
                     self.parties.drain(..self.parties.len() - MAX_PARTIES);
@@ -95,6 +114,10 @@ impl Rencontres {
         };
         let p = &mut self.parties[pos];
         let mut change = p.joueurs.is_empty();
+        if p.map.is_none() && m.map.is_some() {
+            p.map = m.map.clone();
+            change = true;
+        }
         for j in joueurs {
             if !p.joueurs.iter().any(|x| x.profil == j.profil) {
                 p.joueurs.push(j);
@@ -102,6 +125,28 @@ impl Rencontres {
             }
         }
         change
+    }
+
+    /// Ajoute une manche au résultat de la partie (manches lues dans l'ordre ; une manche déjà comptée est ignorée)
+    pub fn noter_manche(&mut self, partie: &str, b: &crate::degats_r6::Bilan) {
+        let Some(p) = self.parties.iter_mut().find(|p| p.partie == partie) else { return };
+        let Some(moi) = b.joueurs.iter().find(|j| Some(&j.pseudo) == b.moi.as_ref()) else { return };
+        let r = p.resultat.get_or_insert_with(Resultat::default);
+        if b.manche <= r.manches {
+            return;
+        }
+        r.manches = b.manche;
+        (r.nous, r.eux) = (b.nous, b.eux);
+        r.morts += u32::from(moi.mort);
+        r.degats += moi.inflige;
+        match moi.partie {
+            Some(c) => (r.kills, r.assists, r.score) = (c.kills, c.assists, Some(c.score)),
+            None => {
+                r.kills += moi.kills;
+                r.assists += moi.assists;
+            }
+        }
+        r.operateurs.push(moi.operateur.clone().unwrap_or_default());
     }
 
     pub fn sauver(&self) {
@@ -161,6 +206,44 @@ impl Rencontres {
     }
 }
 
+/// Un de tes comptes R6 (celui qui enregistrait les replays)
+#[derive(Serialize, Clone, Debug)]
+pub struct Compte {
+    pub profil: String,
+    pub pseudo: String,
+    pub parties: u32,
+    pub derniere_ms: u64,
+}
+
+impl Rencontres {
+    /// Tes comptes, le plus récemment joué d'abord
+    pub fn comptes(&self) -> Vec<Compte> {
+        let mut out: Vec<Compte> = Vec::new();
+        for p in &self.parties {
+            match out.iter_mut().find(|c| c.profil == p.moi) {
+                Some(c) => {
+                    c.parties += 1;
+                    if p.date_ms >= c.derniere_ms {
+                        (c.derniere_ms, c.pseudo) = (p.date_ms, p.moi_pseudo.clone());
+                    }
+                }
+                None => out.push(Compte { profil: p.moi.clone(), pseudo: p.moi_pseudo.clone(), parties: 1, derniere_ms: p.date_ms }),
+            }
+        }
+        out.sort_by_key(|c| std::cmp::Reverse(c.derniere_ms));
+        out
+    }
+
+    /// Parties d'un profil : les tiennes (si c'est un de tes comptes) ou celles où tu l'as croisé, les plus récentes d'abord
+    pub fn parties_de(&self, profil: &str, max: usize) -> Vec<PartieVue> {
+        let profil = profil.to_lowercase();
+        let mut l: Vec<PartieVue> = self.parties.iter().filter(|p| p.moi == profil || p.joueurs.iter().any(|j| j.profil == profil)).cloned().collect();
+        l.sort_by_key(|p| std::cmp::Reverse(p.date_ms));
+        l.truncate(max);
+        l
+    }
+}
+
 /// Parties des dossiers « MatchReplay » pas encore dans l'historique : (dossier du match, premier replay, date)
 pub fn parties_a_relire(dossiers: &[PathBuf], connues: &Rencontres) -> Vec<(String, PathBuf, u64)> {
     let mut out = Vec::new();
@@ -198,6 +281,8 @@ mod tests {
             moi: moi.into(),
             moi_pseudo: moi.to_uppercase(),
             joueurs: joueurs.iter().map(|(p, a)| JoueurVu { profil: (*p).into(), pseudo: p.to_uppercase(), avec: *a }).collect(),
+            map: None,
+            resultat: None,
         }
     }
 

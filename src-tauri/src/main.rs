@@ -539,7 +539,10 @@ fn degats_manches(app: AppHandle) -> DegatsPartie {
         })
         .collect();
     // Stats Ubisoft (déjà en cache ; les manquantes sont demandées en arrière-plan)
-    let ubisoft_connecte = e.stock.donnees.lock().unwrap().reglages.ubisoft_pseudo.is_some();
+    let ubisoft_connecte = {
+        let r = &e.stock.donnees.lock().unwrap().reglages;
+        r.ubisoft_pseudo.is_some() && r.tracker_r6
+    };
     let mut ubisoft = std::collections::HashMap::new();
     if ubisoft_connecte {
         let profils: Vec<(String, String)> = manches.iter().flat_map(|b| &b.joueurs).map(|j| (j.pseudo.clone(), j.profil.to_lowercase())).collect();
@@ -552,6 +555,57 @@ fn degats_manches(app: AppHandle) -> DegatsPartie {
         }
     }
     DegatsPartie { manches, rencontres, ubisoft, ubisoft_connecte }
+}
+
+/// Page Rainbow Six : tes comptes (d'après tes replays)
+#[tauri::command]
+fn r6_comptes(app: AppHandle) -> Vec<rencontres::Compte> {
+    etat(&app).rencontres.lock().unwrap().comptes()
+}
+
+/// Parties d'un profil dans ton historique (les tiennes, ou celles où tu l'as croisé)
+#[tauri::command]
+fn r6_parties(app: AppHandle, profil: String) -> Vec<rencontres::PartieVue> {
+    etat(&app).rencontres.lock().unwrap().parties_de(&profil, 30)
+}
+
+/// Stats Ubisoft de profils (cache de 20 min) ; None = rien reçu (nom caché…)
+#[tauri::command(async)]
+fn r6_stats(app: AppHandle, profils: Vec<String>) -> Res<std::collections::HashMap<String, Option<ubisoft::StatsUbi>>> {
+    let e = etat(&app);
+    {
+        let r = &e.stock.donnees.lock().unwrap().reglages;
+        if !r.tracker_r6 {
+            return Err("Le tracker est désactivé.".into());
+        }
+        if r.ubisoft_pseudo.is_none() {
+            return Err("Connecte un compte Ubisoft pour voir les rangs.".into());
+        }
+    }
+    let profils: Vec<String> = profils.into_iter().map(|p| p.to_lowercase()).collect();
+    let manquants: Vec<String> = {
+        let cache = e.ubisoft.lock().unwrap();
+        profils.iter().filter(|p| cache.get(*p).is_none_or(|(t, _)| t.elapsed() > std::time::Duration::from_secs(20 * 60))).cloned().collect()
+    };
+    if !manquants.is_empty() {
+        let mut recues = ubisoft::stats(&manquants)?;
+        ubisoft::pics_generaux(e.stock.dossier(), &mut recues);
+        let mut cache = e.ubisoft.lock().unwrap();
+        for p in &manquants {
+            cache.insert(p.clone(), (std::time::Instant::now(), recues.remove(p)));
+        }
+    }
+    let cache = e.ubisoft.lock().unwrap();
+    Ok(profils.iter().map(|p| (p.clone(), cache.get(p).and_then(|(_, s)| s.clone()))).collect())
+}
+
+/// Recherche d'un compte Ubisoft par pseudo
+#[tauri::command(async)]
+fn r6_chercher(app: AppHandle, pseudo: String) -> Res<Vec<(String, String)>> {
+    if etat(&app).stock.donnees.lock().unwrap().reglages.ubisoft_pseudo.is_none() {
+        return Err("Connecte un compte Ubisoft pour chercher un joueur.".into());
+    }
+    ubisoft::chercher(&pseudo)
 }
 
 /// Connexion du compte Ubisoft des rangs : renvoie son pseudo
@@ -1026,6 +1080,7 @@ fn main() {
                 presentmon,
                 raccourci: Mutex::new(None),
                 touche_tableau: Mutex::new(None),
+                touches_navigation: Mutex::new(Vec::new()),
                 degats: Mutex::new(Vec::new()),
                 degats_historique: Mutex::new(Default::default()),
             });
@@ -1062,6 +1117,16 @@ fn main() {
             *e.raccourci.lock().unwrap() = raccourci;
             let app_tableau = app.handle().clone();
             *e.touche_tableau.lock().unwrap() = raccourci::Raccourci::lancer(move || fenetres::basculer_tableau(&app_tableau));
+            // Navigation dans le tableau : ↑, ↓, Entrée → signal « tableau_touche » à sa fenêtre
+            for (vk, nom) in [(0x26u32, "haut"), (0x28, "bas"), (0x0D, "entree")] {
+                let app_nav = app.handle().clone();
+                if let Some(r) = raccourci::Raccourci::lancer(move || {
+                    use tauri::Emitter;
+                    let _ = app_nav.emit_to("tableau", "tableau_touche", nom);
+                }) {
+                    e.touches_navigation.lock().unwrap().push((r, vk));
+                }
+            }
             appliquer_touche(&e);
             autoriser_dossiers_clips(app.handle());
             Ok(())
@@ -1102,6 +1167,10 @@ fn main() {
             degats_manches,
             degats_garder,
             ubisoft_connecter,
+            r6_comptes,
+            r6_parties,
+            r6_stats,
+            r6_chercher,
             ubisoft_deconnecter,
             clips_dossier_regler,
             clips_exporter,

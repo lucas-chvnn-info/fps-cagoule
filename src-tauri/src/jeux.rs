@@ -65,6 +65,8 @@ pub struct Etat {
     pub raccourci: Mutex<Option<crate::raccourci::Raccourci>>,
     /// Ctrl+X : tableau de la partie de R6 (enregistrée seulement pendant le jeu, Ctrl+X reste « couper » ailleurs)
     pub touche_tableau: Mutex<Option<crate::raccourci::Raccourci>>,
+    /// ↑ ↓ Entrée pour naviguer dans le tableau : (touche, virtual-key), prises seulement tant qu'il est ouvert
+    pub touches_navigation: Mutex<Vec<(crate::raccourci::Raccourci, u32)>>,
     /// Dégâts de la dernière manche de R6 (fenêtre de fin de manche)
     /// Dégâts des manches de R6 lues depuis le lancement (fenêtre de fin de manche : la dernière et celles d'avant)
     pub degats: Mutex<Vec<crate::degats_r6::Bilan>>,
@@ -82,8 +84,11 @@ pub fn rafraichir_ubisoft(app: &AppHandle, profils: Vec<String>) {
     use std::sync::atomic::{AtomicBool, Ordering};
     static EN_COURS: AtomicBool = AtomicBool::new(false);
     let etat = app.state::<Arc<Etat>>();
-    if etat.stock.donnees.lock().unwrap().reglages.ubisoft_pseudo.is_none() {
-        return;
+    {
+        let r = &etat.stock.donnees.lock().unwrap().reglages;
+        if r.ubisoft_pseudo.is_none() || !r.tracker_r6 {
+            return;
+        }
     }
     let manquants: Vec<String> = {
         let cache = etat.ubisoft.lock().unwrap();
@@ -622,9 +627,9 @@ fn surveiller_replays(app: &AppHandle, etat: &Etat, pid: u32) {
                             {
                                 let mut r = etat.rencontres.lock().unwrap();
                                 let date = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64);
-                                if r.noter(&partie, date, &manche) {
-                                    r.sauver();
-                                }
+                                r.noter(&partie, date, &manche);
+                                r.noter_manche(&partie, &b);
+                                r.sauver();
                             }
                             b.partie = partie;
                             rafraichir_ubisoft(&app, b.joueurs.iter().map(|j| j.profil.clone()).collect());

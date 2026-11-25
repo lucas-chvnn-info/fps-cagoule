@@ -23,10 +23,10 @@
     .chiffre { display: grid; place-items: center; font-size: 76px; font-weight: 900; color: rgba(255, 255, 255, .95); }
     .nous .chiffre { background: linear-gradient(180deg, rgba(47, 111, 237, .55), rgba(47, 111, 237, .25)); }
     .eux .chiffre { background: linear-gradient(180deg, rgba(224, 72, 94, .5), rgba(224, 72, 94, .22)); }
-    .colonnes, .joueur { display: grid; grid-template-columns: 6px 36px minmax(120px, 1fr) 58px 78px 56px 60px 92px 92px 92px 46px 44px 48px 64px; align-items: center; gap: 10px; padding: 0 18px 0 14px; }
+    .colonnes, .joueur { display: grid; grid-template-columns: 6px 36px minmax(110px, 1fr) 56px 76px 54px 58px 116px 116px 116px 44px 42px 46px 62px; align-items: center; gap: 10px; padding: 0 18px 0 14px; }
     .sans-ubi .colonnes, .sans-ubi .joueur { grid-template-columns: 6px 36px minmax(120px, 1fr) 70px 88px 60px 74px 64px 92px; gap: 12px; }
     .sans-ubi .ubi { display: none; }
-    .rang { justify-self: end; padding: 2px 8px; border-radius: 6px; font-size: 12.5px; font-weight: 700; white-space: nowrap; background: rgba(255, 255, 255, .06); color: var(--discret); }
+    .rang { justify-self: end; display: inline-flex; align-items: center; gap: 5px; padding: 2px 7px 2px 4px; border-radius: 6px; font-size: 12px; font-weight: 700; white-space: nowrap; background: rgba(255, 255, 255, .06); color: var(--discret); }
     .rang.cuivre { color: #d98a6c; background: rgba(181, 101, 74, .18); }
     .rang.bronze { color: #d9a46c; background: rgba(192, 138, 82, .18); }
     .rang.argent { color: #c9d0dc; background: rgba(169, 177, 191, .16); }
@@ -64,6 +64,26 @@
     .totaux .a { background: rgba(47, 111, 237, .22); }
     .totaux .b { background: rgba(224, 72, 94, .2); }
     .totaux b { font-size: 15px; color: var(--texte); }
+    .cadre { position: relative; }
+    .joueur.cliquable { cursor: pointer; }
+    .joueur.choisi { box-shadow: inset 3px 0 0 var(--accent); background: rgba(111, 157, 255, .1); }
+    .fiche { position: absolute; top: 56px; right: 14px; bottom: 50px; width: 380px; padding: 18px; box-sizing: border-box; border-radius: 14px; overflow: auto;
+      background: rgba(20, 23, 31, .98); border: 1px solid rgba(255, 255, 255, .1); box-shadow: 0 20px 60px rgba(0, 0, 0, .5); animation: glisse .18s ease; }
+    @keyframes glisse { from { opacity: 0; transform: translateX(12px); } }
+    .fiche-tete { display: flex; align-items: center; gap: 12px; }
+    .fiche-tete .op { width: 44px; height: 44px; }
+    .fiche h3 { margin: 0; font-size: 19px; }
+    .fiche-tete small { color: var(--discret); }
+    .tuiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 14px 0; }
+    .tuile { display: flex; flex-direction: column; gap: 3px; padding: 9px 11px; border-radius: 10px; background: rgba(255, 255, 255, .04); }
+    .tuile small { color: var(--discret); font-size: 11px; }
+    .tuile b { font-size: 15px; }
+    .fiche-rang { display: inline-flex; align-items: center; gap: 6px; }
+    .fiche h4 { margin: 6px 0 6px; font-size: 12px; color: var(--discret); text-transform: uppercase; letter-spacing: .05em; }
+    .fiche-partie { display: grid; grid-template-columns: 56px 1fr 56px 44px; gap: 8px; padding: 6px 8px; border-left: 3px solid rgba(255, 255, 255, .1); border-radius: 5px; font-size: 13px; }
+    .fiche-partie.g { border-left-color: var(--vert); }
+    .fiche-partie.p { border-left-color: var(--rouge); }
+    .fiche-aide { display: block; margin-top: 14px; color: var(--discret); font-size: 11.5px; }
     .pied { margin-top: auto; padding: 9px 20px; color: var(--discret); font-size: 12px; border-top: 1px solid var(--ligne); }
     .vide { flex: 1; display: grid; place-items: center; color: var(--discret); font-size: 16px; }
   </style>
@@ -71,6 +91,7 @@
 <body>
   <div class="cadre" id="cadre"></div>
   <script src="operateurs.js"></script>
+  <script src="rangs.js"></script>
   <script src="tableau.js"></script>
 </body>
 </html>

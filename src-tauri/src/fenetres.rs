@@ -138,8 +138,10 @@ fn afficher_sans_activer(f: &tauri::WebviewWindow) {
 pub fn basculer_tableau(app: &AppHandle) {
     if let Some(f) = app.get_webview_window("tableau") {
         let _ = f.destroy();
+        touches_navigation(app, false);
         return;
     }
+    touches_navigation(app, true);
     let app2 = app.clone();
     let _ = app.run_on_main_thread(move || {
         let (mut l, h): (f64, f64) = (1400.0, 780.0);
@@ -174,6 +176,15 @@ pub fn basculer_tableau(app: &AppHandle) {
 pub fn fermer_tableau(app: &AppHandle) {
     if let Some(f) = app.get_webview_window("tableau") {
         let _ = f.destroy();
+    }
+    touches_navigation(app, false);
+}
+
+/// ↑ ↓ Entrée pris seulement tant que le tableau est ouvert (le jeu et le chat les retrouvent ensuite)
+fn touches_navigation(app: &AppHandle, prendre: bool) {
+    let etat = app.state::<std::sync::Arc<crate::jeux::Etat>>();
+    for (r, vk) in etat.touches_navigation.lock().unwrap().iter() {
+        r.changer(0, if prendre { *vk } else { 0 });
     }
 }
 

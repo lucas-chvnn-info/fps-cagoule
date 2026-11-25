@@ -1,6 +1,7 @@
 // Tableau de la partie de R6 (Ctrl+X), d'après les replays des manches déjà jouées : score, K/D/A, HS %, dégâts,
 // opérateurs, joueurs déjà croisés (contre / avec, sur chacun de tes comptes) et groupes (barre rose).
 const { invoke } = window.__TAURI__.core;
+const esc = escOp;
 
 // Groupes : ton squad (écrit dans le replay) et les joueurs déjà vus au moins 2 fois dans la même équipe.
 // force = nombre de parties ensemble (plus c'est grand, plus la barre est rose)
@@ -30,15 +31,10 @@ function groupesDe(b, rencontres) {
   return out;
 }
 
-// Badge d'un rang Ubisoft (identifiant 0 à 36)
-const RANGS = ['Non classé', 'Cuivre 5', 'Cuivre 4', 'Cuivre 3', 'Cuivre 2', 'Cuivre 1', 'Bronze 5', 'Bronze 4', 'Bronze 3', 'Bronze 2', 'Bronze 1',
-  'Argent 5', 'Argent 4', 'Argent 3', 'Argent 2', 'Argent 1', 'Or 5', 'Or 4', 'Or 3', 'Or 2', 'Or 1', 'Platine 5', 'Platine 4', 'Platine 3',
-  'Platine 2', 'Platine 1', 'Émeraude 5', 'Émeraude 4', 'Émeraude 3', 'Émeraude 2', 'Émeraude 1', 'Diamant 5', 'Diamant 4', 'Diamant 3',
-  'Diamant 2', 'Diamant 1', 'Champion'];
-function badge(id) {
-  const nom = RANGS[id] || '?';
-  const palier = id ? nom.split(' ')[0].normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase() : '';
-  return `<span class="rang ${palier}">${id ? nom : '–'}</span>`;
+// Rang : logo et nom (rangs.js)
+function badge(id, saison) {
+  const palier = id ? nomRang(id).split(' ')[0].normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase() : '';
+  return `<span class="rang ${palier}">${logoRang(id, saison, 16)}${id ? nomRang(id) : '–'}</span>`;
 }
 
 function rendre({ manches, rencontres, ubisoft = {}, ubisoft_connecte: ubiOk = false }) {
@@ -86,7 +82,8 @@ function rendre({ manches, rencontres, ubisoft = {}, ubisoft_connecte: ubiOk = f
     const barre = g ? `<i class="groupe" style="background:rgba(255,92,170,${(0.3 + 0.7 * Math.min(1, g.force / 8)).toFixed(2)})"></i>` : '<i></i>';
     const ops = Object.entries(c.ops).sort((x, y) => y[1] - x[1]).slice(0, 2).map(([o]) => icone(o)).join('');
     const v = (x, cl = '') => `<div class="v ${cl}${x ? '' : ' zero'}">${x ?? '–'}</div>`;
-    return `<div class="joueur${j.pseudo === b.moi ? ' toi' : ''}">${barre}${icone(j.operateur)}
+    const cliquable = ubisoft[j.pseudo] !== null && j.pseudo !== b.moi;
+    return `<div class="joueur${j.pseudo === b.moi ? ' toi' : ''}${cliquable ? ' cliquable' : ''}" data-pseudo="${esc(j.pseudo)}">${barre}${icone(j.operateur)}
       <div class="nom"><b>${esc(j.pseudo)}</b>${sousLigne(j)}</div>
       ${v(c.score)}
       <div class="v kda">${c.k}<span>/</span>${c.d}<span>/</span>${c.a}</div>
@@ -104,7 +101,7 @@ function rendre({ manches, rencontres, ubisoft = {}, ubisoft_connecte: ubiOk = f
     const parties = s.victoires + s.defaites + s.abandons;
     const kd = s.morts ? (s.kills / s.morts).toFixed(2) : s.kills ? s.kills.toFixed(2) : '–';
     const wr = parties ? Math.round((100 * s.victoires) / parties) + ' %' : '–';
-    return `${badge(s.rang)}${badge(s.pic_saison)}${badge(Math.max(s.pic_general, s.pic_saison))}
+    return `${badge(s.rang, s.saison)}${badge(s.pic_saison, s.saison)}${badge(Math.max(s.pic_general, s.pic_saison), s.saison)}
       <div class="v${s.niveau ? '' : ' zero'}">${s.niveau ?? '–'}</div><div class="v">${kd}</div><div class="v">${wr}</div>`;
   };
   // Membres d'un groupe côte à côte, puis par score
@@ -130,7 +127,94 @@ function rendre({ manches, rencontres, ubisoft = {}, ubisoft_connecte: ubiOk = f
       ? ' Rang, KD et victoires : saison en cours (Ubisoft). Pic général : meilleur rang vu par FPS Cagoule.'
       : ' Connecte un compte Ubisoft dans les Réglages pour les rangs.'}</div>`;
   cadre.classList.toggle('sans-ubi', !ubiOk);
+  cadre.insertAdjacentHTML('beforeend', '<aside id="fiche" class="fiche" hidden></aside>');
+  etat = { b, rencontres, ubisoft, ubiOk, cumul };
+  marquer();
 }
+
+// Fiche joueur : ↑ ↓ pour choisir, Entrée pour ouvrir / fermer (touches prises par l'app tant que le tableau est ouvert),
+// ou clic quand un curseur est visible. Pas de fiche pour un nom caché ni pour toi.
+let etat = null, choisi = null, ficheOuverte = false;
+
+function lignes() {
+  return [...document.querySelectorAll('.joueur.cliquable')];
+}
+
+function marquer() {
+  document.querySelectorAll('.joueur').forEach((l) => l.classList.toggle('choisi', l.dataset.pseudo === choisi));
+  if (ficheOuverte && choisi) ouvrirFiche(choisi);
+}
+
+function deplacer(pas) {
+  const l = lignes();
+  if (!l.length) return;
+  const i = l.findIndex((x) => x.dataset.pseudo === choisi);
+  const n = i < 0 ? (pas > 0 ? 0 : l.length - 1) : (i + pas + l.length) % l.length;
+  choisi = l[n].dataset.pseudo;
+  marquer();
+}
+
+async function ouvrirFiche(pseudo) {
+  const fiche = document.getElementById('fiche');
+  if (!fiche || !etat) return;
+  const j = etat.b.joueurs.find((x) => x.pseudo === pseudo);
+  if (!j) return;
+  ficheOuverte = true;
+  const s = etat.ubisoft[pseudo];
+  const r = etat.rencontres[pseudo];
+  const c = etat.cumul[pseudo];
+  const parts = s ? s.victoires + s.defaites + s.abandons : 0;
+  const tuile = (t, v, d = '') => `<div class="tuile"><small>${t}</small><b>${v}</b>${d ? `<small>${d}</small>` : ''}</div>`;
+  const rang = (id) => `<span class="fiche-rang">${logoRang(id, s?.saison ?? 0, 20)}${id ? nomRang(id) : '–'}</span>`;
+  fiche.hidden = false;
+  fiche.innerHTML = `
+    <div class="fiche-tete">${s ? logoRang(s.rang, s.saison, 46) : icone(j.operateur)}<div><h3>${esc(pseudo)}</h3>
+      <small>${s?.niveau ? `Niveau ${s.niveau}` : ''}${r && (r.contre || r.avec) ? `${s?.niveau ? ' · ' : ''}Contre ${r.contre}× · Avec ${r.avec}×` : `${s?.niveau ? ' · ' : ''}Jamais croisé`}</small></div></div>
+    ${s ? `<div class="tuiles">${tuile('Rang', rang(s.rang), s.rang ? `${s.points} points` : '')}${tuile('Pic saison', rang(s.pic_saison))}
+      ${tuile('Pic général', rang(Math.max(s.pic_general, s.pic_saison)))}${tuile('KD saison', s.morts ? (s.kills / s.morts).toFixed(2) : '–')}
+      ${tuile('Victoires', parts ? Math.round((100 * s.victoires) / parts) + ' %' : '–', `${parts} parties`)}${tuile('Cette partie', `${c.k} / ${c.d} / ${c.a}`, `${c.donnes} dégâts`)}</div>`
+      : `<p class="discret">${etat.ubiOk ? 'Stats Ubisoft en chemin…' : 'Connecte un compte Ubisoft dans FPS Cagoule pour ses rangs.'}</p>`}
+    <h4>Vos parties</h4><div id="fiche-parties" class="discret">…</div>
+    <small class="fiche-aide">↑ ↓ pour changer de joueur · Entrée pour fermer</small>`;
+  const parties = j.profil ? await invoke('r6_parties', { profil: j.profil }).catch(() => []) : [];
+  const zone = document.getElementById('fiche-parties');
+  if (!zone || choisi !== pseudo) return;
+  const passees = parties.filter((p) => p.partie !== etat.b.partie).slice(0, 6);
+  zone.innerHTML = passees.length
+    ? passees.map((p) => {
+      const lui = p.joueurs.find((x) => x.profil === j.profil.toLowerCase());
+      const res = p.resultat ? (p.resultat.nous > p.resultat.eux ? 'g' : p.resultat.nous < p.resultat.eux ? 'p' : '') : '';
+      return `<div class="fiche-partie ${res}"><span>${new Date(p.date_ms).toLocaleDateString('fr-CH', { day: 'numeric', month: 'short' })}</span><span>${esc(p.map || '—')}</span><b>${lui?.avec ? 'Avec' : 'Contre'}</b>${p.resultat ? `<span>${p.resultat.nous} – ${p.resultat.eux}</span>` : '<span></span>'}</div>`;
+    }).join('')
+    : 'Première fois que tu le croises.';
+}
+
+function fermerFiche() {
+  ficheOuverte = false;
+  const f = document.getElementById('fiche');
+  if (f) f.hidden = true;
+}
+
+window.__TAURI__.event.listen('tableau_touche', ({ payload }) => {
+  if (payload === 'haut') deplacer(-1);
+  else if (payload === 'bas') deplacer(1);
+  else if (payload === 'entree') {
+    if (ficheOuverte) fermerFiche();
+    else {
+      if (!choisi) deplacer(1);
+      if (choisi) ouvrirFiche(choisi);
+    }
+  }
+});
+
+document.addEventListener('click', (e) => {
+  const l = e.target.closest('.joueur.cliquable');
+  if (l) {
+    choisi = l.dataset.pseudo;
+    marquer();
+    ouvrirFiche(choisi);
+  } else if (!e.target.closest('#fiche')) fermerFiche();
+});
 
 async function afficher() {
   const r = await invoke('degats_manches');

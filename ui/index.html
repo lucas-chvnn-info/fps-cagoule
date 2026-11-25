@@ -33,6 +33,7 @@
         <button class="nav-groupe" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 9h10a4 4 0 0 1 4 4v1a3 3 0 0 1-5.4 1.8L14 14h-4l-1.6 1.8A3 3 0 0 1 3 14v-1a4 4 0 0 1 4-4z"/><path d="M8 11v3M6.5 12.5h3"/><circle cx="16" cy="12" r=".8"/></svg><span>Jeux</span><svg class="chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
         <div class="sous-menu"><div class="sous-menu-contenu">
             <button data-page="jeux"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 9h10a4 4 0 0 1 4 4v1a3 3 0 0 1-5.4 1.8L14 14h-4l-1.6 1.8A3 3 0 0 1 3 14v-1a4 4 0 0 1 4-4z"/><path d="M8 11v3M6.5 12.5h3"/><circle cx="16" cy="12" r=".8"/></svg><span>Mes jeux</span></button>
+            <button data-page="r6"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="2.5"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg><span>Rainbow Six</span></button>
             <button data-page="clips"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10.5l5-3v9l-5-3z"/></svg><span>Clips</span></button>
             <button data-page="fps"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg><span>Statistiques FPS</span></button>
         </div></div>
@@ -349,6 +350,63 @@
       </div>
     </section>
 
+    <!-- Rainbow Six : tracker et réglages propres à R6 -->
+    <section id="page-r6" class="page">
+      <header>
+        <h1>Rainbow Six</h1>
+        <div class="onglets-r6" role="tablist">
+          <button class="actif" data-onglet-r6="tracker" role="tab">Tracker</button>
+          <button data-onglet-r6="reglages" role="tab">Réglages</button>
+        </div>
+      </header>
+      <div id="r6-tracker">
+        <div class="carte r6-barre">
+          <div id="r6-comptes" class="r6-comptes"></div>
+          <form id="r6-recherche" class="r6-recherche">
+            <input id="r6-pseudo" type="search" spellcheck="false" placeholder="Chercher un joueur…" aria-label="Pseudo Ubisoft à chercher">
+            <button class="petit">Chercher</button>
+          </form>
+        </div>
+        <div id="r6-resultats" class="carte r6-resultats" hidden></div>
+        <div id="r6-message" class="carte r6-message" hidden></div>
+        <div id="r6-profil" class="carte r6-profil" hidden></div>
+        <div id="r6-historique" class="carte r6-historique" hidden></div>
+      </div>
+      <div id="r6-reglages" hidden>
+        <div class="carte interrupteurs">
+          <h2>Pendant les parties</h2>
+        <label class="bascule"><input type="checkbox" id="degats-fin-manche"><span></span> Dégâts à la fin de chaque manche (Rainbow Six)</label>
+        <label class="bascule"><input type="checkbox" id="tableau-r6"><span></span> Tableau de la partie avec Ctrl+X (Rainbow Six)</label>
+          <label class="bascule"><input type="checkbox" id="tracker-r6"><span></span> Tracker : rangs et stats Ubisoft des joueurs</label>
+        </div>
+      <div class="carte ligne-carte" id="carte-ubisoft">
+        <div>
+          <h2>Rangs des joueurs</h2>
+          <p class="discret" id="ubisoft-etat">Rang, pic, niveau et KD dans le tableau Ctrl+X. Un compte Ubisoft secondaire sans double authentification suffit.</p>
+        </div>
+        <div class="boutons" id="ubisoft-connecte" hidden><button id="btn-ubisoft-deconnecter" class="petit">Se déconnecter</button></div>
+        <div class="clips-connexion" id="ubisoft-formulaire">
+          <input id="ubisoft-email" type="email" spellcheck="false" autocomplete="username" placeholder="E-mail Ubisoft" aria-label="E-mail du compte Ubisoft">
+          <input id="ubisoft-mdp" type="password" autocomplete="current-password" placeholder="Mot de passe" aria-label="Mot de passe du compte Ubisoft">
+          <button id="btn-ubisoft-connecter" class="petit principal">Se connecter</button>
+        </div>
+      </div>
+        <div class="carte r6-clips-carte">
+          <section class="clips-bloc clips-grise r6-clips">
+            <h3><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 3 5 14h6l-1 7 8-11h-6z"/></svg>Clips auto</h3>
+            <label class="bascule clips-auto" title="À chaque fin de manche, FPS Cagoule lit le replay de R6 et garde tes multi-kills."><input type="checkbox" id="clips-auto"><span></span> Dans Rainbow Six Siege</label>
+            <div class="clips-ligne"><span class="etiquette-option">Garder</span><div class="choix-duree" id="clips-kills" aria-label="Multi-kills à garder">
+            <button data-kills="2">2K</button><button data-kills="3">3K</button><button data-kills="4">4K</button><button data-kills="5">ACE</button>
+          </div></div>
+            <div class="clips-ligne" id="discord-auto"><span class="etiquette-option" title="Le clip est partagé et posté dans ton salon Discord sans rien toucher">Sur Discord</span><div class="choix-duree" id="discord-kills" aria-label="Multi-kills postés tout seuls sur Discord">
+            <button data-kills="2">2K</button><button data-kills="3">3K</button><button data-kills="4">4K</button><button data-kills="5">ACE</button>
+          </div></div>
+            <small class="clips-aide">Le « Match Replay » doit être activé dans R6.</small>
+          </section>
+        </div>
+      </div>
+    </section>
+
     <!-- Clips -->
     <section id="page-clips" class="page">
       <header>
@@ -381,17 +439,6 @@
               <button data-son="pc" title="Le jeu, Discord, la musique : tout ce que tu entends">Jeu et PC</button><button data-son="micro" title="Ta voix, sur une piste à part">Micro</button>
             </div></div>
             <small id="clips-sons-aide" class="clips-aide"></small>
-          </section>
-          <section class="clips-bloc clips-grise">
-            <h3><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 3 5 14h6l-1 7 8-11h-6z"/></svg>Clips auto</h3>
-            <label class="bascule clips-auto" title="À chaque fin de manche, FPS Cagoule lit le replay de R6 et garde tes multi-kills."><input type="checkbox" id="clips-auto"><span></span> Dans Rainbow Six Siege</label>
-            <div class="clips-ligne"><span class="etiquette-option">Garder</span><div class="choix-duree" id="clips-kills" aria-label="Multi-kills à garder">
-            <button data-kills="2">2K</button><button data-kills="3">3K</button><button data-kills="4">4K</button><button data-kills="5">ACE</button>
-          </div></div>
-            <div class="clips-ligne" id="discord-auto"><span class="etiquette-option" title="Le clip est partagé et posté dans ton salon Discord sans rien toucher">Sur Discord</span><div class="choix-duree" id="discord-kills" aria-label="Multi-kills postés tout seuls sur Discord">
-            <button data-kills="2">2K</button><button data-kills="3">3K</button><button data-kills="4">4K</button><button data-kills="5">ACE</button>
-          </div></div>
-            <small class="clips-aide">Le « Match Replay » doit être activé dans R6.</small>
           </section>
           <section class="clips-bloc clips-bloc-large">
             <h3><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18a4 4 0 0 1-.6-7.96A6 6 0 0 1 18 9a4.5 4.5 0 0 1-.5 9z"/></svg>Rangement et partage</h3>
@@ -525,22 +572,8 @@
       <div class="carte interrupteurs">
         <label class="bascule"><input type="checkbox" id="demarrage-auto"><span></span> Lancer avec Windows</label>
         <label class="bascule"><input type="checkbox" id="overlay"><span></span> Compteur FPS par-dessus le jeu</label>
-        <label class="bascule"><input type="checkbox" id="degats-fin-manche"><span></span> Dégâts à la fin de chaque manche (Rainbow Six)</label>
-        <label class="bascule"><input type="checkbox" id="tableau-r6"><span></span> Tableau de la partie avec Ctrl+X (Rainbow Six)</label>
         <label class="bascule"><input type="checkbox" id="maj-auto"><span></span> Mises à jour automatiques</label>
         <label class="bascule" id="ligne-discord" hidden><input type="checkbox" id="discord"><span></span> Statut Discord pendant les parties</label>
-      </div>
-      <div class="carte ligne-carte" id="carte-ubisoft">
-        <div>
-          <h2>Rangs des joueurs</h2>
-          <p class="discret" id="ubisoft-etat">Rang, pic, niveau et KD dans le tableau Ctrl+X. Un compte Ubisoft secondaire sans double authentification suffit.</p>
-        </div>
-        <div class="boutons" id="ubisoft-connecte" hidden><button id="btn-ubisoft-deconnecter" class="petit">Se déconnecter</button></div>
-        <div class="clips-connexion" id="ubisoft-formulaire">
-          <input id="ubisoft-email" type="email" spellcheck="false" autocomplete="username" placeholder="E-mail Ubisoft" aria-label="E-mail du compte Ubisoft">
-          <input id="ubisoft-mdp" type="password" autocomplete="current-password" placeholder="Mot de passe" aria-label="Mot de passe du compte Ubisoft">
-          <button id="btn-ubisoft-connecter" class="petit principal">Se connecter</button>
-        </div>
       </div>
       <div class="carte ligne-carte">
         <h2>Assistant de départ</h2>
@@ -656,6 +689,8 @@
       <div class="boutons"><button id="fenetre-non">Annuler</button><button class="principal" id="fenetre-oui">Confirmer</button></div>
     </div>
   </div>
+  <script src="operateurs.js"></script>
+  <script src="rangs.js"></script>
   <script type="module" src="app.js"></script>
 </body>
 </html>

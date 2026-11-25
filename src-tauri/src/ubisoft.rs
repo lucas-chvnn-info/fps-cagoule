@@ -21,13 +21,15 @@ const DUREE_SESSION: Duration = Duration::from_secs(2 * 3600 + 45 * 60);
 
 pub const DOUBLE_AUTH: &str = "Ce compte a la double authentification : utilise un compte Ubisoft secondaire sans double authentification (gratuit, il n'a pas besoin du jeu).";
 
-/// Rangs du classement actuel (depuis Y7S4), du plus bas au plus haut : identifiant = position
-pub const RANGS: [&str; 37] = [
+/// Rangs du classement actuel (Ranked 3.0 : 8 paliers de 5 divisions, Champion compris), du plus bas au plus haut :
+/// identifiant = position. En Ranked 2.0 (saisons 28 à 39), 36 était « Champion » tout court.
+pub const RANGS: [&str; 41] = [
     "Non classé", "Cuivre 5", "Cuivre 4", "Cuivre 3", "Cuivre 2", "Cuivre 1", "Bronze 5", "Bronze 4", "Bronze 3", "Bronze 2", "Bronze 1",
     "Argent 5", "Argent 4", "Argent 3", "Argent 2", "Argent 1", "Or 5", "Or 4", "Or 3", "Or 2", "Or 1", "Platine 5", "Platine 4", "Platine 3",
     "Platine 2", "Platine 1", "Émeraude 5", "Émeraude 4", "Émeraude 3", "Émeraude 2", "Émeraude 1", "Diamant 5", "Diamant 4", "Diamant 3",
-    "Diamant 2", "Diamant 1", "Champion",
+    "Diamant 2", "Diamant 1", "Champion 5", "Champion 4", "Champion 3", "Champion 2", "Champion 1",
 ];
+const RANG_MAX: u32 = 40;
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
 pub struct StatsUbi {
@@ -44,6 +46,9 @@ pub struct StatsUbi {
     pub defaites: u32,
     pub abandons: u32,
     pub classe: bool,
+    /// Saison Ubisoft du rang (28 et plus : classement actuel ; avant : ancien système)
+    #[serde(default)]
+    pub saison: u32,
 }
 
 struct Session {
@@ -227,6 +232,26 @@ pub fn stats(profils: &[String]) -> Result<HashMap<String, StatsUbi>, String> {
     Ok(out)
 }
 
+/// Comptes Ubisoft (PC) dont le pseudo est exactement `pseudo` : (profil, pseudo)
+pub fn chercher(pseudo: &str) -> Result<Vec<(String, String)>, String> {
+    let pseudo = pseudo.trim();
+    if pseudo.is_empty() {
+        return Ok(vec![]);
+    }
+    sessions()?;
+    let encode: String = pseudo.bytes().map(|o| if o.is_ascii_alphanumeric() || b"-_.~".contains(&o) { (o as char).to_string() } else { format!("%{o:02X}") }).collect();
+    let v = {
+        let s = SESSIONS.lock().unwrap();
+        lire(&format!("https://public-ubiservices.ubi.com/v3/profiles?nameOnPlatform={encode}&platformType=uplay"), s.0.as_ref().unwrap(), APPID)?
+    };
+    Ok(v.get("profiles")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|p| Some((p.get("profileId")?.as_str()?.to_lowercase(), p.get("nameOnPlatform")?.as_str()?.to_string())))
+        .collect())
+}
+
 /// Réponse de full_profiles : rang et pic de la saison (classé), KD et victoires (classé, sinon partie rapide)
 pub fn lire_rangs(v: &Value, out: &mut HashMap<String, StatsUbi>) {
     let tableaux = v.pointer("/platform_families_full_profiles/0/board_ids_full_profiles").and_then(Value::as_array);
@@ -243,9 +268,9 @@ pub fn lire_rangs(v: &Value, out: &mut HashMap<String, StatsUbi>) {
                 continue;
             }
             let s = StatsUbi {
-                rang: n("/profile/rank").min(36),
+                rang: n("/profile/rank").min(RANG_MAX),
                 points: n("/profile/rank_points"),
-                pic_saison: n("/profile/max_rank").min(36),
+                pic_saison: n("/profile/max_rank").min(RANG_MAX),
                 pic_general: 0,
                 niveau: None,
                 kills: n("/season_statistics/kills"),
@@ -254,6 +279,7 @@ pub fn lire_rangs(v: &Value, out: &mut HashMap<String, StatsUbi>) {
                 defaites: n("/season_statistics/match_outcomes/losses"),
                 abandons: n("/season_statistics/match_outcomes/abandons"),
                 classe: tableau == "ranked",
+                saison: n("/profile/season_id"),
             };
             if tableau == "ranked" {
                 out.insert(id, s);

@@ -1259,3 +1259,32 @@ kbd { font: 600 12px/1 inherit; padding: 3px 7px; border-radius: 6px; background
 .clips-connexion > span { font-size: 13px; opacity: 0.85; margin-right: 4px; }
 .clips-connexion input { flex: 1; min-width: 140px; }
 @keyframes apparition-connexion { from { opacity: 0; transform: translateY(-4px); } }
+
+/* Page Rainbow Six */
+.onglets-r6 { display: flex; gap: 4px; padding: 3px; border-radius: 10px; background: var(--panneau); border: 1px solid var(--bordure); }
+.onglets-r6 button { padding: 6px 14px; border: 0; border-radius: 8px; background: none; box-shadow: none; color: var(--discret); font-weight: 600; }
+.onglets-r6 button.actif { background: var(--accent-fond); color: var(--accent-clair); }
+.r6-barre { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.r6-comptes, .r6-resultats { display: flex; gap: 8px; flex-wrap: wrap; }
+.r6-compte { display: flex; flex-direction: column; align-items: flex-start; padding: 7px 14px; border-radius: 10px; background: var(--fond); border: 1px solid var(--bordure); color: var(--texte); font-weight: 600; line-height: 1.2; }
+.r6-compte small { color: var(--discret); font-weight: 400; font-size: 11.5px; }
+.r6-compte.actif { border-color: var(--accent); background: var(--accent-fond); }
+.r6-recherche { display: flex; gap: 6px; }
+.r6-recherche input { width: 220px; }
+.r6-tete { display: flex; align-items: center; gap: 14px; }
+.r6-tete h2 { margin: 0; font-size: 22px; }
+.r6-tuiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-top: 16px; }
+.r6-tuile { padding: 12px 14px; border-radius: 12px; background: var(--fond); border: 1px solid var(--bordure); display: flex; flex-direction: column; gap: 4px; }
+.r6-tuile > div { font-size: 20px; font-weight: 800; }
+.r6-tuile > small:first-child { color: var(--discret); font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
+.r6-rang { display: inline-flex; align-items: center; gap: 8px; font-size: 15px; }
+.r6-note { margin: 12px 0 0; }
+.r6-historique h2 { margin-top: 0; }
+.r6-partie { display: grid; grid-template-columns: 130px 1fr 90px 110px 110px 96px; align-items: center; gap: 10px; padding: 8px 10px; border-left: 3px solid var(--bordure); border-radius: 6px; }
+.r6-partie + .r6-partie { margin-top: 4px; }
+.r6-partie.gagnee { border-left-color: var(--vert); }
+.r6-partie.perdue { border-left-color: var(--rouge); }
+.r6-ops { display: flex; gap: 4px; justify-content: flex-end; }
+.r6-ops .op { width: 22px; height: 22px; border-radius: 4px; }
+.r6-ops .op.lettres { display: grid; place-items: center; background: var(--bordure); font-size: 9px; }
+.r6-clips-carte .clips-bloc { background: none; border: 0; padding: 0; }

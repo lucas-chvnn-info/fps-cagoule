@@ -85,6 +85,7 @@ document.querySelectorAll('button[data-page]').forEach((b) =>
     if (b.dataset.page === 'pilotes') chargerPilotes();
     if (b.dataset.page === 'fps') chargerSessions();
     if (b.dataset.page === 'clips') chargerClips();
+    if (b.dataset.page === 'r6') chargerR6();
     if (b.dataset.page === 'jeux') {
       chargerChoixFermer();
       chargerModesJeu();
@@ -1292,6 +1293,7 @@ function afficherReglages() {
   $('#overlay').checked = reglages.overlay;
   $('#degats-fin-manche').checked = reglages.degats_fin_manche;
   $('#tableau-r6').checked = reglages.tableau_r6;
+  $('#tracker-r6').checked = reglages.tracker_r6;
   afficherUbisoft();
   $('#maj-auto').checked = reglages.maj_auto;
   $('#couleurs-en-jeu').checked = reglages.couleurs_en_jeu;
@@ -1307,7 +1309,7 @@ function afficherReglages() {
     : '<span class="discret">Aucun programme.</span>';
 }
 
-for (const [id, champ] of [['#boost-auto', 'boost_auto'], ['#boost-max', 'boost_max'], ['#mesure-fps', 'mesure_fps'], ['#overlay', 'overlay'], ['#degats-fin-manche', 'degats_fin_manche'], ['#tableau-r6', 'tableau_r6'], ['#maj-auto', 'maj_auto'], ['#couleurs-en-jeu', 'couleurs_en_jeu'], ['#priorite-basse', 'priorite_basse'], ['#discord', 'discord'], ['#clips-auto', 'clips_auto']]) {
+for (const [id, champ] of [['#boost-auto', 'boost_auto'], ['#boost-max', 'boost_max'], ['#mesure-fps', 'mesure_fps'], ['#overlay', 'overlay'], ['#degats-fin-manche', 'degats_fin_manche'], ['#tableau-r6', 'tableau_r6'], ['#tracker-r6', 'tracker_r6'], ['#maj-auto', 'maj_auto'], ['#couleurs-en-jeu', 'couleurs_en_jeu'], ['#priorite-basse', 'priorite_basse'], ['#discord', 'discord'], ['#clips-auto', 'clips_auto']]) {
   $(id).addEventListener('change', (e) => {
     reglages[champ] = e.target.checked;
     sauverReglages();
@@ -4524,6 +4526,7 @@ const NOUVEAUTES = {
   '0.30.0': [
     { icone: 'courbe', titre: 'Dégâts de la manche', texte: 'À la fin de chaque manche de Rainbow Six : tes dégâts, tes duels (balles à la tête, au corps, aux bras et jambes), les dégâts donnés et reçus de chacun, et les manches d\'avant.' },
     { icone: 'jouer', titre: 'Tableau de la partie', texte: 'Ctrl+X en pleine partie de Rainbow Six : score, K/D/A, HS %, dégâts, opérateurs, joueurs déjà croisés et groupes.' },
+    { icone: 'courbe', titre: 'Page Rainbow Six', texte: 'Tes comptes, la recherche d\'un joueur, les rangs (actuel, pic de la saison, pic général) et tes dernières parties. Les réglages R6 sont regroupés ici.' },
   ],
   '0.29.1': [
     { icone: 'courbe', titre: 'Tes semaines de jeu', texte: 'Parcours tes semaines du lundi au dimanche avec les flèches, et survole un jour pour voir ton temps de jeu.' },
@@ -4635,3 +4638,150 @@ document.querySelectorAll('button[data-page]').forEach((b) => {
 });
 
 init();
+
+
+// --- Page Rainbow Six : tracker (tes comptes, recherche d'un joueur) et réglages propres à R6 ---
+const r6 = { comptes: [], choisi: null, demande: 0 };
+
+document.querySelectorAll('[data-onglet-r6]').forEach((b) =>
+  b.addEventListener('click', () => {
+    document.querySelectorAll('[data-onglet-r6]').forEach((x) => x.classList.toggle('actif', x === b));
+    $('#r6-tracker').hidden = b.dataset.ongletR6 !== 'tracker';
+    $('#r6-reglages').hidden = b.dataset.ongletR6 !== 'reglages';
+    if (b.dataset.ongletR6 === 'tracker') afficherProfilR6();
+  })
+);
+
+async function chargerR6() {
+  afficherClips(); // choix des clips auto, dans l'onglet Réglages
+  r6.comptes = await invoke('r6_comptes');
+  if (!r6.choisi && r6.comptes.length) r6.choisi = { profil: r6.comptes[0].profil, pseudo: r6.comptes[0].pseudo, moi: true };
+  afficherComptesR6();
+  afficherProfilR6();
+}
+
+function afficherComptesR6() {
+  $('#r6-comptes').innerHTML = r6.comptes.length
+    ? r6.comptes.map((c) => `<button class="r6-compte${r6.choisi?.profil === c.profil ? ' actif' : ''}" data-profil="${esc(c.profil)}">${esc(c.pseudo)}<small>${c.parties} partie${c.parties > 1 ? 's' : ''}</small></button>`).join('')
+    : '<span class="discret">Tes comptes apparaîtront après une partie de R6 (Match Replay activé).</span>';
+}
+
+$('#r6-comptes').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-profil]');
+  if (!b) return;
+  const c = r6.comptes.find((x) => x.profil === b.dataset.profil);
+  r6.choisi = { profil: c.profil, pseudo: c.pseudo, moi: true };
+  $('#r6-resultats').hidden = true;
+  afficherComptesR6();
+  afficherProfilR6();
+});
+
+$('#r6-recherche').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const pseudo = $('#r6-pseudo').value.trim();
+  if (!pseudo) return;
+  const zone = $('#r6-resultats');
+  zone.hidden = false;
+  zone.innerHTML = '<span class="discret">Recherche…</span>';
+  try {
+    const liste = await invoke('r6_chercher', { pseudo });
+    if (!liste.length) {
+      zone.innerHTML = `<span class="discret">Aucun compte « ${esc(pseudo)} » sur PC.</span>`;
+      return;
+    }
+    if (liste.length === 1) {
+      zone.hidden = true;
+      return choisirJoueurR6(liste[0][0], liste[0][1]);
+    }
+    zone.innerHTML = liste.map(([p, n]) => `<button class="r6-compte" data-trouve="${esc(p)}" data-nom="${esc(n)}">${esc(n)}</button>`).join('');
+  } catch (err) {
+    zone.innerHTML = `<span class="discret">${esc(String(err))}</span>`;
+  }
+});
+
+$('#r6-resultats').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-trouve]');
+  if (b) {
+    $('#r6-resultats').hidden = true;
+    choisirJoueurR6(b.dataset.trouve, b.dataset.nom);
+  }
+});
+
+function choisirJoueurR6(profil, pseudo) {
+  const mien = r6.comptes.find((c) => c.profil === profil);
+  r6.choisi = { profil, pseudo, moi: !!mien };
+  afficherComptesR6();
+  afficherProfilR6();
+}
+
+const datePartieR6 = (ms) => new Date(ms).toLocaleString('fr-CH', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+
+async function afficherProfilR6() {
+  const c = r6.choisi;
+  const message = $('#r6-message'), profil = $('#r6-profil'), histo = $('#r6-historique');
+  if (!c) {
+    profil.hidden = histo.hidden = true;
+    message.hidden = false;
+    message.innerHTML = '<span class="discret">Joue une partie de Rainbow Six avec le Match Replay activé, ou cherche un joueur.</span>';
+    return;
+  }
+  message.hidden = true;
+  const demande = ++r6.demande;
+  const parties = await invoke('r6_parties', { profil: c.profil });
+  // Stats Ubisoft
+  let stats, note = '';
+  if (!reglages.tracker_r6) note = 'Le tracker est désactivé (onglet Réglages).';
+  else if (!reglages.ubisoft_pseudo) note = 'Connecte un compte Ubisoft (onglet Réglages) pour voir les rangs.';
+  else {
+    profil.hidden = false;
+    profil.innerHTML = `<div class="r6-tete"><div><h2>${esc(c.pseudo)}</h2><small class="discret">Chargement des stats…</small></div></div>`;
+    try {
+      stats = (await invoke('r6_stats', { profils: [c.profil] }))[c.profil.toLowerCase()];
+      if (stats === null) note = 'Ubisoft ne donne pas les stats de ce joueur (nom caché ?).';
+    } catch (err) {
+      note = String(err);
+    }
+  }
+  if (demande !== r6.demande) return;
+  const s = stats || null;
+  const tuile = (titre, contenu, detail = '') => `<div class="r6-tuile"><small>${titre}</small><div>${contenu}</div>${detail ? `<small class="discret">${detail}</small>` : ''}</div>`;
+  const rang = (id) => `<span class="r6-rang">${logoRang(id, s?.saison ?? 0, 26)}<b>${id ? nomRang(id) : 'Non classé'}</b></span>`;
+  const parts = s ? s.victoires + s.defaites + s.abandons : 0;
+  const sousTitre = c.moi ? 'Ton compte' : `${parties.length ? `Croisé ${parties.length} fois` : 'Jamais croisé'}`;
+  profil.hidden = false;
+  profil.innerHTML = `
+    <div class="r6-tete">${s ? logoRang(s.rang, s.saison, 52) : logoRang(0, 0, 52)}
+      <div><h2>${esc(c.pseudo)}</h2><small class="discret">${sousTitre}${s?.niveau ? ` · Niveau ${s.niveau}` : ''}</small></div></div>
+    ${s ? `<div class="r6-tuiles">
+      ${tuile('Rang', rang(s.rang), s.rang ? `${s.points} points` : '')}
+      ${tuile('Pic de la saison', rang(s.pic_saison))}
+      ${tuile('Pic général', rang(Math.max(s.pic_general, s.pic_saison)), 'Meilleur rang vu par FPS Cagoule')}
+      ${tuile('KD', s.morts ? (s.kills / s.morts).toFixed(2) : '–', `${s.kills} kills · ${s.morts} morts`)}
+      ${tuile('Victoires', parts ? Math.round((100 * s.victoires) / parts) + ' %' : '–', `${parts} partie${parts > 1 ? 's' : ''} ${s.classe ? 'classées' : 'rapides'}`)}
+    </div>` : ''}
+    ${note ? `<p class="discret r6-note">${esc(note)}</p>` : ''}`;
+  // Historique local
+  histo.hidden = !parties.length;
+  if (!parties.length) return;
+  const ligne = (p) => {
+    const r = p.resultat;
+    const date = `<span class="discret">${datePartieR6(p.date_ms)}</span>`;
+    const carte = `<span>${esc(p.map || '—')}</span>`;
+    if (c.moi) {
+      const issue = !r ? '' : r.nous > r.eux ? 'gagnee' : r.nous < r.eux ? 'perdue' : '';
+      const ops = r ? [...new Set(r.operateurs.filter(Boolean))].slice(0, 3).map((o) => icone(o)).join('') : '';
+      return `<div class="r6-partie ${issue}">${date}${carte}
+        <b>${r ? `${r.nous} – ${r.eux}` : '–'}</b><span>${r ? `${r.kills} / ${r.morts} / ${r.assists}` : '<span class="discret">—</span>'}</span>
+        <span>${r ? r.degats + ' dégâts' : ''}</span><span class="r6-ops">${ops}</span></div>`;
+    }
+    const lui = p.joueurs.find((j) => j.profil === c.profil.toLowerCase());
+    const issue = !p.resultat ? '' : p.resultat.nous > p.resultat.eux ? 'gagnee' : p.resultat.nous < p.resultat.eux ? 'perdue' : '';
+    return `<div class="r6-partie ${issue}">${date}${carte}<b>${lui?.avec ? 'Avec toi' : 'Contre toi'}</b>
+      <span>${p.resultat ? `${p.resultat.nous} – ${p.resultat.eux}` : ''}</span><span class="discret">sur ${esc(p.moi_pseudo)}</span><span></span></div>`;
+  };
+  histo.innerHTML = `<h2>${c.moi ? 'Tes dernières parties' : 'Vos parties'}</h2>${parties.map(ligne).join('')}`;
+}
+
+window.__TAURI__.event.listen('degats', () => {
+  if ($('#page-r6').classList.contains('actif')) chargerR6();
+});
