@@ -241,6 +241,11 @@ pub struct Manche {
     pub ecoule_fin: u32,
     /// Fin de la manche (ms depuis 1970, horloge du PC), écrite dans l'en-tête du replay ; 0 si absente
     pub fin_ms: u64,
+    /// Manches gagnées par les équipes 0 et 1 de l'en-tête, avant et après cette manche
+    pub scores_avant: [u32; 2],
+    pub scores: [u32; 2],
+    /// Équipe (numéro de l'en-tête) du joueur qui enregistre
+    pub mon_equipe_entete: Option<u8>,
 }
 
 impl Manche {
@@ -441,7 +446,13 @@ fn lire_interne(fichier: &[u8], limite: usize) -> Result<(Manche, Vec<u8>), Stri
         chrono_fin: 0,
         ecoule_fin: 0,
         fin_ms: 0,
+        scores_avant: [0; 2],
+        scores: [0; 2],
+        mon_equipe_entete: None,
     };
+    let nombre = |k: &str| prop(k).and_then(|v| v.parse::<u32>().ok());
+    manche.scores = [nombre("teamscore0").unwrap_or(0), nombre("teamscore1").unwrap_or(0)];
+    manche.scores_avant = [nombre("startingteamscore0").unwrap_or(0), nombre("startingteamscore1").unwrap_or(0)];
     manche.fin_ms = prop("endtime").and_then(|v| v.parse().ok()).unwrap_or(0);
     let donnees = decompresser(&fichier[c.pos..], limite)?;
     lire_paquets(&donnees, &mut manche, !profil_moi.is_empty());
@@ -454,6 +465,7 @@ fn lire_interne(fichier: &[u8], limite: usize) -> Result<(Manche, Vec<u8>), Stri
         .iter()
         .find(|j| (!profil_moi.is_empty() && j.profil == profil_moi) || (id_moi != 0 && j.id_entete == id_moi))
         .map(|j| j.pseudo.clone());
+    manche.mon_equipe_entete = manche.joueurs.iter().find(|j| (!profil_moi.is_empty() && j.profil == profil_moi) || (id_moi != 0 && j.id_entete == id_moi)).filter(|j| j.id_entete != 0).map(|j| j.equipe);
     Ok((manche, donnees))
 }
 
@@ -736,6 +748,9 @@ mod tests {
             chrono_fin,
             ecoule_fin: 180 - chrono_fin,
             fin_ms: 0,
+            scores_avant: [0; 2],
+            scores: [0; 2],
+            mon_equipe_entete: None,
         }
     }
 

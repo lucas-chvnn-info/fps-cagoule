@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>Tableau de la partie</title>
+  <style>
+    :root { --texte: #e9ecf2; --discret: #8b92a5; --accent: #6f9dff; --nous: #2f6fed; --eux: #e0485e; --rouge: #ff7a8a; --vert: #3ddc97; --vide: #2a2f3d; --ligne: rgba(255, 255, 255, .05); }
+    html, body { margin: 0; background: transparent; overflow: hidden; user-select: none; }
+    body { font: 14px/1.35 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; color: var(--texte); }
+    .cadre {
+      margin: 8px; height: 764px; box-sizing: border-box; border-radius: 18px; overflow: hidden; display: flex; flex-direction: column;
+      background: rgba(14, 16, 22, .93); border: 1px solid rgba(255, 255, 255, .08);
+      opacity: 0; transform: scale(.98); transition: opacity .2s ease, transform .2s ease;
+    }
+    .cadre.visible { opacity: 1; transform: none; }
+    .barre-haut { display: flex; align-items: center; justify-content: space-between; padding: 12px 20px; }
+    .barre-haut b { font-size: 16px; font-weight: 800; }
+    .barre-haut b span { color: var(--accent); }
+    .barre-haut .touche { color: var(--discret); font-size: 12px; }
+    .barre-haut .touche kbd { padding: 1px 6px; border-radius: 5px; background: rgba(255, 255, 255, .08); font: inherit; color: var(--texte); }
+    .barre-haut .lieu { color: var(--discret); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; font-size: 13px; }
+    .equipe { display: grid; grid-template-columns: 92px 1fr; }
+    .chiffre { display: grid; place-items: center; font-size: 76px; font-weight: 900; color: rgba(255, 255, 255, .95); }
+    .nous .chiffre { background: linear-gradient(180deg, rgba(47, 111, 237, .55), rgba(47, 111, 237, .25)); }
+    .eux .chiffre { background: linear-gradient(180deg, rgba(224, 72, 94, .5), rgba(224, 72, 94, .22)); }
+    .colonnes, .joueur { display: grid; grid-template-columns: 6px 36px minmax(0, 1fr) 70px 88px 60px 74px 64px 92px; align-items: center; gap: 12px; padding: 0 20px 0 14px; }
+    .colonnes { height: 30px; font-size: 11.5px; font-weight: 600; color: var(--discret); text-transform: uppercase; letter-spacing: .05em; }
+    .colonnes span, .joueur .v { text-align: right; }
+    .colonnes span.g { text-align: left; }
+    .joueur { height: 50px; border-top: 1px solid var(--ligne); }
+    .joueur.toi { background: rgba(111, 157, 255, .07); }
+    .groupe { width: 5px; height: 38px; border-radius: 3px; }
+    .op { width: 34px; height: 34px; border-radius: 6px; display: block; }
+    .op.lettres { display: grid; place-items: center; background: var(--vide); color: var(--discret); font-size: 12px; font-weight: 700; }
+    .nom { overflow: hidden; }
+    .nom b { display: block; font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .toi .nom b { color: var(--accent); }
+    .nom small { display: block; font-size: 11.5px; color: var(--discret); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .v { font-weight: 700; font-variant-numeric: tabular-nums; }
+    .v.zero { color: var(--discret); font-weight: 500; }
+    .kda span { color: var(--discret); font-weight: 400; margin: 0 2px; }
+    .recu { color: var(--rouge); }
+    .ops { display: flex; gap: 5px; justify-content: flex-end; }
+    .ops .op { width: 28px; height: 28px; }
+    .milieu { display: flex; align-items: center; gap: 18px; padding: 10px 20px 10px 106px; border-top: 1px solid var(--ligne); border-bottom: 1px solid var(--ligne); background: rgba(255, 255, 255, .02); }
+    .manches { display: flex; gap: 6px; flex: 1; flex-wrap: wrap; }
+    .m { display: grid; justify-items: center; gap: 2px; width: 44px; padding: 4px 0; border-radius: 8px; background: rgba(255, 255, 255, .04); font-size: 10.5px; color: var(--discret); }
+    .m b { font-size: 13px; }
+    .m.g b { color: var(--vert); }
+    .m.p b { color: var(--rouge); }
+    .totaux { display: flex; gap: 8px; }
+    .totaux div { display: grid; justify-items: center; padding: 4px 10px; border-radius: 8px; font-size: 10.5px; color: var(--discret); text-transform: uppercase; }
+    .totaux .a { background: rgba(47, 111, 237, .22); }
+    .totaux .b { background: rgba(224, 72, 94, .2); }
+    .totaux b { font-size: 15px; color: var(--texte); }
+    .pied { margin-top: auto; padding: 9px 20px; color: var(--discret); font-size: 12px; border-top: 1px solid var(--ligne); }
+    .vide { flex: 1; display: grid; place-items: center; color: var(--discret); font-size: 16px; }
+  </style>
+</head>
+<body>
+  <div class="cadre" id="cadre"></div>
+  <script src="operateurs.js"></script>
+  <script src="tableau.js"></script>
+</body>
+</html>

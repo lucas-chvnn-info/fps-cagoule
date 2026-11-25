@@ -134,6 +134,48 @@ fn afficher_sans_activer(f: &tauri::WebviewWindow) {
     }
 }
 
+/// Tableau de la partie (Ctrl+X) : grand, au centre, par-dessus le jeu sans l'activer ; Ctrl+X le referme
+pub fn basculer_tableau(app: &AppHandle) {
+    if let Some(f) = app.get_webview_window("tableau") {
+        let _ = f.destroy();
+        return;
+    }
+    let app2 = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        let (l, h) = (1180.0, 780.0);
+        let (mut x, mut y) = (40.0, 40.0);
+        if let Ok(Some(ecran)) = app2.primary_monitor() {
+            let echelle = ecran.scale_factor();
+            let p = ecran.position().to_logical::<f64>(echelle);
+            let t = ecran.size().to_logical::<f64>(echelle);
+            x = p.x + ((t.width - l) / 2.0).max(0.0);
+            y = p.y + ((t.height - h) / 2.0).max(0.0);
+        }
+        let f = WebviewWindowBuilder::new(&app2, "tableau", WebviewUrl::App("tableau.html".into()))
+            .title("FPS Cagoule – tableau")
+            .inner_size(l, h)
+            .position(x, y)
+            .decorations(false)
+            .transparent(true)
+            .shadow(false)
+            .always_on_top(true)
+            .skip_taskbar(true)
+            .resizable(false)
+            .focused(false)
+            .visible(false)
+            .build();
+        if let Ok(f) = f {
+            afficher_sans_activer(&f);
+        }
+    });
+}
+
+pub fn fermer_tableau(app: &AppHandle) {
+    if let Some(f) = app.get_webview_window("tableau") {
+        let _ = f.destroy();
+    }
+}
+
 pub fn fermer_overlay(app: &AppHandle) {
     if let Some(f) = app.get_webview_window("overlay") {
         let _ = f.destroy();

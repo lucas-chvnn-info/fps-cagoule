@@ -1291,6 +1291,7 @@ function afficherReglages() {
   $('#mesure-fps').checked = reglages.mesure_fps;
   $('#overlay').checked = reglages.overlay;
   $('#degats-fin-manche').checked = reglages.degats_fin_manche;
+  $('#tableau-r6').checked = reglages.tableau_r6;
   $('#maj-auto').checked = reglages.maj_auto;
   $('#couleurs-en-jeu').checked = reglages.couleurs_en_jeu;
   $('#priorite-basse').checked = reglages.priorite_basse;
@@ -1305,7 +1306,7 @@ function afficherReglages() {
     : '<span class="discret">Aucun programme.</span>';
 }
 
-for (const [id, champ] of [['#boost-auto', 'boost_auto'], ['#boost-max', 'boost_max'], ['#mesure-fps', 'mesure_fps'], ['#overlay', 'overlay'], ['#degats-fin-manche', 'degats_fin_manche'], ['#maj-auto', 'maj_auto'], ['#couleurs-en-jeu', 'couleurs_en_jeu'], ['#priorite-basse', 'priorite_basse'], ['#discord', 'discord'], ['#clips-auto', 'clips_auto']]) {
+for (const [id, champ] of [['#boost-auto', 'boost_auto'], ['#boost-max', 'boost_max'], ['#mesure-fps', 'mesure_fps'], ['#overlay', 'overlay'], ['#degats-fin-manche', 'degats_fin_manche'], ['#tableau-r6', 'tableau_r6'], ['#maj-auto', 'maj_auto'], ['#couleurs-en-jeu', 'couleurs_en_jeu'], ['#priorite-basse', 'priorite_basse'], ['#discord', 'discord'], ['#clips-auto', 'clips_auto']]) {
   $(id).addEventListener('change', (e) => {
     reglages[champ] = e.target.checked;
     sauverReglages();
@@ -4486,6 +4487,7 @@ const ICONES_NOUVEAUTES = {
 const NOUVEAUTES = {
   '0.30.0': [
     { icone: 'courbe', titre: 'Dégâts de la manche', texte: 'À la fin de chaque manche de Rainbow Six : tes dégâts, tes duels (balles à la tête, au corps, aux bras et jambes), les dégâts donnés et reçus de chacun, et les manches d\'avant.' },
+    { icone: 'jouer', titre: 'Tableau de la partie', texte: 'Ctrl+X en pleine partie de Rainbow Six : score, K/D/A, HS %, dégâts, opérateurs, joueurs déjà croisés et groupes.' },
   ],
   '0.29.1': [
     { icone: 'courbe', titre: 'Tes semaines de jeu', texte: 'Parcours tes semaines du lundi au dimanche avec les flèches, et survole un jour pour voir ton temps de jeu.' },

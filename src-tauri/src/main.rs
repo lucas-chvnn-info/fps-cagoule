@@ -987,6 +987,7 @@ fn main() {
                 fps_live: Arc::new(Mutex::new(None)),
                 presentmon,
                 raccourci: Mutex::new(None),
+                touche_tableau: Mutex::new(None),
                 degats: Mutex::new(Vec::new()),
                 degats_historique: Mutex::new(Default::default()),
             });
@@ -1021,6 +1022,8 @@ fn main() {
             });
             let e = app.state::<Arc<Etat>>().inner().clone();
             *e.raccourci.lock().unwrap() = raccourci;
+            let app_tableau = app.handle().clone();
+            *e.touche_tableau.lock().unwrap() = raccourci::Raccourci::lancer(move || fenetres::basculer_tableau(&app_tableau));
             appliquer_touche(&e);
             autoriser_dossiers_clips(app.handle());
             Ok(())

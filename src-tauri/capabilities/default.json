@@ -2,6 +2,6 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Fenêtre principale, compteur FPS et dégâts de fin de manche",
-  "windows": ["main", "overlay", "degats"],
+  "windows": ["main", "overlay", "degats", "tableau"],
   "permissions": ["core:default", "core:window:allow-set-fullscreen"]
 }

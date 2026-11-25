@@ -63,6 +63,8 @@ pub struct Etat {
     pub presentmon: PathBuf,
     /// Touche de sauvegarde des clips (raccourci global)
     pub raccourci: Mutex<Option<crate::raccourci::Raccourci>>,
+    /// Ctrl+X : tableau de la partie de R6 (enregistrée seulement pendant le jeu, Ctrl+X reste « couper » ailleurs)
+    pub touche_tableau: Mutex<Option<crate::raccourci::Raccourci>>,
     /// Dégâts de la dernière manche de R6 (fenêtre de fin de manche)
     /// Dégâts des manches de R6 lues depuis le lancement (fenêtre de fin de manche : la dernière et celles d'avant)
     pub degats: Mutex<Vec<crate::degats_r6::Bilan>>,
@@ -324,6 +326,13 @@ fn demarrer(app: &AppHandle, etat: &Etat, profil: &crate::config::Profil, pid: u
     if reglages.overlay && reglages.mesure_fps {
         crate::fenetres::ouvrir_overlay(app);
     }
+    if reglages.tableau_r6 && exe.to_lowercase().starts_with("rainbowsix") {
+        use windows_sys::Win32::UI::Input::KeyboardAndMouse::MOD_CONTROL;
+        let pris = etat.touche_tableau.lock().unwrap().as_ref().is_some_and(|r| r.changer(MOD_CONTROL, 0x58));
+        if let Some(s) = etat.session.lock().unwrap().as_mut() {
+            s.actions.push(if pris { "Tableau de la partie : Ctrl+X".into() } else { "Ctrl+X déjà utilisé par une autre appli (stats.cc ?) : tableau sans touche".into() });
+        }
+    }
     // Après le changement de résolution du jeu : la capture démarre sur le bon mode d'écran
     lancer_clips_si_besoin(app, etat, pid);
     crate::fenetres::infobulle(app, &format!("FPS Cagoule : {}{}", profil.nom, if boost { " boosté" } else { "" }));
@@ -333,6 +342,10 @@ fn demarrer(app: &AppHandle, etat: &Etat, profil: &crate::config::Profil, pid: u
 /// Fin de partie (ou fermeture de l'app) : on remet tout comme avant et on enregistre la session.
 pub fn terminer(app: &AppHandle, etat: &Etat) {
     let Some(s) = etat.session.lock().unwrap().take() else { return };
+    if let Some(r) = etat.touche_tableau.lock().unwrap().as_ref() {
+        r.changer(0, 0);
+    }
+    crate::fenetres::fermer_tableau(app);
     restaurer_plan(etat);
     restaurer_couleurs(etat);
     restaurer_resolution(etat);

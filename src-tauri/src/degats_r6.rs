@@ -159,6 +159,12 @@ pub struct Bilan {
     pub map: Option<String>,
     pub manche: u32,
     pub moi: Option<String>,
+    /// Manches gagnées par ton équipe et par l'adversaire à la fin de cette manche
+    pub nous: u32,
+    pub eux: u32,
+    /// Manche gagnée par ton équipe ; tu étais en attaque (d'après ton opérateur)
+    pub gagnee: Option<bool>,
+    pub attaque: Option<bool>,
     pub joueurs: Vec<JoueurDegats>,
     pub coups: Vec<Coup>,
 }
@@ -615,7 +621,15 @@ pub fn bilan(donnees: &[u8], m: &crate::replays_r6::Manche, historique: &mut Has
             mort: m.kills.iter().any(|k| k.victime == a.pseudo) || mort_t.contains_key(&a.pseudo),
         })
         .collect();
-    Some(Bilan { partie: String::new(), map: m.map.clone(), manche: m.manche, moi: m.moi.clone(), joueurs, coups })
+    let (nous, eux, gagnee) = match m.mon_equipe_entete.map(|e| e as usize & 1) {
+        Some(i) => {
+            let change = m.scores != m.scores_avant;
+            (m.scores[i], m.scores[1 - i], change.then(|| m.scores[i] > m.scores_avant[i]))
+        }
+        None => (0, 0, None),
+    };
+    let attaque = m.mon_operateur().and_then(|j| crate::replays_r6::OPERATEURS.iter().find(|o| o.0 == j.operateur_id)).and_then(|o| o.2);
+    Some(Bilan { partie: String::new(), map: m.map.clone(), manche: m.manche, moi: m.moi.clone(), nous, eux, gagnee, attaque, joueurs, coups })
 }
 
 #[cfg(test)]
