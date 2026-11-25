@@ -4523,6 +4523,10 @@ const ICONES_NOUVEAUTES = {
 };
 
 const NOUVEAUTES = {
+  '0.30.1': [
+    { icone: 'jouer', titre: 'Ctrl+X dès le début', texte: 'Le tableau de Rainbow Six peut montrer les 10 joueurs et leurs rangs dès le début de la partie.' },
+    { icone: 'courbe', titre: 'Tracker plus fiable', texte: 'Toutes tes saisons, des rangs qui arrivent tout seuls, des logos plus discrets et la mémoire de l\'app mesurée comme le Gestionnaire des tâches.' },
+  ],
   '0.30.0': [
     { icone: 'courbe', titre: 'Dégâts de la manche', texte: 'À la fin de chaque manche de Rainbow Six : tes dégâts, tes duels (balles à la tête, au corps, aux bras et jambes), les dégâts donnés et reçus de chacun, et les manches d\'avant.' },
     { icone: 'jouer', titre: 'Tableau de la partie', texte: 'Ctrl+X en pleine partie de Rainbow Six : rangs, score, K/D/A, HS %, dégâts, opérateurs, joueurs déjà croisés et groupes.' },
