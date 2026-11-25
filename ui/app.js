@@ -4720,7 +4720,7 @@ async function afficherProfilR6() {
   const c = r6.choisi;
   const message = $('#r6-message'), profil = $('#r6-profil'), histo = $('#r6-historique');
   if (!c) {
-    profil.hidden = histo.hidden = true;
+    profil.hidden = histo.hidden = $('#r6-saisons').hidden = true;
     message.hidden = false;
     message.innerHTML = '<span class="discret">Joue une partie de Rainbow Six avec le Match Replay activé, ou cherche un joueur.</span>';
     return;
@@ -4760,6 +4760,23 @@ async function afficherProfilR6() {
       ${tuile('Victoires', parts ? Math.round((100 * s.victoires) / parts) + ' %' : '–', `${parts} partie${parts > 1 ? 's' : ''} ${s.classe ? 'classées' : 'rapides'}`)}
     </div>` : ''}
     ${note ? `<p class="discret r6-note">${esc(note)}</p>` : ''}`;
+  // Saisons gardées par l'app (Ubisoft ne donne que la saison en cours)
+  const saisons = s ? await invoke('r6_saisons', { profil: c.profil }).catch(() => []) : [];
+  if (demande !== r6.demande) return;
+  const zoneSaisons = $('#r6-saisons');
+  zoneSaisons.hidden = !saisons.length;
+  if (saisons.length) {
+    const code = (id) => `Y${Math.floor((id - 1) / 4) + 1}S${((id - 1) % 4) + 1}`;
+    zoneSaisons.innerHTML = `<h2>Saisons</h2>
+      <div class="r6-saison entete"><span>Saison</span><span>Rang</span><span>Pic</span><span>KD</span><span>Victoires</span><span>Parties</span></div>
+      ${saisons.map((x) => {
+        const p = x.victoires + x.defaites + x.abandons;
+        return `<div class="r6-saison"><b>${code(x.saison)}</b><span class="r6-rang">${logoRang(x.rang, x.saison, 22)}${nomRang(x.rang, x.saison)}</span>
+          <span class="r6-rang">${logoRang(x.pic_saison, x.saison, 22)}${nomRang(x.pic_saison, x.saison)}</span>
+          <span>${x.morts ? (x.kills / x.morts).toFixed(2) : '–'}</span><span>${p ? Math.round((100 * x.victoires) / p) + ' %' : '–'}</span><span>${p}</span></div>`;
+      }).join('')}
+      ${saisons.length < 2 ? '<p class="discret r6-note">L\'historique se remplit au fil des saisons : Ubisoft ne donne que la saison en cours, FPS Cagoule garde chaque saison vue.</p>' : ''}`;
+  }
   // Historique local
   histo.hidden = !parties.length;
   if (!parties.length) return;

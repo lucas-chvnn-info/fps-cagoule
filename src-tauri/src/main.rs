@@ -599,6 +599,12 @@ fn r6_stats(app: AppHandle, profils: Vec<String>) -> Res<std::collections::HashM
     Ok(profils.iter().map(|p| (p.clone(), cache.get(p).and_then(|(_, s)| s.clone()))).collect())
 }
 
+/// Saisons gardées par l'app pour un profil (Ubisoft ne donne que la saison en cours)
+#[tauri::command]
+fn r6_saisons(app: AppHandle, profil: String) -> Vec<ubisoft::StatsUbi> {
+    ubisoft::saisons(etat(&app).stock.dossier(), &profil)
+}
+
 /// Recherche d'un compte Ubisoft par pseudo
 #[tauri::command(async)]
 fn r6_chercher(app: AppHandle, pseudo: String) -> Res<Vec<(String, String)>> {
@@ -1171,6 +1177,7 @@ fn main() {
             r6_parties,
             r6_stats,
             r6_chercher,
+            r6_saisons,
             ubisoft_deconnecter,
             clips_dossier_regler,
             clips_exporter,

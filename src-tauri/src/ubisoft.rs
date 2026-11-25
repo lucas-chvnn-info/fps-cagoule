@@ -297,8 +297,33 @@ pub fn lire_rangs(v: &Value, out: &mut HashMap<String, StatsUbi>) {
     }
 }
 
-/// Pic général : meilleur rang jamais vu par l'app pour chaque joueur (ubisoft-pics.json), mis à jour ici
+/// Historique par saison : Ubisoft ne donne que la saison en cours, l'app garde donc la dernière photo de chaque
+/// saison de chaque joueur vu (ubisoft-saisons.json : profil → saison → stats)
+fn noter_saisons(dossier: &Path, stats: &HashMap<String, StatsUbi>) {
+    let chemin = dossier.join("ubisoft-saisons.json");
+    let mut toutes: HashMap<String, std::collections::BTreeMap<u32, StatsUbi>> = std::fs::read_to_string(&chemin).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+    for (id, s) in stats.iter().filter(|(_, s)| s.saison > 0) {
+        toutes.entry(id.clone()).or_default().insert(s.saison, s.clone());
+    }
+    if let Ok(t) = serde_json::to_string(&toutes) {
+        let tmp = chemin.with_extension("tmp");
+        if std::fs::write(&tmp, t).is_ok() {
+            let _ = std::fs::rename(&tmp, &chemin);
+        }
+    }
+}
+
+/// Saisons connues d'un profil, la plus récente d'abord
+pub fn saisons(dossier: &Path, profil: &str) -> Vec<StatsUbi> {
+    let toutes: HashMap<String, std::collections::BTreeMap<u32, StatsUbi>> =
+        std::fs::read_to_string(dossier.join("ubisoft-saisons.json")).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+    toutes.get(&profil.to_lowercase()).map(|m| m.values().rev().cloned().collect()).unwrap_or_default()
+}
+
+/// Pic général : meilleur rang jamais vu par l'app pour chaque joueur (ubisoft-pics.json), mis à jour ici,
+/// avec l'historique des saisons
 pub fn pics_generaux(dossier: &Path, stats: &mut HashMap<String, StatsUbi>) {
+    noter_saisons(dossier, stats);
     let chemin = dossier.join("ubisoft-pics.json");
     let mut pics: HashMap<String, u32> = std::fs::read_to_string(&chemin).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
     let mut change = false;

@@ -1288,3 +1288,8 @@ kbd { font: 600 12px/1 inherit; padding: 3px 7px; border-radius: 6px; background
 .r6-ops .op { width: 22px; height: 22px; border-radius: 4px; }
 .r6-ops .op.lettres { display: grid; place-items: center; background: var(--bordure); font-size: 9px; }
 .r6-clips-carte .clips-bloc { background: none; border: 0; padding: 0; }
+.r6-saisons h2 { margin-top: 0; }
+.r6-saison { display: grid; grid-template-columns: 80px 1fr 1fr 70px 90px 70px; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 6px; }
+.r6-saison + .r6-saison:not(.entete) { border-top: 1px solid var(--bordure); }
+.r6-saison.entete { color: var(--discret); font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
+.r6-saison .r6-rang { font-size: 14px; }
