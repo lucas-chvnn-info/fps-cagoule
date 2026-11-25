@@ -33,7 +33,7 @@ function groupesDe(b, rencontres) {
 
 // Rang : son logo seul (rangs.js), le nom au survol
 function badge(id, saison) {
-  return `<span class="rang">${logoRang(id, saison, 30)}</span>`;
+  return `<span class="rang">${logoRang(id, saison, 18)}</span>`;
 }
 
 function rendre({ manches, rencontres, ubisoft = {}, ubisoft_connecte: ubiOk = false }) {
@@ -222,4 +222,6 @@ async function afficher() {
 }
 
 window.__TAURI__.event.listen('degats', afficher);
+// Rangs encore en chemin (Arenyze lent au premier chargement) : on redemande tant que le tableau est ouvert
+setInterval(afficher, 20000);
 afficher();

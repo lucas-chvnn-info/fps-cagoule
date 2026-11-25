@@ -35,7 +35,8 @@ setInterval(() => {
 }, 30e3).unref();
 
 // --- Arenyze ---
-let pauseJusqua = 0; // après un 429 : on attend ce que demande Arenyze
+let pauseJusqua = 0; // après un 429 ou un 503 : on attend ce que demande Arenyze
+let raisonPause = '';
 
 // Premier chargement d'un joueur chez Arenyze : 503 le temps qu'ils le récupèrent, puis ça passe
 async function profilArenyze(pseudo) {
@@ -50,7 +51,7 @@ async function profilArenyze(pseudo) {
 
 async function profilArenyzeUneFois(pseudo) {
   if (!CLE) throw new Error('Clé Arenyze non configurée');
-  if (Date.now() < pauseJusqua) throw new Error('Quota Arenyze atteint, réessaie plus tard');
+  if (Date.now() < pauseJusqua) throw new Error(raisonPause || 'Arenyze en pause, réessaie plus tard');
   const r = await fetch(`${API}/v2/profile?nameOnPlatform=${encodeURIComponent(pseudo)}&platformType=uplay`, {
     headers: { 'api-key': CLE },
     // Le premier chargement d'un joueur chez Arenyze peut prendre plusieurs dizaines de secondes
@@ -58,13 +59,17 @@ async function profilArenyzeUneFois(pseudo) {
   });
   if (r.status === 429) {
     pauseJusqua = Date.now() + (Number(r.headers.get('retry-after')) || 60) * 1000;
-    throw new Error('Quota Arenyze atteint, réessaie plus tard');
+    raisonPause = 'Quota Arenyze atteint, réessaie plus tard';
+    throw new Error(raisonPause);
   }
   if (r.status === 404) return null;
   if (!r.ok) {
     // Arenyze saturé côté Ubisoft (STATS_UPSTREAM_THROTTLED) : on attend ce qu'il demande avant de le relancer
     const corps = await r.json().catch(() => ({}));
-    if (corps.retryAfter) pauseJusqua = Math.max(pauseJusqua, Date.now() + Number(corps.retryAfter) * 1000);
+    if (corps.retryAfter) {
+      pauseJusqua = Math.max(pauseJusqua, Date.now() + Number(corps.retryAfter) * 1000);
+      raisonPause = 'Arenyze surchargé, réessaie dans un instant';
+    }
     throw new Error(`Arenyze répond ${r.status}`);
   }
   return r.json();
@@ -138,22 +143,43 @@ function depuisProfil(v, profil) {
   return s;
 }
 
-async function stats(joueurs) {
-  // 4 à la fois : Arenyze limite à 30 appels par minute, et un premier chargement est lent
-  const aCharger = joueurs.filter(([profil]) => !(cache.get(profil)?.quand > Date.now() - DUREE_CACHE));
-  const charger = async ([profil, pseudo]) => {
-    const v = await profilArenyze(pseudo);
-    const s = v ? depuisProfil(v, profil) : null;
-    if (s && s.saison) {
-      (saisons[profil] ||= {})[s.saison] = s;
-      aSauver = true;
+// Joueurs qu'Arenyze n'a pas pu charger (surchargé…) : retentés en arrière-plan, 4 par minute
+const enAttente = new Map(); // profil → pseudo
+
+async function charger(profil, pseudo) {
+  const v = await profilArenyze(pseudo);
+  const s = v ? depuisProfil(v, profil) : null;
+  if (s && s.saison) {
+    (saisons[profil] ||= {})[s.saison] = s;
+    aSauver = true;
+  }
+  cache.set(profil, { quand: Date.now(), stats: s });
+  enAttente.delete(profil);
+}
+
+setInterval(async () => {
+  if (Date.now() < pauseJusqua) return;
+  for (const [profil, pseudo] of [...enAttente].slice(0, 4)) {
+    try {
+      await charger(profil, pseudo);
+    } catch {
+      if (Date.now() < pauseJusqua) return;
     }
-    cache.set(profil, { quand: Date.now(), stats: s });
-  };
+  }
+}, 60e3).unref();
+
+async function stats(joueurs) {
+  // 4 à la fois (Arenyze limite à 40 appels par minute, et un premier chargement est lent) ; un échec ne bloque
+  // pas les autres : le joueur part en file d'attente et la réponse contient ceux qui sont prêts
+  const aCharger = joueurs.filter(([profil]) => !(cache.get(profil)?.quand > Date.now() - DUREE_CACHE));
   for (let i = 0; i < aCharger.length; i += 4) {
-    const res = await Promise.allSettled(aCharger.slice(i, i + 4).map(charger));
-    const echec = res.find((r) => r.status === 'rejected');
-    if (echec && /Quota|Clé/.test(echec.reason?.message || '')) throw echec.reason;
+    if (Date.now() < pauseJusqua) {
+      aCharger.slice(i).forEach(([p, n]) => enAttente.set(p, n));
+      break;
+    }
+    const lot = aCharger.slice(i, i + 4);
+    const res = await Promise.allSettled(lot.map(([p, n]) => charger(p, n)));
+    res.forEach((r, k) => r.status === 'rejected' && enAttente.set(lot[k][0], lot[k][1]));
   }
   // Joueurs non chargés (Arenyze en échec) : absents de la réponse, pas « null » (null = aucune stat chez Ubisoft)
   const out = {};
