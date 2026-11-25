@@ -184,13 +184,22 @@ pub fn chemin_exe(pid: u32) -> Option<String> {
 }
 
 /// Mémoire privée d'un processus, en octets.
+/// Mémoire d'un processus comme la montre le Gestionnaire des tâches : ensemble de travail privé (mémoire réellement
+/// occupée et propre au processus). L'ancienne mesure (mémoire réservée) gonflait l'interface et l'enregistreur.
+/// Windows d'avant 1809 : ensemble de travail.
 pub fn memoire(pid: u32) -> u64 {
+    use windows_sys::Win32::System::ProcessStatus::PROCESS_MEMORY_COUNTERS_EX2;
     let Some(h) = Poignee::ouvrir(PROCESS_QUERY_LIMITED_INFORMATION, pid) else { return 0 };
     unsafe {
+        let mut c: PROCESS_MEMORY_COUNTERS_EX2 = std::mem::zeroed();
+        c.cb = std::mem::size_of::<PROCESS_MEMORY_COUNTERS_EX2>() as u32;
+        if GetProcessMemoryInfo(h.0, &mut c as *mut _ as *mut PROCESS_MEMORY_COUNTERS, c.cb) != 0 {
+            return c.PrivateWorkingSetSize as u64;
+        }
         let mut c: PROCESS_MEMORY_COUNTERS = std::mem::zeroed();
         c.cb = std::mem::size_of::<PROCESS_MEMORY_COUNTERS>() as u32;
         if GetProcessMemoryInfo(h.0, &mut c, c.cb) != 0 {
-            c.PagefileUsage as u64
+            c.WorkingSetSize as u64
         } else {
             0
         }

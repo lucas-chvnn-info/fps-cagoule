@@ -886,6 +886,8 @@ struct Conso {
     app_mo: f64,
     interface_mo: f64,
     presentmon_mo: f64,
+    /// Enregistreur des clips (FFmpeg et captures du son), compté à part : il ne tourne que si les clips sont activés
+    clips_mo: f64,
     cpu: f64,
 }
 
@@ -902,7 +904,7 @@ fn conso() -> Conso {
         famille.extend(procs.iter().filter(|p| p.parent == parent && p.pid != parent).map(|p| p.pid));
         i += 1;
     }
-    let mut c = Conso { app_mo: 0.0, interface_mo: 0.0, presentmon_mo: 0.0, cpu: systeme::cpu_app() };
+    let mut c = Conso { app_mo: 0.0, interface_mo: 0.0, presentmon_mo: 0.0, clips_mo: 0.0, cpu: systeme::cpu_app() };
     for pid in famille {
         let mo = systeme::memoire(pid) as f64 / 1048576.0;
         let nom = procs.iter().find(|p| p.pid == pid).map(|p| p.nom.to_lowercase()).unwrap_or_default();
@@ -910,6 +912,9 @@ fn conso() -> Conso {
             c.app_mo += mo;
         } else if nom.starts_with("presentmon") {
             c.presentmon_mo += mo;
+        } else if nom.starts_with("ffmpeg") || nom == "fps-cagoule.exe" {
+            // FFmpeg, et l'app relancée en capteur du son (Discord, micro)
+            c.clips_mo += mo;
         } else {
             c.interface_mo += mo;
         }

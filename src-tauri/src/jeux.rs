@@ -95,19 +95,23 @@ pub fn stats_ubisoft(etat: &Etat, joueurs: &[(String, String)]) -> Result<std::c
         joueurs.iter().filter(|(p, _)| cache.get(p).is_none_or(|(t, _)| t.elapsed() > Duration::from_secs(20 * 60))).cloned().collect()
     };
     if !manquants.is_empty() {
-        let mut recues: std::collections::HashMap<String, crate::ubisoft::StatsUbi> = if perso {
-            crate::ubisoft::stats(&manquants.iter().map(|(p, _)| p.clone()).collect::<Vec<_>>())?
+        // Profils répondus (avec ou sans stats) ; les autres ne sont pas mis en cache et seront redemandés
+        let (mut recues, repondus): (std::collections::HashMap<String, crate::ubisoft::StatsUbi>, Vec<String>) = if perso {
+            (crate::ubisoft::stats(&manquants.iter().map(|(p, _)| p.clone()).collect::<Vec<_>>())?, manquants.iter().map(|(p, _)| p.clone()).collect())
         } else {
-            crate::ubisoft::stats_serveur(&serveur, &manquants)?.into_iter().filter_map(|(p, s)| s.map(|s| (p, s))).collect()
+            let r = crate::ubisoft::stats_serveur(&serveur, &manquants)?;
+            let repondus = r.keys().cloned().collect();
+            (r.into_iter().filter_map(|(p, s)| s.map(|s| (p, s))).collect(), repondus)
         };
         crate::ubisoft::pics_generaux(etat.stock.dossier(), &mut recues);
         let mut cache = etat.ubisoft.lock().unwrap();
-        for (p, _) in &manquants {
+        for p in &repondus {
             cache.insert(p.clone(), (Instant::now(), recues.remove(p)));
         }
     }
     let cache = etat.ubisoft.lock().unwrap();
-    Ok(profils.iter().map(|p| (p.clone(), cache.get(p).and_then(|(_, s)| s.clone()))).collect())
+    // Seulement les joueurs connus : un absent n'a pas encore pu être chargé (≠ null : aucune stat)
+    Ok(profils.iter().filter_map(|p| cache.get(p).map(|(_, s)| (p.clone(), s.clone()))).collect())
 }
 
 /// Stats Ubisoft des profils pas encore en cache, en arrière-plan ; « degats » prévient les fenêtres à l'arrivée
@@ -742,10 +746,18 @@ fn relire_anciennes_parties(app: &AppHandle, etat: &Etat, pid: u32, dossiers: &[
     let _ = thread::Builder::new().name("rencontres".into()).spawn(move || {
         let etat = app.state::<Arc<Etat>>();
         let mut lues = 0;
-        for (partie, fichier, date) in &a_relire {
-            let Ok(octets) = std::fs::read(fichier) else { continue };
-            if let Ok(m) = crate::replays_r6::lire_debut(&octets) {
-                lues += usize::from(etat.rencontres.lock().unwrap().noter(partie, *date, &m));
+        for (partie, premier, dernier, date, connue) in &a_relire {
+            // Joueurs : début du premier replay ; score final : en-tête du dernier (quelques ms chacun)
+            if !connue {
+                let Ok(octets) = std::fs::read(premier) else { continue };
+                if let Ok(m) = crate::replays_r6::lire_debut(&octets) {
+                    lues += usize::from(etat.rencontres.lock().unwrap().noter(partie, *date, &m));
+                }
+            }
+            if let Ok(octets) = std::fs::read(dernier) {
+                if let Ok(m) = crate::replays_r6::lire_debut(&octets) {
+                    lues += usize::from(etat.rencontres.lock().unwrap().noter_score_final(partie, &m));
+                }
             }
             thread::sleep(Duration::from_millis(150));
         }

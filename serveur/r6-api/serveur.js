@@ -61,7 +61,12 @@ async function profilArenyzeUneFois(pseudo) {
     throw new Error('Quota Arenyze atteint, réessaie plus tard');
   }
   if (r.status === 404) return null;
-  if (!r.ok) throw new Error(`Arenyze répond ${r.status}`);
+  if (!r.ok) {
+    // Arenyze saturé côté Ubisoft (STATS_UPSTREAM_THROTTLED) : on attend ce qu'il demande avant de le relancer
+    const corps = await r.json().catch(() => ({}));
+    if (corps.retryAfter) pauseJusqua = Math.max(pauseJusqua, Date.now() + Number(corps.retryAfter) * 1000);
+    throw new Error(`Arenyze répond ${r.status}`);
+  }
   return r.json();
 }
 
@@ -150,9 +155,11 @@ async function stats(joueurs) {
     const echec = res.find((r) => r.status === 'rejected');
     if (echec && /Quota|Clé/.test(echec.reason?.message || '')) throw echec.reason;
   }
+  // Joueurs non chargés (Arenyze en échec) : absents de la réponse, pas « null » (null = aucune stat chez Ubisoft)
   const out = {};
   for (const [p] of joueurs) {
-    const s = cache.get(p)?.stats;
+    if (!cache.has(p)) continue;
+    const s = cache.get(p).stats;
     // Pic général : meilleur rang de toutes les saisons gardées
     out[p] = s ? { ...s, pic_general: Math.max(s.pic_saison, ...Object.values(saisons[p] || {}).map((x) => Math.max(x.pic_saison, x.rang))) } : null;
   }

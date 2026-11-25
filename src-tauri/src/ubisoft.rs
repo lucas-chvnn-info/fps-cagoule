@@ -240,10 +240,12 @@ fn serveur(base: &str, chemin: &str) -> Result<Value, String> {
     if !url.starts_with("https://") {
         return Err("Adresse du serveur des stats invalide.".into());
     }
+    // Texte JSON brut (Invoke-WebRequest) : Invoke-RestMethod | ConvertTo-Json emballe les listes de Windows
+    // PowerShell 5.1 dans {"value": […], "Count": n}
     let script = format!(
         r#"[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 try {{
-  Invoke-RestMethod -UseBasicParsing -TimeoutSec 180 -Uri {} -Headers @{{ 'X-FPS-Cagoule' = '1' }} | ConvertTo-Json -Compress -Depth 8
+  (Invoke-WebRequest -UseBasicParsing -TimeoutSec 180 -Uri {} -Headers @{{ 'X-FPS-Cagoule' = '1' }}).Content
 }} catch {{
   $code = 0; try {{ $code = [int]$_.Exception.Response.StatusCode }} catch {{}}
   @{{ erreur_serveur = $code }} | ConvertTo-Json -Compress
@@ -271,8 +273,11 @@ pub fn stats_serveur(base: &str, joueurs: &[(String, String)]) -> Result<HashMap
     for paquet in valides.chunks(20) {
         let liste: Vec<String> = paquet.iter().map(|(p, n)| format!("{p}:{}", encoder(n))).collect();
         let v = serveur(base, &format!("/v1/stats?joueurs={}", liste.join(",")))?;
+        // Absent de la réponse : pas encore chargé (Arenyze occupé), redemandé la prochaine fois
         for (p, _) in paquet {
-            out.insert(p.clone(), v.get(p).and_then(|s| serde_json::from_value(s.clone()).ok()));
+            if let Some(s) = v.get(p) {
+                out.insert(p.clone(), serde_json::from_value(s.clone()).ok());
+            }
         }
     }
     Ok(out)

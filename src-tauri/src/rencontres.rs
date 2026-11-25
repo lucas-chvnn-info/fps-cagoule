@@ -46,6 +46,9 @@ pub struct Resultat {
     pub score: Option<u32>,
     /// Opérateurs joués, dans l'ordre des manches
     pub operateurs: Vec<String>,
+    /// Partie relue après coup : seulement le score final (dernier replay), pas les K/D/A ni les dégâts
+    #[serde(default)]
+    pub partiel: bool,
 }
 
 #[derive(Serialize, Clone, Default, Debug, PartialEq)]
@@ -85,10 +88,6 @@ impl Rencontres {
         let chemin = dossier.join("rencontres.json");
         let parties = std::fs::read_to_string(&chemin).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
         Rencontres { chemin, parties }
-    }
-
-    pub fn connue(&self, partie: &str) -> bool {
-        self.parties.iter().any(|p| p.partie == partie)
     }
 
     /// Ajoute les joueurs d'une manche à sa partie (les remplaçants arrivés en cours de partie aussi). Vrai si changé.
@@ -132,6 +131,9 @@ impl Rencontres {
         let Some(p) = self.parties.iter_mut().find(|p| p.partie == partie) else { return };
         let Some(moi) = b.joueurs.iter().find(|j| Some(&j.pseudo) == b.moi.as_ref()) else { return };
         let r = p.resultat.get_or_insert_with(Resultat::default);
+        if r.partiel {
+            *r = Resultat::default();
+        }
         if b.manche <= r.manches {
             return;
         }
@@ -147,6 +149,20 @@ impl Rencontres {
             }
         }
         r.operateurs.push(moi.operateur.clone().unwrap_or_default());
+    }
+
+    /// Score final d'une partie relue après coup, d'après l'en-tête de son dernier replay
+    pub fn noter_score_final(&mut self, partie: &str, m: &crate::replays_r6::Manche) -> bool {
+        let Some(p) = self.parties.iter_mut().find(|p| p.partie == partie) else { return false };
+        let Some(i) = m.mon_equipe_entete.map(|e| e as usize & 1) else { return false };
+        if p.resultat.is_some() {
+            return false;
+        }
+        p.resultat = Some(Resultat { manches: m.manche, nous: m.scores[i], eux: m.scores[1 - i], partiel: true, ..Default::default() });
+        if p.map.is_none() {
+            p.map = m.map.clone();
+        }
+        true
     }
 
     pub fn sauver(&self) {
@@ -244,29 +260,36 @@ impl Rencontres {
     }
 }
 
-/// Parties des dossiers « MatchReplay » pas encore dans l'historique : (dossier du match, premier replay, date)
-pub fn parties_a_relire(dossiers: &[PathBuf], connues: &Rencontres) -> Vec<(String, PathBuf, u64)> {
+/// Parties des dossiers « MatchReplay » à relire : pas encore dans l'historique, ou sans résultat.
+/// (dossier du match, premier replay, dernier replay, date, déjà connue)
+pub fn parties_a_relire(dossiers: &[PathBuf], connues: &Rencontres) -> Vec<(String, PathBuf, PathBuf, u64, bool)> {
     let mut out = Vec::new();
     for d in dossiers {
         let Ok(liste) = std::fs::read_dir(d) else { continue };
         for partie in liste.flatten().filter(|e| e.path().is_dir()) {
             let nom = partie.file_name().to_string_lossy().to_string();
-            if connues.connue(&nom) {
+            let connue = connues.parties.iter().find(|p| p.partie == nom);
+            if connue.is_some_and(|p| p.resultat.is_some()) {
                 continue;
             }
             let Ok(fichiers) = std::fs::read_dir(partie.path()) else { continue };
             let mut recs: Vec<PathBuf> = fichiers.flatten().map(|f| f.path()).filter(|p| p.extension().is_some_and(|x| x.eq_ignore_ascii_case("rec"))).collect();
             recs.sort();
-            let Some(premier) = recs.into_iter().next() else { continue };
+            let (Some(premier), Some(dernier)) = (recs.first().cloned(), recs.last().cloned()) else { continue };
+            // Partie peut-être encore en cours : ses manches seront lues en direct
+            let recente = std::fs::metadata(&dernier).and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok()).is_some_and(|d| d.as_secs() < 30 * 60);
+            if recente {
+                continue;
+            }
             let date = std::fs::metadata(&premier)
                 .and_then(|m| m.modified())
                 .ok()
                 .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
                 .map_or(0, |d| d.as_millis() as u64);
-            out.push((nom, premier, date));
+            out.push((nom, premier, dernier, date, connue.is_some()));
         }
     }
-    out.sort_by_key(|x| x.2);
+    out.sort_by_key(|x| x.3);
     out
 }
 

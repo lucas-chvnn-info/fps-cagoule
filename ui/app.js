@@ -3921,7 +3921,7 @@ async function majConso() {
     const c = await invoke('conso');
     const total = c.app_mo + c.interface_mo + c.presentmon_mo;
     $('#conso').textContent = `${total.toFixed(0)} Mo · ${c.cpu.toFixed(1)} % CPU`;
-    $('#conso').title = `Moteur : ${c.app_mo.toFixed(1)} Mo · Interface : ${c.interface_mo.toFixed(0)} Mo${c.presentmon_mo ? ` · Compteur FPS : ${c.presentmon_mo.toFixed(1)} Mo` : ''}`;
+    $('#conso').title = `Moteur : ${c.app_mo.toFixed(1)} Mo · Interface : ${c.interface_mo.toFixed(0)} Mo${c.presentmon_mo ? ` · Compteur FPS : ${c.presentmon_mo.toFixed(1)} Mo` : ''}${c.clips_mo ? ` · Enregistrement des clips (pas compté) : ${c.clips_mo.toFixed(0)} Mo` : ''}`;
   } catch {}
 }
 
@@ -4736,7 +4736,8 @@ async function afficherProfilR6() {
     profil.innerHTML = `<div class="r6-tete"><div><h2>${esc(c.pseudo)}</h2><small class="discret">Chargement des stats…</small></div></div>`;
     try {
       stats = (await invoke('r6_stats', { joueurs: [[c.profil, c.pseudo]] }))[c.profil.toLowerCase()];
-      if (stats === null) note = 'Ubisoft ne donne pas les stats de ce joueur (nom caché ?).';
+      if (stats === null) note = 'Aucune stat pour ce joueur (nom caché ?).';
+      else if (stats === undefined) note = 'Stats momentanément indisponibles (le service est chargé) : réessaie dans une minute.';
     } catch (err) {
       note = String(err);
     }
@@ -4786,9 +4787,11 @@ async function afficherProfilR6() {
     if (c.moi) {
       const issue = !r ? '' : r.nous > r.eux ? 'gagnee' : r.nous < r.eux ? 'perdue' : '';
       const ops = r ? [...new Set(r.operateurs.filter(Boolean))].slice(0, 3).map((o) => icone(o)).join('') : '';
+      // Partie relue après coup : score seulement ; sans résultat : rien
+      const complet = r && !r.partiel;
       return `<div class="r6-partie ${issue}">${date}${carte}
-        <b>${r ? `${r.nous} – ${r.eux}` : '–'}</b><span>${r ? `${r.kills} / ${r.morts} / ${r.assists}` : '<span class="discret">—</span>'}</span>
-        <span>${r ? r.degats + ' dégâts' : ''}</span><span class="r6-ops">${ops}</span></div>`;
+        <b>${r ? `${r.nous} – ${r.eux}` : ''}</b><span>${complet ? `${r.kills} / ${r.morts} / ${r.assists}` : ''}</span>
+        <span>${complet ? r.degats + ' dégâts' : ''}</span><span class="r6-ops">${ops}</span></div>`;
     }
     const lui = p.joueurs.find((j) => j.profil === c.profil.toLowerCase());
     const issue = !p.resultat ? '' : p.resultat.nous > p.resultat.eux ? 'gagnee' : p.resultat.nous < p.resultat.eux ? 'perdue' : '';
