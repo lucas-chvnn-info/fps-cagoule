@@ -286,13 +286,28 @@ pub struct Stockage {
 }
 
 fn lire_json<T: for<'de> Deserialize<'de> + Default>(chemin: &Path) -> T {
-    fs::read_to_string(chemin).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+    let Ok(texte) = fs::read_to_string(chemin) else {
+        // Fichier absent (ou disparu) : la copie de secours du dernier enregistrement, s'il y en a une
+        return fs::read_to_string(chemin.with_extension("json.bak")).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+    };
+    match serde_json::from_str(&texte) {
+        Ok(v) => v,
+        Err(_) => {
+            // Illisible : mis de côté (jamais écrasé par des valeurs vides), puis la copie de secours
+            let _ = fs::copy(chemin, chemin.with_extension("illisible.json"));
+            fs::read_to_string(chemin.with_extension("json.bak")).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+        }
+    }
 }
 
 fn ecrire_json<T: Serialize>(chemin: &Path, valeur: &T) {
     let tmp = chemin.with_extension("tmp");
     if let Ok(texte) = serde_json::to_string_pretty(valeur) {
         if fs::write(&tmp, texte).is_ok() {
+            // Copie de secours de la version précédente, si elle se relit bien
+            if fs::read_to_string(chemin).ok().is_some_and(|t| serde_json::from_str::<serde_json::Value>(&t).is_ok()) {
+                let _ = fs::copy(chemin, chemin.with_extension("json.bak"));
+            }
             let _ = fs::rename(&tmp, chemin);
         }
     }
