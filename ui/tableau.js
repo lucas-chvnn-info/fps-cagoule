@@ -36,15 +36,23 @@ function badge(id, saison) {
   return `<span class="rang">${logoRang(id, saison, 18)}</span>`;
 }
 
-function rendre({ manches, rencontres, ubisoft = {}, ubisoft_connecte: ubiOk = false }) {
+function rendre({ manches, rencontres, ubisoft = {}, ubisoft_connecte: ubiOk = false, lobby = null }) {
+  // Début de partie : pas encore de manche lue, mais les joueurs du replay en cours d'écriture
+  if (!manches.length && lobby) {
+    manches = [];
+    lobby = {
+      partie: lobby.partie, map: lobby.map, moi: lobby.moi, manche: 0, nous: 0, eux: 0, debut: true,
+      joueurs: lobby.joueurs.map((j) => ({ ...j, kills: 0, mort: false, assists: 0, kills_tete: 0, inflige: 0, recu: 0, partie: null })),
+    };
+  }
   const cadre = document.getElementById('cadre');
   const haut = (lieu) => `<div class="barre-haut"><b><span>FPS Cagoule</span> · Tableau</b>
     <div class="touche"><kbd>Ctrl</kbd> + <kbd>X</kbd> pour fermer</div><div class="lieu">${lieu}</div></div>`;
-  if (!manches.length) {
+  if (!manches.length && !lobby) {
     cadre.innerHTML = `${haut('')}<div class="vide">Le tableau se remplit à la fin de la première manche.</div>`;
     return;
   }
-  const b = manches[manches.length - 1];
+  const b = lobby || manches[manches.length - 1];
   const moi = b.joueurs.find((j) => j.pseudo === b.moi);
   const monEquipe = moi ? moi.equipe : 0;
 
@@ -57,6 +65,8 @@ function rendre({ manches, rencontres, ubisoft = {}, ubisoft_connecte: ubiOk = f
       if (j.operateur) c.ops[j.operateur] = (c.ops[j.operateur] || 0) + 1;
     }
   }
+  // Joueurs sans manche lue (lobby du début de partie) : tout à zéro, opérateur déjà choisi
+  for (const j of b.joueurs) cumul[j.pseudo] ||= { k: 0, d: 0, a: 0, hs: 0, donnes: 0, recus: 0, ops: j.operateur ? { [j.operateur]: 1 } : {} };
   for (const j of b.joueurs) {
     if (j.partie && cumul[j.pseudo]) Object.assign(cumul[j.pseudo], { k: j.partie.kills, a: j.partie.assists, score: j.partie.score });
   }
@@ -118,7 +128,7 @@ function rendre({ manches, rencontres, ubisoft = {}, ubisoft_connecte: ubiOk = f
     <div class="a">Kills<b>${total(monEquipe, 'k')}</b></div><div class="b">Kills<b>${total(1 - monEquipe, 'k')}</b></div>
     <div class="a">Dégâts<b>${total(monEquipe, 'donnes')}</b></div><div class="b">Dégâts<b>${total(1 - monEquipe, 'donnes')}</b></div></div>`;
 
-  cadre.innerHTML = `${haut(`${esc(b.map || '')} · Manche ${b.manche}`)}
+  cadre.innerHTML = `${haut(`${esc(b.map || '')} · ${b.debut ? 'Début de partie' : `Manche ${b.manche}`}`)}
     ${equipe(monEquipe, 'nous', b.nous)}
     <div class="milieu"><div class="manches">${chips}</div>${totaux}</div>
     ${equipe(1 - monEquipe, 'eux', b.eux)}
@@ -217,7 +227,7 @@ document.addEventListener('click', (e) => {
 
 async function afficher() {
   const r = await invoke('degats_manches');
-  rendre({ manches: r.manches || [], rencontres: r.rencontres || {}, ubisoft: r.ubisoft || {}, ubisoft_connecte: !!r.ubisoft_connecte });
+  rendre({ manches: r.manches || [], rencontres: r.rencontres || {}, ubisoft: r.ubisoft || {}, ubisoft_connecte: !!r.ubisoft_connecte, lobby: r.lobby || null });
   requestAnimationFrame(() => document.getElementById('cadre').classList.add('visible'));
 }
 

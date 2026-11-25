@@ -169,6 +169,64 @@ pub struct Bilan {
     pub coups: Vec<Coup>,
 }
 
+/// Joueurs d'une partie avant la fin de la première manche (replay en cours d'écriture)
+#[derive(Serialize, Clone, Debug, Default)]
+pub struct Lobby {
+    pub partie: String,
+    pub map: Option<String>,
+    pub moi: Option<String>,
+    pub joueurs: Vec<JoueurLobby>,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct JoueurLobby {
+    pub pseudo: String,
+    pub profil: String,
+    pub equipe: u8,
+    pub operateur: Option<String>,
+    /// 5 toi, 3 ton groupe, 2 coéquipier, 1 adversaire (0 inconnu)
+    pub lien: u8,
+}
+
+/// Lobby d'après le début d'un replay : joueurs dans l'ordre de l'instantané (5 premiers = une équipe),
+/// avec leur lien avec toi, leur profil et leur opérateur
+pub fn lobby(donnees: &[u8], m: &crate::replays_r6::Manche, partie: &str) -> Option<Lobby> {
+    let fin = donnees.len().min(3_000_000);
+    let mut noms: Vec<(usize, String)> = Vec::new();
+    let mut p = trouver(donnees, NOM, 0, fin);
+    while let Some(i) = p {
+        if let (Some(&n), true) = (donnees.get(i + 5), true) {
+            if let Some(s) = donnees.get(i + 6..i + 6 + n as usize).filter(|_| n > 0) {
+                let nom = String::from_utf8_lossy(s).into_owned();
+                if !noms.iter().any(|(_, x)| x == &nom) {
+                    noms.push((i, nom));
+                }
+            }
+        }
+        p = trouver(donnees, NOM, i + 5, fin);
+    }
+    if noms.len() < 2 {
+        return None;
+    }
+    let joueurs = noms
+        .iter()
+        .enumerate()
+        .map(|(k, (i, nom))| {
+            let suivant = noms.get(k + 1).map_or((i + 8000).min(fin), |x| x.0);
+            let lien = trouver(donnees, LIEN, *i, suivant).and_then(|q| donnees.get(q + 6)).copied().unwrap_or(0);
+            let j = m.joueurs.iter().find(|j| &j.pseudo == nom);
+            JoueurLobby {
+                pseudo: nom.clone(),
+                profil: j.map(|j| j.profil.clone()).unwrap_or_default(),
+                equipe: u8::from(k >= 5),
+                operateur: j.and_then(|j| j.operateur.clone()),
+                lien,
+            }
+        })
+        .collect();
+    Some(Lobby { partie: partie.into(), map: m.map.clone(), moi: m.moi.clone(), joueurs })
+}
+
 fn u16_a(b: &[u8], p: usize) -> Option<u16> {
     Some(u16::from_le_bytes(b.get(p..p + 2)?.try_into().ok()?))
 }

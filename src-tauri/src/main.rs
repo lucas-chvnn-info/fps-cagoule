@@ -511,26 +511,37 @@ fn degats_manches(app: AppHandle) -> DegatsPartie {
     let e = etat(&app);
     let mut manches: Vec<degats_r6::Bilan> = {
         let liste = e.degats.lock().unwrap();
-        let Some(derniere) = liste.last() else { return DegatsPartie::default() };
-        liste.iter().filter(|b| b.partie == derniere.partie).cloned().collect()
+        match liste.last() {
+            Some(derniere) => liste.iter().filter(|b| b.partie == derniere.partie).cloned().collect(),
+            None => vec![],
+        }
     };
     manches.sort_by_key(|b| b.manche);
-    // Rencontres des joueurs du lobby (toutes manches), vues du compte qui joue, par pseudo
-    let mut lobby: Vec<(String, String)> = Vec::new(); // (pseudo, clé)
-    let mut mien = String::new();
-    for j in manches.iter().flat_map(|b| &b.joueurs) {
-        let cle = rencontres::cle(&j.profil, &j.pseudo);
-        if j.lien == 5 || manches.last().and_then(|b| b.moi.as_ref()) == Some(&j.pseudo) {
-            mien = cle.clone();
-        }
-        if !lobby.iter().any(|(p, _)| p == &j.pseudo) {
-            lobby.push((j.pseudo.clone(), cle));
+    // Lobby d'une partie plus récente que les manches lues (début de partie) : il remplace la partie précédente.
+    // Les noms de dossier « Match-AAAA-MM-JJ_HH-MM-SS… » se comparent dans l'ordre du temps.
+    let lobby = e.lobby.lock().unwrap().clone().filter(|l| manches.last().is_none_or(|b| l.partie > b.partie));
+    if lobby.is_some() {
+        manches.clear();
+    }
+    // Joueurs de la partie : (pseudo, profil, lien avec toi)
+    let mut joueurs: Vec<(String, String, u8)> = Vec::new();
+    let moi = lobby.as_ref().map_or_else(|| manches.last().and_then(|b| b.moi.clone()), |l| l.moi.clone());
+    let liste: Vec<(String, String, u8)> = match &lobby {
+        Some(l) => l.joueurs.iter().map(|j| (j.pseudo.clone(), j.profil.clone(), j.lien)).collect(),
+        None => manches.iter().flat_map(|b| &b.joueurs).map(|j| (j.pseudo.clone(), j.profil.clone(), j.lien)).collect(),
+    };
+    for j in liste {
+        if !joueurs.iter().any(|x| x.0 == j.0) {
+            joueurs.push(j);
         }
     }
-    let cles: Vec<String> = lobby.iter().map(|(_, c)| c.clone()).collect();
-    let partie = manches.last().map(|b| b.partie.clone()).unwrap_or_default();
+    // Rencontres, vues du compte qui joue, par pseudo
+    let cle_de = |j: &(String, String, u8)| rencontres::cle(&j.1, &j.0);
+    let mien = joueurs.iter().find(|j| j.2 == 5 || moi.as_ref() == Some(&j.0)).map(cle_de).unwrap_or_default();
+    let cles: Vec<String> = joueurs.iter().map(cle_de).collect();
+    let partie = lobby.as_ref().map_or_else(|| manches.last().map(|b| b.partie.clone()).unwrap_or_default(), |l| l.partie.clone());
     let resume = e.rencontres.lock().unwrap().resume(&partie, &mien, &cles);
-    let pseudo_de = |c: &str| lobby.iter().find(|(_, x)| x == c).map(|(p, _)| p.clone()).unwrap_or_default();
+    let pseudo_de = |c: &str| joueurs.iter().find(|j| cle_de(j) == c).map(|j| j.0.clone()).unwrap_or_default();
     let rencontres = resume
         .into_iter()
         .map(|(c, mut r)| {
@@ -542,16 +553,15 @@ fn degats_manches(app: AppHandle) -> DegatsPartie {
     let ubisoft_connecte = e.stock.donnees.lock().unwrap().reglages.tracker_r6;
     let mut ubisoft = std::collections::HashMap::new();
     if ubisoft_connecte {
-        let profils: Vec<(String, String)> = manches.iter().flat_map(|b| &b.joueurs).map(|j| (j.pseudo.clone(), j.profil.to_lowercase())).collect();
-        jeux::rafraichir_ubisoft(&app, profils.iter().map(|(n, p)| (p.clone(), n.clone())).collect());
+        jeux::rafraichir_ubisoft(&app, joueurs.iter().map(|j| (j.1.clone(), j.0.clone())).collect());
         let cache = e.ubisoft.lock().unwrap();
-        for (pseudo, p) in profils {
-            if let Some((_, s)) = cache.get(&p) {
-                ubisoft.insert(pseudo, s.clone());
+        for (pseudo, p, _) in &joueurs {
+            if let Some((_, s)) = cache.get(&p.to_lowercase()) {
+                ubisoft.insert(pseudo.clone(), s.clone());
             }
         }
     }
-    DegatsPartie { manches, rencontres, ubisoft, ubisoft_connecte }
+    DegatsPartie { manches, lobby, rencontres, ubisoft, ubisoft_connecte }
 }
 
 /// Page Rainbow Six : tes comptes (d'après tes replays)
@@ -630,6 +640,8 @@ fn ubisoft_deconnecter(app: AppHandle) {
 #[derive(serde::Serialize, Default)]
 struct DegatsPartie {
     manches: Vec<degats_r6::Bilan>,
+    /// Début d'une nouvelle partie : ses joueurs, avant la fin de la première manche
+    lobby: Option<degats_r6::Lobby>,
     /// Pseudo → contre / avec / autres comptes / joueurs du lobby déjà vus dans sa même équipe
     rencontres: std::collections::HashMap<String, rencontres::Resume>,
     /// Pseudo → stats Ubisoft (null = demandées, rien reçu : nom caché…) ; absent = pas encore arrivées
@@ -1086,6 +1098,7 @@ fn main() {
                 touche_tableau: Mutex::new(None),
                 touches_navigation: Mutex::new(Vec::new()),
                 degats: Mutex::new(Vec::new()),
+                lobby: Mutex::new(None),
                 degats_historique: Mutex::new(Default::default()),
             });
             // L'app a été coupée en pleine partie : on remet le plan d'alimentation d'avant

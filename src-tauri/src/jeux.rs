@@ -52,6 +52,8 @@ pub struct EnCours {
     replays_cherches: bool,
     /// Anciennes parties des dossiers de replays déjà relues pour l'historique des rencontres
     rencontres_relues: bool,
+    /// Replays en cours d'écriture essayés pour le lobby : nombre d'essais (u8::MAX = lu)
+    lobby_essais: std::collections::HashMap<PathBuf, u8>,
     /// Pourquoi l'enregistrement n'a pas pu démarrer
     pub clips_erreur: Option<String>,
 }
@@ -70,6 +72,8 @@ pub struct Etat {
     /// Dégâts de la dernière manche de R6 (fenêtre de fin de manche)
     /// Dégâts des manches de R6 lues depuis le lancement (fenêtre de fin de manche : la dernière et celles d'avant)
     pub degats: Mutex<Vec<crate::degats_r6::Bilan>>,
+    /// Joueurs de la partie en cours avant la fin de la première manche (replay lu pendant son écriture)
+    pub lobby: Mutex<Option<crate::degats_r6::Lobby>>,
     /// Coups de chaque tireur (« pseudo|opérateur ») dans les manches déjà lues : dégât de base pour les zones touchées
     pub degats_historique: Mutex<std::collections::HashMap<String, Vec<u32>>>,
     /// Joueurs croisés dans R6 (rencontres.json)
@@ -350,6 +354,7 @@ fn demarrer(app: &AppHandle, etat: &Etat, profil: &crate::config::Profil, pid: u
         clips_lances: false,
         replays_cherches: false,
         rencontres_relues: false,
+        lobby_essais: Default::default(),
         clips_erreur: None,
         dossiers_replays: Vec::new(),
     });
@@ -619,8 +624,11 @@ fn surveiller_replays(app: &AppHandle, etat: &Etat, pid: u32) {
     };
     relire_anciennes_parties(app, etat, pid, &dossiers);
     for (fichier, modifie) in crate::replays_r6::manches_recentes(&dossiers, depuis) {
-        // Fichier encore en cours d'écriture : on attendra le prochain passage
+        // Fichier encore en cours d'écriture : on attendra le prochain passage, mais on essaie d'y lire le lobby
         let age = SystemTime::now().duration_since(modifie).unwrap_or_default();
+        if !vus.contains(&fichier) && age < Duration::from_secs(4) && degats {
+            lire_lobby(app, etat, pid, &fichier);
+        }
         if vus.contains(&fichier) || age < Duration::from_secs(4) {
             continue;
         }
@@ -724,6 +732,51 @@ fn surveiller_replays(app: &AppHandle, etat: &Etat, pid: u32) {
         });
     }
 }
+
+/// Lobby de la partie en cours : début du replay de la manche pendant qu'il s'écrit (10 essais par fichier).
+/// Si R6 ne l'écrit qu'à la fin de la manche, rien ne se passe (le tableau se remplit alors à la fin de la manche).
+fn lire_lobby(app: &AppHandle, etat: &Etat, pid: u32, fichier: &std::path::Path) {
+    {
+        let mut session = etat.session.lock().unwrap();
+        let Some(s) = session.as_mut().filter(|s| s.pid == pid) else { return };
+        let essais = s.lobby_essais.entry(fichier.to_path_buf()).or_insert(0);
+        if *essais >= ESSAIS_LOBBY {
+            return;
+        }
+        *essais += 1;
+    }
+    let (app, fichier) = (app.clone(), fichier.to_path_buf());
+    let _ = thread::Builder::new().name("lobby".into()).spawn(move || {
+        let etat = app.state::<Arc<Etat>>();
+        let nom = fichier.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+        let partie = fichier.parent().and_then(|d| d.file_name()).map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+        let lu = std::fs::read(&fichier).map_err(|e| e.to_string()).and_then(|o| {
+            let taille = o.len();
+            let (m, flux) = crate::replays_r6::lire_debut_avec_flux(&o)?;
+            crate::degats_r6::lobby(&flux, &m, &partie).map(|l| (l, taille)).ok_or_else(|| format!("pas encore de joueurs ({taille} octets)"))
+        });
+        match lu {
+            Ok((l, taille)) => {
+                if let Some(s) = etat.session.lock().unwrap().as_mut() {
+                    s.lobby_essais.insert(fichier.clone(), u8::MAX);
+                }
+                crate::clips::noter(&etat.stock, &format!("{nom} : lobby lu pendant la manche ({} joueurs, {taille} octets)", l.joueurs.len()));
+                rafraichir_ubisoft(&app, l.joueurs.iter().map(|j| (j.profil.clone(), j.pseudo.clone())).collect());
+                *etat.lobby.lock().unwrap() = Some(l);
+                let _ = app.emit("degats", ());
+            }
+            Err(e) => {
+                // Dernier essai raté : noté une fois (si R6 n'écrit le replay qu'en fin de manche, c'est normal)
+                let dernier = etat.session.lock().unwrap().as_ref().and_then(|s| s.lobby_essais.get(&fichier).copied()) == Some(ESSAIS_LOBBY);
+                if dernier {
+                    crate::clips::noter(&etat.stock, &format!("{nom} : lobby illisible pendant l'écriture ({e})"));
+                }
+            }
+        }
+    });
+}
+
+const ESSAIS_LOBBY: u8 = 10;
 
 /// Historique des rencontres : les parties déjà présentes dans les dossiers de replays (juste le début de leur
 /// premier replay, quelques ms chacune), une fois par session, en arrière-plan et sans se presser

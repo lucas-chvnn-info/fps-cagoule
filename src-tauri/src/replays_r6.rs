@@ -373,6 +373,11 @@ pub fn lire_debut(fichier: &[u8]) -> Result<Manche, String> {
     lire_interne(fichier, 3_000_000).map(|(m, _)| m)
 }
 
+/// Début d'une manche avec son flux décompressé (quelques Mo) : pour lire le lobby pendant la manche
+pub fn lire_debut_avec_flux(fichier: &[u8]) -> Result<(Manche, Vec<u8>), String> {
+    lire_interne(fichier, 3_000_000)
+}
+
 fn lire_interne(fichier: &[u8], limite: usize) -> Result<(Manche, Vec<u8>), String> {
     if !fichier.starts_with(b"dissect") {
         return Err("Ce n'est pas un replay de Rainbow Six Siege".into());
