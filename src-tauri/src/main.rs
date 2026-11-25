@@ -38,6 +38,7 @@ mod stats;
 mod steam_comptes;
 mod systeme;
 mod tweaks;
+mod ubisoft;
 
 use config::{Profil, Reglages, Session, Stockage};
 use jeux::{Etat, InfoJeu};
@@ -537,7 +538,40 @@ fn degats_manches(app: AppHandle) -> DegatsPartie {
             (pseudo_de(&c), r)
         })
         .collect();
-    DegatsPartie { manches, rencontres }
+    // Stats Ubisoft (déjà en cache ; les manquantes sont demandées en arrière-plan)
+    let ubisoft_connecte = e.stock.donnees.lock().unwrap().reglages.ubisoft_pseudo.is_some();
+    let mut ubisoft = std::collections::HashMap::new();
+    if ubisoft_connecte {
+        let profils: Vec<(String, String)> = manches.iter().flat_map(|b| &b.joueurs).map(|j| (j.pseudo.clone(), j.profil.to_lowercase())).collect();
+        jeux::rafraichir_ubisoft(&app, profils.iter().map(|(_, p)| p.clone()).collect());
+        let cache = e.ubisoft.lock().unwrap();
+        for (pseudo, p) in profils {
+            if let Some((_, s)) = cache.get(&p) {
+                ubisoft.insert(pseudo, s.clone());
+            }
+        }
+    }
+    DegatsPartie { manches, rencontres, ubisoft, ubisoft_connecte }
+}
+
+/// Connexion du compte Ubisoft des rangs : renvoie son pseudo
+#[tauri::command(async)]
+fn ubisoft_connecter(app: AppHandle, email: String, mot_de_passe: String) -> Res<String> {
+    let pseudo = ubisoft::connecter(&email, &mot_de_passe)?;
+    let e = etat(&app);
+    e.stock.donnees.lock().unwrap().reglages.ubisoft_pseudo = Some(if pseudo.is_empty() { "Compte Ubisoft".into() } else { pseudo.clone() });
+    e.stock.sauver();
+    e.ubisoft.lock().unwrap().clear();
+    Ok(pseudo)
+}
+
+#[tauri::command(async)]
+fn ubisoft_deconnecter(app: AppHandle) {
+    ubisoft::deconnecter();
+    let e = etat(&app);
+    e.stock.donnees.lock().unwrap().reglages.ubisoft_pseudo = None;
+    e.stock.sauver();
+    e.ubisoft.lock().unwrap().clear();
 }
 
 #[derive(serde::Serialize, Default)]
@@ -545,6 +579,9 @@ struct DegatsPartie {
     manches: Vec<degats_r6::Bilan>,
     /// Pseudo → contre / avec / autres comptes / joueurs du lobby déjà vus dans sa même équipe
     rencontres: std::collections::HashMap<String, rencontres::Resume>,
+    /// Pseudo → stats Ubisoft (null = demandées, rien reçu : nom caché…) ; absent = pas encore arrivées
+    ubisoft: std::collections::HashMap<String, Option<ubisoft::StatsUbi>>,
+    ubisoft_connecte: bool,
 }
 
 /// La fenêtre des dégâts reste ouverte plus longtemps (clic sur une de ses pages)
@@ -982,6 +1019,7 @@ fn main() {
             let presentmon = app.path().resource_dir()?.join("PresentMon.exe");
             let etat = Arc::new(Etat {
                 rencontres: Mutex::new(rencontres::Rencontres::ouvrir(&dossier)),
+                ubisoft: Mutex::new(Default::default()),
                 stock: Stockage::ouvrir(dossier),
                 session: Mutex::new(None),
                 fps_live: Arc::new(Mutex::new(None)),
@@ -1063,6 +1101,8 @@ fn main() {
             clips_parcourir,
             degats_manches,
             degats_garder,
+            ubisoft_connecter,
+            ubisoft_deconnecter,
             clips_dossier_regler,
             clips_exporter,
             clips_pistes,

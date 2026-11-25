@@ -142,12 +142,13 @@ pub fn basculer_tableau(app: &AppHandle) {
     }
     let app2 = app.clone();
     let _ = app.run_on_main_thread(move || {
-        let (l, h) = (1180.0, 780.0);
+        let (mut l, h) = (1400.0, 780.0);
         let (mut x, mut y) = (40.0, 40.0);
         if let Ok(Some(ecran)) = app2.primary_monitor() {
             let echelle = ecran.scale_factor();
             let p = ecran.position().to_logical::<f64>(echelle);
             let t = ecran.size().to_logical::<f64>(echelle);
+            l = l.min(t.width - 40.0);
             x = p.x + ((t.width - l) / 2.0).max(0.0);
             y = p.y + ((t.height - h) / 2.0).max(0.0);
         }

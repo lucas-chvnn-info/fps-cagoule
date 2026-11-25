@@ -23,9 +23,20 @@
     .chiffre { display: grid; place-items: center; font-size: 76px; font-weight: 900; color: rgba(255, 255, 255, .95); }
     .nous .chiffre { background: linear-gradient(180deg, rgba(47, 111, 237, .55), rgba(47, 111, 237, .25)); }
     .eux .chiffre { background: linear-gradient(180deg, rgba(224, 72, 94, .5), rgba(224, 72, 94, .22)); }
-    .colonnes, .joueur { display: grid; grid-template-columns: 6px 36px minmax(0, 1fr) 70px 88px 60px 74px 64px 92px; align-items: center; gap: 12px; padding: 0 20px 0 14px; }
+    .colonnes, .joueur { display: grid; grid-template-columns: 6px 36px minmax(120px, 1fr) 58px 78px 56px 60px 92px 92px 92px 46px 44px 48px 64px; align-items: center; gap: 10px; padding: 0 18px 0 14px; }
+    .sans-ubi .colonnes, .sans-ubi .joueur { grid-template-columns: 6px 36px minmax(120px, 1fr) 70px 88px 60px 74px 64px 92px; gap: 12px; }
+    .sans-ubi .ubi { display: none; }
+    .rang { justify-self: end; padding: 2px 8px; border-radius: 6px; font-size: 12.5px; font-weight: 700; white-space: nowrap; background: rgba(255, 255, 255, .06); color: var(--discret); }
+    .rang.cuivre { color: #d98a6c; background: rgba(181, 101, 74, .18); }
+    .rang.bronze { color: #d9a46c; background: rgba(192, 138, 82, .18); }
+    .rang.argent { color: #c9d0dc; background: rgba(169, 177, 191, .16); }
+    .rang.or { color: #f0cd63; background: rgba(232, 194, 90, .16); }
+    .rang.platine { color: #5fd6d6; background: rgba(69, 196, 196, .16); }
+    .rang.emeraude { color: #4fe3a3; background: rgba(61, 220, 151, .15); }
+    .rang.diamant { color: #c4a3ff; background: rgba(180, 140, 255, .17); }
+    .rang.champion { color: #ff7cbc; background: rgba(255, 92, 168, .18); }
     .colonnes { height: 30px; font-size: 11.5px; font-weight: 600; color: var(--discret); text-transform: uppercase; letter-spacing: .05em; }
-    .colonnes span, .joueur .v { text-align: right; }
+    .colonnes span, .joueur .v { text-align: right; white-space: nowrap; }
     .colonnes span.g { text-align: left; }
     .joueur { height: 50px; border-top: 1px solid var(--ligne); }
     .joueur.toi { background: rgba(111, 157, 255, .07); }
@@ -36,7 +47,7 @@
     .nom b { display: block; font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .toi .nom b { color: var(--accent); }
     .nom small { display: block; font-size: 11.5px; color: var(--discret); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .v { font-weight: 700; font-variant-numeric: tabular-nums; }
+    .v { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
     .v.zero { color: var(--discret); font-weight: 500; }
     .kda span { color: var(--discret); font-weight: 400; margin: 0 2px; }
     .recu { color: var(--rouge); }

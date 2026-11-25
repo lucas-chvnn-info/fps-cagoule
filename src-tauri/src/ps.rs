@@ -46,6 +46,32 @@ pub fn executer(script: &str) -> Result<String, String> {
     }
 }
 
+/// Comme `executer`, avec un secret (mot de passe, jeton) passé par l'entrée standard : il n'apparaît pas dans la
+/// ligne de commande du processus, lisible par les autres programmes. Le script le lit avec `[Console]::In.ReadToEnd()`.
+pub fn executer_avec_secret(script: &str, secret: &str) -> Result<String, String> {
+    use std::io::Write;
+    use std::process::Stdio;
+    let complet = format!("{PRELUDE}$secret = [Console]::In.ReadToEnd()\n{script}");
+    let utf16: Vec<u8> = complet.encode_utf16().flat_map(u16::to_le_bytes).collect();
+    let mut enfant = Command::new("powershell.exe")
+        .args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-EncodedCommand", &base64(&utf16)])
+        .creation_flags(CREATE_NO_WINDOW)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("PowerShell introuvable : {e}"))?;
+    if let Some(mut entree) = enfant.stdin.take() {
+        let _ = entree.write_all(secret.as_bytes());
+    }
+    let sortie = enfant.wait_with_output().map_err(|e| e.to_string())?;
+    if sortie.status.success() {
+        Ok(String::from_utf8_lossy(&sortie.stdout).trim_start_matches('\u{feff}').trim().to_string())
+    } else {
+        Err(message_erreur(&String::from_utf8_lossy(&sortie.stderr)))
+    }
+}
+
 /// Première vraie ligne d'erreur. PowerShell écrit parfois ses erreurs en CLIXML (« #< CLIXML ») :
 /// on en extrait le texte des balises <S S="Error">.
 fn message_erreur(err: &str) -> String {

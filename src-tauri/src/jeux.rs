@@ -72,6 +72,43 @@ pub struct Etat {
     pub degats_historique: Mutex<std::collections::HashMap<String, Vec<u32>>>,
     /// Joueurs croisés dans R6 (rencontres.json)
     pub rencontres: Mutex<crate::rencontres::Rencontres>,
+    /// Stats Ubisoft des joueurs croisés : profil → (demandées à, stats ; None = rien reçu, nom caché…)
+    pub ubisoft: Mutex<std::collections::HashMap<String, (Instant, Option<crate::ubisoft::StatsUbi>)>>,
+}
+
+/// Stats Ubisoft des profils pas encore connus (ou vieux de plus de 20 min), en arrière-plan ; « degats » prévient
+/// les fenêtres quand elles arrivent
+pub fn rafraichir_ubisoft(app: &AppHandle, profils: Vec<String>) {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    static EN_COURS: AtomicBool = AtomicBool::new(false);
+    let etat = app.state::<Arc<Etat>>();
+    if etat.stock.donnees.lock().unwrap().reglages.ubisoft_pseudo.is_none() {
+        return;
+    }
+    let manquants: Vec<String> = {
+        let cache = etat.ubisoft.lock().unwrap();
+        profils.into_iter().filter(|p| !p.is_empty() && !p.starts_with("pseudo:")).map(|p| p.to_lowercase()).filter(|p| cache.get(p).is_none_or(|(t, _)| t.elapsed() > Duration::from_secs(20 * 60))).collect()
+    };
+    if manquants.is_empty() || EN_COURS.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let app = app.clone();
+    let _ = thread::Builder::new().name("ubisoft".into()).spawn(move || {
+        let etat = app.state::<Arc<Etat>>();
+        match crate::ubisoft::stats(&manquants) {
+            Ok(mut recues) => {
+                crate::ubisoft::pics_generaux(etat.stock.dossier(), &mut recues);
+                let mut cache = etat.ubisoft.lock().unwrap();
+                for p in &manquants {
+                    cache.insert(p.clone(), (Instant::now(), recues.remove(p)));
+                }
+                drop(cache);
+                let _ = app.emit("degats", ());
+            }
+            Err(e) => crate::clips::noter(&etat.stock, &format!("Stats Ubisoft : {e}")),
+        }
+        EN_COURS.store(false, Ordering::SeqCst);
+    });
 }
 
 #[derive(Serialize, Clone)]
@@ -590,6 +627,7 @@ fn surveiller_replays(app: &AppHandle, etat: &Etat, pid: u32) {
                                 }
                             }
                             b.partie = partie;
+                            rafraichir_ubisoft(&app, b.joueurs.iter().map(|j| j.profil.clone()).collect());
                             let inconnus: u32 = b.coups.iter().filter(|c| c.tireur.is_none()).map(|c| c.degats).sum();
                             let total: u32 = b.coups.iter().map(|c| c.degats).sum();
                             crate::clips::noter(&etat.stock, &format!("{nom} : dégâts lus en {:.1} s ({} coups, {inconnus}/{total} PV sans tireur)", debut.elapsed().as_secs_f64(), b.coups.len()));

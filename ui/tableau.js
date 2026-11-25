@@ -30,7 +30,18 @@ function groupesDe(b, rencontres) {
   return out;
 }
 
-function rendre({ manches, rencontres }) {
+// Badge d'un rang Ubisoft (identifiant 0 à 36)
+const RANGS = ['Non classé', 'Cuivre 5', 'Cuivre 4', 'Cuivre 3', 'Cuivre 2', 'Cuivre 1', 'Bronze 5', 'Bronze 4', 'Bronze 3', 'Bronze 2', 'Bronze 1',
+  'Argent 5', 'Argent 4', 'Argent 3', 'Argent 2', 'Argent 1', 'Or 5', 'Or 4', 'Or 3', 'Or 2', 'Or 1', 'Platine 5', 'Platine 4', 'Platine 3',
+  'Platine 2', 'Platine 1', 'Émeraude 5', 'Émeraude 4', 'Émeraude 3', 'Émeraude 2', 'Émeraude 1', 'Diamant 5', 'Diamant 4', 'Diamant 3',
+  'Diamant 2', 'Diamant 1', 'Champion'];
+function badge(id) {
+  const nom = RANGS[id] || '?';
+  const palier = id ? nom.split(' ')[0].normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase() : '';
+  return `<span class="rang ${palier}">${id ? nom : '–'}</span>`;
+}
+
+function rendre({ manches, rencontres, ubisoft = {}, ubisoft_connecte: ubiOk = false }) {
   const cadre = document.getElementById('cadre');
   const haut = (lieu) => `<div class="barre-haut"><b><span>FPS Cagoule</span> · Tableau</b>
     <div class="touche"><kbd>Ctrl</kbd> + <kbd>X</kbd> pour fermer</div><div class="lieu">${lieu}</div></div>`;
@@ -80,13 +91,28 @@ function rendre({ manches, rencontres }) {
       ${v(c.score)}
       <div class="v kda">${c.k}<span>/</span>${c.d}<span>/</span>${c.a}</div>
       <div class="v${c.k ? '' : ' zero'}">${c.k ? Math.round((100 * c.hs) / c.k) + ' %' : '–'}</div>
-      ${v(c.donnes)}${v(c.recus, 'recu')}
+      ${v(c.donnes)}${ubiOk ? colonnesUbi(j) : v(c.recus, 'recu')}
       <div class="ops">${ops}</div></div>`;
+  };
+  // Stats Ubisoft : « … » en attente, « ? » sans réponse (nom caché…)
+  const colonnesUbi = (j) => {
+    const s = ubisoft[j.pseudo];
+    if (s === undefined || s === null) {
+      const t = s === undefined ? '…' : '?';
+      return `<div class="v zero">${t}</div><div class="v zero">${t}</div><div class="v zero">${t}</div><div class="v zero">${t}</div><div class="v zero">${t}</div><div class="v zero">${t}</div>`;
+    }
+    const parties = s.victoires + s.defaites + s.abandons;
+    const kd = s.morts ? (s.kills / s.morts).toFixed(2) : s.kills ? s.kills.toFixed(2) : '–';
+    const wr = parties ? Math.round((100 * s.victoires) / parties) + ' %' : '–';
+    return `${badge(s.rang)}${badge(s.pic_saison)}${badge(Math.max(s.pic_general, s.pic_saison))}
+      <div class="v${s.niveau ? '' : ' zero'}">${s.niveau ?? '–'}</div><div class="v">${kd}</div><div class="v">${wr}</div>`;
   };
   // Membres d'un groupe côte à côte, puis par score
   const ordre = (x, y) => (groupes[y.pseudo]?.id ?? -1) - (groupes[x.pseudo]?.id ?? -1) || (cumul[y.pseudo].score ?? cumul[y.pseudo].k) - (cumul[x.pseudo].score ?? cumul[x.pseudo].k);
   const equipe = (e, classe, chiffre) => `<div class="equipe ${classe}"><div class="chiffre">${chiffre}</div><div>
-    <div class="colonnes"><i></i><i></i><span class="g">Joueur</span><span>Score</span><span>K / D / A</span><span>HS %</span><span>Dégâts</span><span>Reçus</span><span>Opérateurs</span></div>
+    <div class="colonnes"><i></i><i></i><span class="g">Joueur</span><span>Score</span><span>K / D / A</span><span>HS %</span><span>Dégâts</span>${ubiOk
+      ? '<span>Rang</span><span>Pic saison</span><span>Pic général</span><span>Niveau</span><span>KD</span><span>Vict.</span>'
+      : '<span>Reçus</span>'}<span>${ubiOk ? 'Ops' : 'Opérateurs'}</span></div>
     ${b.joueurs.filter((j) => j.equipe === e).sort(ordre).map(ligne).join('')}</div></div>`;
 
   // Bande du milieu : chaque manche (ton côté, gagnée ou perdue) et les totaux des deux équipes
@@ -100,12 +126,15 @@ function rendre({ manches, rencontres }) {
     ${equipe(monEquipe, 'nous', b.nous)}
     <div class="milieu"><div class="manches">${chips}</div>${totaux}</div>
     ${equipe(1 - monEquipe, 'eux', b.eux)}
-    <div class="pied">D'après les replays de la partie : mis à jour à chaque fin de manche.</div>`;
+    <div class="pied">D'après les replays de la partie : mis à jour à chaque fin de manche.${ubiOk
+      ? ' Rang, KD et victoires : saison en cours (Ubisoft). Pic général : meilleur rang vu par FPS Cagoule.'
+      : ' Connecte un compte Ubisoft dans les Réglages pour les rangs.'}</div>`;
+  cadre.classList.toggle('sans-ubi', !ubiOk);
 }
 
 async function afficher() {
   const r = await invoke('degats_manches');
-  rendre({ manches: r.manches || [], rencontres: r.rencontres || {} });
+  rendre({ manches: r.manches || [], rencontres: r.rencontres || {}, ubisoft: r.ubisoft || {}, ubisoft_connecte: !!r.ubisoft_connecte });
   requestAnimationFrame(() => document.getElementById('cadre').classList.add('visible'));
 }
 

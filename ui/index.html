@@ -530,6 +530,18 @@
         <label class="bascule"><input type="checkbox" id="maj-auto"><span></span> Mises à jour automatiques</label>
         <label class="bascule" id="ligne-discord" hidden><input type="checkbox" id="discord"><span></span> Statut Discord pendant les parties</label>
       </div>
+      <div class="carte ligne-carte" id="carte-ubisoft">
+        <div>
+          <h2>Rangs des joueurs</h2>
+          <p class="discret" id="ubisoft-etat">Rang, pic, niveau et KD dans le tableau Ctrl+X. Un compte Ubisoft secondaire sans double authentification suffit.</p>
+        </div>
+        <div class="boutons" id="ubisoft-connecte" hidden><button id="btn-ubisoft-deconnecter" class="petit">Se déconnecter</button></div>
+        <div class="clips-connexion" id="ubisoft-formulaire">
+          <input id="ubisoft-email" type="email" spellcheck="false" autocomplete="username" placeholder="E-mail Ubisoft" aria-label="E-mail du compte Ubisoft">
+          <input id="ubisoft-mdp" type="password" autocomplete="current-password" placeholder="Mot de passe" aria-label="Mot de passe du compte Ubisoft">
+          <button id="btn-ubisoft-connecter" class="petit principal">Se connecter</button>
+        </div>
+      </div>
       <div class="carte ligne-carte">
         <h2>Assistant de départ</h2>
         <button id="btn-assistant">Relancer l'assistant</button>

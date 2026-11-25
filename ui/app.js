@@ -1292,6 +1292,7 @@ function afficherReglages() {
   $('#overlay').checked = reglages.overlay;
   $('#degats-fin-manche').checked = reglages.degats_fin_manche;
   $('#tableau-r6').checked = reglages.tableau_r6;
+  afficherUbisoft();
   $('#maj-auto').checked = reglages.maj_auto;
   $('#couleurs-en-jeu').checked = reglages.couleurs_en_jeu;
   $('#priorite-basse').checked = reglages.priorite_basse;
@@ -4298,6 +4299,41 @@ function ouvrirAssistant() {
   afficherAssistant();
 }
 $('#btn-assistant').addEventListener('click', ouvrirAssistant);
+
+// Compte Ubisoft des rangs : les identifiants partent dans le Gestionnaire d'identification de Windows, jamais ici
+function afficherUbisoft() {
+  const pseudo = reglages.ubisoft_pseudo;
+  $('#ubisoft-connecte').hidden = !pseudo;
+  $('#ubisoft-formulaire').hidden = !!pseudo;
+  $('#ubisoft-etat').textContent = pseudo
+    ? `Connecté avec ${pseudo} : rang, pic, niveau et KD dans le tableau Ctrl+X.`
+    : 'Rang, pic, niveau et KD dans le tableau Ctrl+X. Un compte Ubisoft secondaire sans double authentification suffit.';
+}
+
+$('#btn-ubisoft-connecter').addEventListener('click', async (e) => {
+  const email = $('#ubisoft-email').value.trim(), motDePasse = $('#ubisoft-mdp').value;
+  if (!email || !motDePasse) return toast('E-mail et mot de passe du compte Ubisoft.');
+  e.target.disabled = true;
+  try {
+    const pseudo = await invoke('ubisoft_connecter', { email, motDePasse });
+    reglages.ubisoft_pseudo = pseudo || 'Compte Ubisoft';
+    $('#ubisoft-mdp').value = '';
+    toast(`Connecté à Ubisoft${pseudo ? ' : ' + pseudo : ''}`);
+  } catch (err) {
+    toast(String(err), 7000);
+  } finally {
+    e.target.disabled = false;
+    afficherUbisoft();
+  }
+});
+$('#ubisoft-mdp').addEventListener('keydown', (e) => e.key === 'Enter' && $('#btn-ubisoft-connecter').click());
+
+$('#btn-ubisoft-deconnecter').addEventListener('click', async () => {
+  await invoke('ubisoft_deconnecter');
+  reglages.ubisoft_pseudo = null;
+  afficherUbisoft();
+  toast('Compte Ubisoft déconnecté');
+});
 
 $('#assistant-etape').addEventListener('click', (e) => {
   const b = e.target.closest('.choix-carte');
