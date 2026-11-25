@@ -62,7 +62,10 @@ pub struct Etat {
     /// Touche de sauvegarde des clips (raccourci global)
     pub raccourci: Mutex<Option<crate::raccourci::Raccourci>>,
     /// Dégâts de la dernière manche de R6 (fenêtre de fin de manche)
-    pub degats: Mutex<Option<crate::degats_r6::Bilan>>,
+    /// Dégâts des manches de R6 lues depuis le lancement (fenêtre de fin de manche : la dernière et celles d'avant)
+    pub degats: Mutex<Vec<crate::degats_r6::Bilan>>,
+    /// Coups de chaque tireur (« pseudo|opérateur ») dans les manches déjà lues : dégât de base pour les zones touchées
+    pub degats_historique: Mutex<std::collections::HashMap<String, Vec<u32>>>,
 }
 
 #[derive(Serialize, Clone)]
@@ -553,15 +556,26 @@ fn surveiller_replays(app: &AppHandle, etat: &Etat, pid: u32) {
             // Dégâts de la manche : calculés à part (moins d'une seconde) pour ne pas retarder le clip
             if degats {
                 let (app, manche, nom) = (app.clone(), manche.clone(), nom.clone());
+                let partie = fichier.parent().and_then(|d| d.file_name()).map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
                 let _ = thread::Builder::new().name("degats".into()).spawn(move || {
                     let etat = app.state::<Arc<Etat>>();
                     let debut = Instant::now();
-                    match crate::degats_r6::bilan(&flux, &manche) {
-                        Some(b) => {
+                    let bilan = crate::degats_r6::bilan(&flux, &manche, &mut etat.degats_historique.lock().unwrap());
+                    match bilan {
+                        Some(mut b) => {
+                            b.partie = partie;
                             let inconnus: u32 = b.coups.iter().filter(|c| c.tireur.is_none()).map(|c| c.degats).sum();
                             let total: u32 = b.coups.iter().map(|c| c.degats).sum();
                             crate::clips::noter(&etat.stock, &format!("{nom} : dégâts lus en {:.1} s ({} coups, {inconnus}/{total} PV sans tireur)", debut.elapsed().as_secs_f64(), b.coups.len()));
-                            *etat.degats.lock().unwrap() = Some(b);
+                            {
+                                let mut liste = etat.degats.lock().unwrap();
+                                liste.retain(|x| !(x.partie == b.partie && x.manche == b.manche));
+                                liste.push(b);
+                                // Les 40 dernières manches au plus (une partie dépasse rarement 12 manches)
+                                while liste.len() > 40 {
+                                    liste.remove(0);
+                                }
+                            }
                             let _ = app.emit("degats", ());
                             if etat.stock.donnees.lock().unwrap().reglages.degats_fin_manche {
                                 crate::fenetres::ouvrir_degats(&app);

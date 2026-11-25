@@ -503,10 +503,21 @@ fn autoriser_dossiers_clips(app: &AppHandle) {
     }
 }
 
-/// Dégâts de la dernière manche de R6 (lus par la fenêtre de fin de manche)
+/// Dégâts des manches de la dernière partie de R6, dans l'ordre (lus par la fenêtre de fin de manche)
 #[tauri::command]
-fn degats_derniere(app: AppHandle) -> Option<degats_r6::Bilan> {
-    etat(&app).degats.lock().unwrap().clone()
+fn degats_manches(app: AppHandle) -> Vec<degats_r6::Bilan> {
+    let e = etat(&app);
+    let liste = e.degats.lock().unwrap();
+    let Some(derniere) = liste.last() else { return vec![] };
+    let mut manches: Vec<_> = liste.iter().filter(|b| b.partie == derniere.partie).cloned().collect();
+    manches.sort_by_key(|b| b.manche);
+    manches
+}
+
+/// La fenêtre des dégâts reste ouverte plus longtemps (clic sur une de ses pages)
+#[tauri::command]
+fn degats_garder(app: AppHandle) {
+    fenetres::garder_degats(&app);
 }
 
 /// Fenêtre Windows de choix d'un dossier (le chemin choisi est seulement renvoyé, pas encore gardé)
@@ -942,7 +953,8 @@ fn main() {
                 fps_live: Arc::new(Mutex::new(None)),
                 presentmon,
                 raccourci: Mutex::new(None),
-                degats: Mutex::new(None),
+                degats: Mutex::new(Vec::new()),
+                degats_historique: Mutex::new(Default::default()),
             });
             // L'app a été coupée en pleine partie : on remet le plan d'alimentation d'avant
             jeux::restaurer_plan(&etat);
@@ -1012,7 +1024,8 @@ fn main() {
             clips_ouvrir,
             clips_supprimer,
             clips_parcourir,
-            degats_derniere,
+            degats_manches,
+            degats_garder,
             clips_dossier_regler,
             clips_exporter,
             clips_pistes,

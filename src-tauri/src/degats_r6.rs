@@ -16,6 +16,10 @@ const ID_JOUEUR: &[u8] = &[0xEE, 0xD4, 0x45, 0xC8, 0x08];
 const PV: &[u8] = &[0x00, 0x00, 0x00, 0x00, 0x25, 0x26, 0x76, 0xC9];
 const KILLFEED: &[u8] = &[0x59, 0x34, 0xE5, 0x8B, 0x04];
 const POSITION: &[u8] = &[0x73, 0x85, 0xFE];
+/// État du joueur (4 = mort) et marqueur d'une mort dans la liste des PV
+const ETAT: &[u8] = &[0xE7, 0x88, 0xF6, 0xA5];
+const ETAT_MORT: u8 = 4;
+const MORT: u32 = u32::MAX;
 
 /// Incertitude ajoutée par tick d'ancienneté de la position du tireur (au-delà de 8 ticks), en mètres
 const PENALITE: f32 = 0.03;
@@ -42,10 +46,68 @@ pub struct Coup {
     pub degats: u32,
     /// « feed » (coup final), « visée », « suite » ou « inconnu »
     pub certitude: &'static str,
+    /// Coup final (la victime est tombée à 0)
+    #[serde(rename = "final")]
+    pub final_: bool,
+    /// Répartition estimée des dégâts : tête, corps, bras et jambes (somme = `degats`)
+    pub tete: u32,
+    pub corps: u32,
+    pub membres: u32,
+    /// Nombre de balles estimé dans chaque zone : tête, corps, bras et jambes
+    pub balles: [u32; 3],
+}
+
+/// Bras et jambes : 75 % des dégâts d'un tir au corps
+const MEMBRE: f32 = 0.75;
+/// Coups vus dans un même tick : 1 ou 2 balles, au corps (1) ou aux membres (0,75)
+const BALLES: [(f32, u32, u32); 5] = [(1.0, 1, 0), (MEMBRE, 0, 1), (2.0, 2, 0), (1.0 + MEMBRE, 1, 1), (2.0 * MEMBRE, 0, 2)];
+const TOLERANCE: f32 = 0.06;
+
+/// Décomposition d'un coup en balles au corps et aux membres pour un dégât de base `base`
+fn balles(d: u32, base: f32) -> Option<(u32, u32)> {
+    BALLES.iter().find(|(k, _, _)| ((d as f32) / (base * k) - 1.0).abs() <= TOLERANCE).map(|&(_, c, m)| (c, m))
+}
+
+/// Dégât d'une balle au corps d'un tireur : la valeur qui explique le plus de ses coups (les plus forts à égalité)
+pub fn degat_de_base(coups: &[u32]) -> Option<f32> {
+    let max = *coups.iter().max()? as f32;
+    let mut candidats: Vec<f32> = coups.iter().flat_map(|&d| [d as f32, d as f32 / MEMBRE, d as f32 / 2.0]).filter(|&b| b >= max / 2.05 && b <= max * 1.34).collect();
+    // Croissant : à égalité, max_by_key garde le dernier, donc le plus fort
+    candidats.sort_by(|a, b| a.total_cmp(b));
+    // Le plus de coups expliqués (une balle compte plus que deux balles dans le même tick, plus rares), puis le plus
+    // de coups d'une seule balle au corps (17 et 34 : 17 au corps, pas 22,7 aux membres ; 45 et 60 : 60, pas 30)
+    let score = |b: f32| -> (u32, usize) {
+        let poids = coups.iter().map(|&d| match balles(d, b) {
+            Some((c, m)) if c + m == 1 => 10,
+            Some(_) => 6,
+            None => 0,
+        });
+        (poids.sum(), coups.iter().filter(|&&d| balles(d, b) == Some((1, 0))).count())
+    };
+    candidats.into_iter().max_by_key(|&b| score(b))
+}
+
+/// Répartit un coup entre tête, corps et membres : (dégâts, balles), chacun [tête, corps, membres]
+fn zones(d: u32, base: Option<f32>, final_: bool, tete: bool) -> ([u32; 3], [u32; 3]) {
+    if final_ && tete {
+        return ([d, 0, 0], [1, 0, 0]);
+    }
+    let Some(base) = base else { return ([0, d, 0], [0, 1, 0]) };
+    match balles(d, base) {
+        Some((c, m)) => {
+            let part_corps = (d as f32 * c as f32 / (c as f32 + m as f32 * MEMBRE)).round() as u32;
+            ([0, part_corps, d - part_corps], [0, c, m])
+        }
+        // Coup final rogné par les PV restants, ou dégâts réduits par la distance : au plus proche
+        None if final_ || d as f32 >= base * (1.0 + MEMBRE) / 2.0 => ([0, d, 0], [0, 1, 0]),
+        None => ([0, 0, d], [0, 0, 1]),
+    }
 }
 
 #[derive(Serialize, Clone, Debug, Default)]
 pub struct Bilan {
+    /// Partie (dossier du match dans « MatchReplay ») : les manches d'une même partie vont ensemble
+    pub partie: String,
     pub map: Option<String>,
     pub manche: u32,
     pub moi: Option<String>,
@@ -248,7 +310,9 @@ fn etat(points: &[Point], t: u32) -> Option<Point> {
 }
 
 /// Bilan des dégâts d'une manche, d'après le flux décompressé du replay et la manche déjà lue
-pub fn bilan(donnees: &[u8], m: &crate::replays_r6::Manche) -> Option<Bilan> {
+/// `historique` : coups non finaux des manches précédentes par « pseudo|opérateur » (complété ici), pour trouver
+/// le dégât de base de chaque tireur
+pub fn bilan(donnees: &[u8], m: &crate::replays_r6::Manche, historique: &mut HashMap<String, Vec<u32>>) -> Option<Bilan> {
     let f = Flux::ouvrir(donnees)?;
     let b = f.b;
     let tr = traces(&f);
@@ -327,7 +391,40 @@ pub fn bilan(donnees: &[u8], m: &crate::replays_r6::Manche) -> Option<Bilan> {
             }
         }
     }
-    maj.sort_by_key(|x| x.0);
+    // Mort sans passage des PV à 0 (tué d'une balle, souvent à la tête) : seul l'état du joueur passe à 4.
+    // Les PV restants deviennent alors le coup final.
+    let pv_objets: Vec<u32> = acteurs.iter().filter_map(|a| a.pv_obj).collect();
+    let debut_evenements = f.sections.get(1).map_or(f.debut, |s| s.0);
+    let mut p = trouver(b, &[0x00, 0x00, 0x00, 0x00], debut_evenements, b.len()).map(|_| debut_evenements);
+    while let Some(i) = p {
+        p = trouver(b, &[0x23], i + 1, b.len());
+        if b.get(i) != Some(&0x23) || b.get(i + 4) != Some(&0xF0) || b.get(i + 5..i + 9) != Some(&[0, 0, 0, 0]) {
+            continue;
+        }
+        let obj = u32_a(b, i + 1).unwrap_or(0);
+        if !pv_objets.contains(&obj) {
+            continue;
+        }
+        // Champs de l'objet : `champ:u32 taille:u8 valeur`, enchaînés par `22`
+        let mut q = i + 9;
+        while let (Some(champ), Some(&n)) = (b.get(q..q + 4), b.get(q + 4)) {
+            if n > 16 {
+                break;
+            }
+            if champ == ETAT && b.get(q + 5) == Some(&ETAT_MORT) {
+                if let Some(t) = f.tick(i) {
+                    maj.push((t, obj, MORT));
+                }
+            }
+            q += 5 + n as usize;
+            if b.get(q) != Some(&0x22) {
+                break;
+            }
+            q += 1;
+        }
+    }
+    // Dans un même tick, les PV avant l'état
+    maj.sort_by_key(|x| (x.0, x.2 == MORT));
 
     // Killfeed daté : premier kill de chaque victime
     let mut feed: Vec<(u32, String, String)> = Vec::new();
@@ -357,13 +454,15 @@ pub fn bilan(donnees: &[u8], m: &crate::replays_r6::Manche) -> Option<Bilan> {
     let mut mort_t: HashMap<String, u32> = HashMap::new();
     let mut coups: Vec<(u32, Coup)> = Vec::new();
     for (t, obj, v) in maj {
+        let v = if v == MORT { 0 } else { v };
         let Some(vi) = acteurs.iter().position(|a| a.pv_obj == Some(obj)) else { continue };
         let victime = &acteurs[vi];
         let Some(avant) = prec.insert(obj, v).or(victime.pv_depart) else { continue };
         if v >= avant {
             continue;
         }
-        let tueur_feed = feed.iter().find(|x| x.2 == victime.pseudo && x.0 + 5 >= t && x.0 < t + 400).map(|x| x.1.clone());
+        let kill = feed.iter().find(|x| x.2 == victime.pseudo && x.0 + 5 >= t && x.0 < t + 400);
+        let tueur_feed = kill.map(|x| x.1.clone());
         // Ennemis vivants (ou morts depuis moins de 20 ticks) qui visaient la victime : (score, écart latéral, pseudo)
         let mut cands: Vec<(f32, f32, &str)> = Vec::new();
         if let Some(cible) = etat(points(victime), t) {
@@ -398,6 +497,9 @@ pub fn bilan(donnees: &[u8], m: &crate::replays_r6::Manche) -> Option<Bilan> {
             (Some(alignes[0].2.to_string()), "visée")
         } else if let Some((_, c)) = coups.iter().rev().find(|(tc, c)| c.victime == victime.pseudo && c.tireur.is_some() && t - tc <= 60) {
             (c.tireur.clone(), "suite")
+        } else if let Some(k) = kill.filter(|k| k.0 <= t + 90) {
+            // Achevée dans les 3 s par le même joueur
+            (Some(k.1.clone()), "suite")
         } else {
             (None, "inconnu")
         };
@@ -405,10 +507,28 @@ pub fn bilan(donnees: &[u8], m: &crate::replays_r6::Manche) -> Option<Bilan> {
         if v == 0 {
             mort_t.insert(victime_nom.clone(), t);
         }
-        coups.push((t, Coup { tireur, victime: victime_nom, degats: avant - v, certitude }));
+        coups.push((t, Coup { tireur, victime: victime_nom, degats: avant - v, certitude, final_: v == 0, tete: 0, corps: 0, membres: 0, balles: [0; 3] }));
     }
 
-    let coups: Vec<Coup> = coups.into_iter().map(|(_, c)| c).collect();
+    let mut coups: Vec<Coup> = coups.into_iter().map(|(_, c)| c).collect();
+
+    // Zones touchées : la tête vient du killfeed (coup final), le corps et les membres du rapport au dégât de base
+    let cle = |pseudo: &str| format!("{pseudo}|{}", m.joueurs.iter().find(|j| j.pseudo == pseudo).map_or(0, |j| j.operateur_id));
+    for c in coups.iter().filter(|c| !c.final_ && c.degats > 3) {
+        if let Some(t) = &c.tireur {
+            let h = historique.entry(cle(t)).or_default();
+            h.push(c.degats);
+            if h.len() > 80 {
+                h.remove(0);
+            }
+        }
+    }
+    for c in coups.iter_mut() {
+        let base = c.tireur.as_deref().and_then(|t| historique.get(&cle(t))).and_then(|h| degat_de_base(h));
+        let tete = m.kills.iter().any(|k| k.victime == c.victime && k.headshot && Some(&k.tueur) == c.tireur.as_ref());
+        let ([t, co, me], n) = zones(c.degats, base, c.final_, tete);
+        (c.tete, c.corps, c.membres, c.balles) = (t, co, me, n);
+    }
     let joueurs = acteurs
         .iter()
         .map(|a| JoueurDegats {
@@ -421,5 +541,31 @@ pub fn bilan(donnees: &[u8], m: &crate::replays_r6::Manche) -> Option<Bilan> {
             mort: m.kills.iter().any(|k| k.victime == a.pseudo) || mort_t.contains_key(&a.pseudo),
         })
         .collect();
-    Some(Bilan { map: m.map.clone(), manche: m.manche, moi: m.moi.clone(), joueurs, coups })
+    Some(Bilan { partie: String::new(), map: m.map.clone(), manche: m.manche, moi: m.moi.clone(), joueurs, coups })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn degat_de_base_et_zones() {
+        // Tachanka : 60 au corps, 45 aux membres
+        assert_eq!(degat_de_base(&[45, 45, 60, 45]), Some(60.0));
+        // 45, 45, 60, 29 : pas 30 (qui ferait de chaque 45 deux balles aux membres)
+        assert_eq!(degat_de_base(&[45, 45, 60, 29]), Some(60.0));
+        // Deux balles dans le même tick comptées ensemble : 34 = 2 × 17
+        assert_eq!(degat_de_base(&[17, 17, 34, 34, 34]), Some(17.0));
+        // À égalité : le plus fort
+        assert_eq!(degat_de_base(&[48, 60]), Some(60.0));
+        assert_eq!(zones(45, Some(60.0), false, false), ([0, 0, 45], [0, 0, 1]));
+        assert_eq!(zones(60, Some(60.0), false, false), ([0, 60, 0], [0, 1, 0]));
+        assert_eq!(zones(105, Some(60.0), false, false), ([0, 60, 45], [0, 1, 1]));
+        assert_eq!(zones(120, Some(60.0), false, false), ([0, 120, 0], [0, 2, 0]));
+        // Coup final : tête si le killfeed le dit, sinon rogné par les PV restants → corps
+        assert_eq!(zones(17, Some(60.0), true, true), ([17, 0, 0], [1, 0, 0]));
+        assert_eq!(zones(17, Some(60.0), true, false), ([0, 17, 0], [0, 1, 0]));
+        // Tireur inconnu du dégât de base : corps
+        assert_eq!(zones(30, None, false, false), ([0, 30, 0], [0, 1, 0]));
+    }
 }

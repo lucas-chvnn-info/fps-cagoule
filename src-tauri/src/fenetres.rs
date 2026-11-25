@@ -62,14 +62,14 @@ pub fn ouvrir_overlay(app: &AppHandle) {
 
 /// Change à chaque nouvelle manche : seule la dernière fenêtre ouverte se referme à son heure
 static GENERATION_DEGATS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-const DEGATS_TAILLE: (f64, f64) = (342.0, 470.0);
-const DEGATS_DUREE: std::time::Duration = std::time::Duration::from_secs(15);
+const DEGATS_TAILLE: (f64, f64) = (442.0, 470.0);
+const DEGATS_DUREE: std::time::Duration = std::time::Duration::from_secs(20);
+/// Après un clic : encore 25 s
+const DEGATS_GARDEE: std::time::Duration = std::time::Duration::from_secs(25);
 
-/// Dégâts de la manche, à gauche au milieu de l'écran pendant 15 s. Jamais activée (le jeu garde le clavier
-/// et ne se réduit pas), les clics la traversent.
+/// Dégâts de la manche, à gauche au milieu de l'écran pendant 20 s. Jamais activée, même quand on clique
+/// sur ses boutons (le jeu garde le clavier et ne se réduit pas).
 pub fn ouvrir_degats(app: &AppHandle) {
-    use std::sync::atomic::Ordering;
-    let generation = GENERATION_DEGATS.fetch_add(1, Ordering::SeqCst) + 1;
     // Déjà ouverte : elle se met à jour seule (signal « degats » envoyé avec le nouveau bilan)
     if app.get_webview_window("degats").is_none() {
         let app2 = app.clone();
@@ -96,14 +96,24 @@ pub fn ouvrir_degats(app: &AppHandle) {
                 .visible(false)
                 .build();
             if let Ok(f) = f {
-                let _ = f.set_ignore_cursor_events(true);
                 afficher_sans_activer(&f);
             }
         });
     }
+    fermer_degats_dans(app, DEGATS_DUREE);
+}
+
+pub fn garder_degats(app: &AppHandle) {
+    fermer_degats_dans(app, DEGATS_GARDEE);
+}
+
+/// Ferme la fenêtre des dégâts après `duree`, sauf si elle a été rouverte ou gardée entre-temps
+fn fermer_degats_dans(app: &AppHandle, duree: std::time::Duration) {
+    use std::sync::atomic::Ordering;
+    let generation = GENERATION_DEGATS.fetch_add(1, Ordering::SeqCst) + 1;
     let app3 = app.clone();
     let _ = std::thread::Builder::new().name("degats-fermeture".into()).spawn(move || {
-        std::thread::sleep(DEGATS_DUREE);
+        std::thread::sleep(duree);
         if GENERATION_DEGATS.load(Ordering::SeqCst) == generation {
             if let Some(f) = app3.get_webview_window("degats") {
                 let _ = f.destroy();

@@ -4485,7 +4485,7 @@ const ICONES_NOUVEAUTES = {
 
 const NOUVEAUTES = {
   '0.30.0': [
-    { icone: 'courbe', titre: 'Dégâts de la manche', texte: 'À la fin de chaque manche de Rainbow Six, une fenêtre montre les dégâts de chaque joueur et ceux que tu as mis à chaque ennemi.' },
+    { icone: 'courbe', titre: 'Dégâts de la manche', texte: 'À la fin de chaque manche de Rainbow Six : tes dégâts, tes duels (balles à la tête, au corps, aux bras et jambes), les dégâts donnés et reçus de chacun, et les manches d\'avant.' },
   ],
   '0.29.1': [
     { icone: 'courbe', titre: 'Tes semaines de jeu', texte: 'Parcours tes semaines du lundi au dimanche avec les flèches, et survole un jour pour voir ton temps de jeu.' },
