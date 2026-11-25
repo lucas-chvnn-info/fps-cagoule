@@ -243,7 +243,7 @@ fn serveur(base: &str, chemin: &str) -> Result<Value, String> {
     let script = format!(
         r#"[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 try {{
-  Invoke-RestMethod -UseBasicParsing -TimeoutSec 25 -Uri {} -Headers @{{ 'X-FPS-Cagoule' = '1' }} | ConvertTo-Json -Compress -Depth 8
+  Invoke-RestMethod -UseBasicParsing -TimeoutSec 180 -Uri {} -Headers @{{ 'X-FPS-Cagoule' = '1' }} | ConvertTo-Json -Compress -Depth 8
 }} catch {{
   $code = 0; try {{ $code = [int]$_.Exception.Response.StatusCode }} catch {{}}
   @{{ erreur_serveur = $code }} | ConvertTo-Json -Compress

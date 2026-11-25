@@ -37,12 +37,24 @@ setInterval(() => {
 // --- Arenyze ---
 let pauseJusqua = 0; // après un 429 : on attend ce que demande Arenyze
 
+// Premier chargement d'un joueur chez Arenyze : 503 le temps qu'ils le récupèrent, puis ça passe
 async function profilArenyze(pseudo) {
+  try {
+    return await profilArenyzeUneFois(pseudo);
+  } catch (e) {
+    if (!/ 503$/.test(e.message)) throw e;
+    await new Promise((r) => setTimeout(r, 4000));
+    return profilArenyzeUneFois(pseudo);
+  }
+}
+
+async function profilArenyzeUneFois(pseudo) {
   if (!CLE) throw new Error('Clé Arenyze non configurée');
   if (Date.now() < pauseJusqua) throw new Error('Quota Arenyze atteint, réessaie plus tard');
   const r = await fetch(`${API}/v2/profile?nameOnPlatform=${encodeURIComponent(pseudo)}&platformType=uplay`, {
     headers: { 'api-key': CLE },
-    signal: AbortSignal.timeout(20e3),
+    // Le premier chargement d'un joueur chez Arenyze peut prendre plusieurs dizaines de secondes
+    signal: AbortSignal.timeout(60e3),
   });
   if (r.status === 429) {
     pauseJusqua = Date.now() + (Number(r.headers.get('retry-after')) || 60) * 1000;
@@ -54,26 +66,53 @@ async function profilArenyze(pseudo) {
 }
 
 // --- Stats ---
+// Rang d'après les points : 100 points par division, Cuivre 5 à 1 000 ; Champion à 4 500 (en 5 divisions depuis le
+// Ranked 3.0, saison 42). Vérifié sur l'historique d'Arenyze (Diamant 4 = 4 100 à 4 199, Émeraude 1 = 3 900 à 3 999).
+function rangDesPoints(rp, saison) {
+  if (!rp || rp < 1000) return 0;
+  return Math.min(saison >= 42 ? RANG_MAX : 36, Math.floor((rp - 1000) / 100) + 1);
+}
+
+// Tableaux de la saison en cours (format full_profiles d'Ubisoft, tel que renvoyé par Arenyze)
 function lireRangs(v) {
   const out = {}, rapide = {};
-  for (const t of v?.platform_families_full_profiles?.[0]?.board_ids_full_profiles || []) {
-    if (t.board_id !== 'ranked' && t.board_id !== 'standard') continue;
-    for (const fp of t.full_profiles || []) {
-      const id = String(fp.profile?.id || '').toLowerCase();
-      if (!id) continue;
-      const st = fp.season_statistics || {}, mo = st.match_outcomes || {};
-      const s = {
-        rang: Math.min(RANG_MAX, fp.profile.rank || 0), points: fp.profile.rank_points || 0, pic_saison: Math.min(RANG_MAX, fp.profile.max_rank || 0),
-        pic_general: 0, niveau: null, kills: st.kills || 0, morts: st.deaths || 0, victoires: mo.wins || 0, defaites: mo.losses || 0,
-        abandons: mo.abandons || 0, classe: t.board_id === 'ranked', saison: fp.profile.season_id || 0,
-      };
-      (t.board_id === 'ranked' ? out : rapide)[id] = s;
+  for (const famille of v?.platform_families_full_profiles || []) {
+    for (const t of famille.board_ids_full_profiles || []) {
+      if (t.board_id !== 'ranked' && t.board_id !== 'standard') continue;
+      for (const fp of t.full_profiles || []) {
+        const id = String(fp.profile?.id || famille.profile_id || '').toLowerCase();
+        if (!id) continue;
+        const st = fp.season_statistics || {}, mo = st.match_outcomes || {}, p = fp.profile || {};
+        const s = {
+          rang: Math.min(RANG_MAX, p.rank || 0), points: p.rank_points || 0, pic_saison: Math.min(RANG_MAX, p.max_rank || 0),
+          pic_general: 0, niveau: null, kills: st.kills || 0, morts: st.deaths || 0, victoires: mo.wins || 0, defaites: mo.losses || 0,
+          abandons: mo.abandons || 0, classe: t.board_id === 'ranked', saison: fp.season_id || p.season_id || 0,
+        };
+        (t.board_id === 'ranked' ? out : rapide)[id] = s;
+      }
     }
   }
   // Aucune partie classée cette saison : KD et victoires de la partie rapide
   for (const [id, r] of Object.entries(rapide)) {
     const s = (out[id] ||= { ...r });
     if (!(s.victoires + s.defaites + s.abandons)) Object.assign(s, { kills: r.kills, morts: r.morts, victoires: r.victoires, defaites: r.defaites, abandons: r.abandons, classe: false });
+  }
+  return out;
+}
+
+// Saisons classées passées (segments d'Arenyze) : rang et pic d'après les points de chaque saison
+function lireSaisons(v) {
+  const out = {};
+  for (const seg of v?.seasons?.data?.segments || []) {
+    const a = seg.attributes || {}, st = seg.stats || {};
+    if (seg.type !== 'season' || a.gamemode !== 'pvp_ranked' || !a.season) continue;
+    const n = (k) => Number(st[k]?.value) || 0;
+    const joues = n('matchesPlayed');
+    out[a.season] = {
+      rang: rangDesPoints(n('rankPoints'), a.season), points: n('rankPoints'), pic_saison: rangDesPoints(n('maxRankPoints'), a.season), pic_general: 0,
+      niveau: null, kills: n('kills'), morts: n('deaths'), victoires: n('matchesWon'), defaites: n('matchesLost'),
+      abandons: Math.max(0, joues - n('matchesWon') - n('matchesLost')), classe: true, saison: a.season,
+    };
   }
   return out;
 }
@@ -85,13 +124,19 @@ function depuisProfil(v, profil) {
   const rangs = lireRangs(v?.stats);
   const s = rangs[profil] || Object.values(rangs)[0] || null;
   if (s && Number(v?.account?.level)) s.niveau = Number(v.account.level);
+  // Saisons passées d'Arenyze (la saison en cours vient des tableaux, plus à jour)
+  const passees = lireSaisons(v);
+  if (Object.keys(passees).length) {
+    saisons[profil] = { ...(saisons[profil] || {}), ...passees };
+    aSauver = true;
+  }
   return s;
 }
 
 async function stats(joueurs) {
-  // Un à un : Arenyze limite à 30 appels par minute
-  for (const [profil, pseudo] of joueurs) {
-    if (cache.get(profil)?.quand > Date.now() - DUREE_CACHE) continue;
+  // 4 à la fois : Arenyze limite à 30 appels par minute, et un premier chargement est lent
+  const aCharger = joueurs.filter(([profil]) => !(cache.get(profil)?.quand > Date.now() - DUREE_CACHE));
+  const charger = async ([profil, pseudo]) => {
     const v = await profilArenyze(pseudo);
     const s = v ? depuisProfil(v, profil) : null;
     if (s && s.saison) {
@@ -99,6 +144,11 @@ async function stats(joueurs) {
       aSauver = true;
     }
     cache.set(profil, { quand: Date.now(), stats: s });
+  };
+  for (let i = 0; i < aCharger.length; i += 4) {
+    const res = await Promise.allSettled(aCharger.slice(i, i + 4).map(charger));
+    const echec = res.find((r) => r.status === 'rejected');
+    if (echec && /Quota|Clé/.test(echec.reason?.message || '')) throw echec.reason;
   }
   const out = {};
   for (const [p] of joueurs) {
@@ -111,12 +161,13 @@ async function stats(joueurs) {
 
 async function chercher(pseudo) {
   const v = await profilArenyze(pseudo);
-  const fp = v?.stats?.platform_families_full_profiles?.[0]?.board_ids_full_profiles?.flatMap((t) => t.full_profiles || []) || [];
-  const id = String(fp.find((x) => x.profile?.id)?.profile?.id || '').toLowerCase();
+  // Identifiant : au niveau de la famille de plateformes, sinon dans les profils du compte
+  const compte = (v?.account?.profiles || []).find((p) => p.platformType === 'uplay');
+  const id = String(v?.stats?.platform_families_full_profiles?.[0]?.profile_id || compte?.profileId || '').toLowerCase();
   if (!PROFIL.test(id)) return [];
   const s = depuisProfil(v, id);
   if (s) cache.set(id, { quand: Date.now(), stats: s });
-  return [[id, v.player?.nameOnPlatform || pseudo]];
+  return [[id, compte?.nameOnPlatform || v.player?.nameOnPlatform || pseudo]];
 }
 
 // --- Limite : 60 demandes par minute et par adresse ---
