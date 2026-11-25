@@ -4486,6 +4486,9 @@ const NOUVEAUTES = {
   '0.29.1': [
     { icone: 'courbe', titre: 'Tes semaines de jeu', texte: 'Parcours tes semaines du lundi au dimanche avec les flèches, et survole un jour pour voir ton temps de jeu.' },
   ],
+  '0.29.3': [
+    { icone: 'clips', titre: 'Calypso Casino', texte: 'Tes clips sur Calypso Casino portent enfin le bon nom de carte.' },
+  ],
   '0.29.0': [
     { icone: 'courbe', titre: 'Tableau de bord', texte: 'Ta dernière partie, ta semaine de jeu, tes derniers clips et la santé de ton PC, d\'un coup d\'œil.' },
   ],
