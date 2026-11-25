@@ -232,6 +232,67 @@ pub fn stats(profils: &[String]) -> Result<HashMap<String, StatsUbi>, String> {
     Ok(out)
 }
 
+// --- Serveur FPS Cagoule (r6-api) : un compte Ubisoft gardé sur le serveur, rien à configurer dans l'app ---
+
+/// Requête GET au serveur des stats (pas de secret : rien ne passe par l'entrée standard)
+fn serveur(base: &str, chemin: &str) -> Result<Value, String> {
+    let url = format!("{}{chemin}", base.trim_end_matches('/'));
+    if !url.starts_with("https://") {
+        return Err("Adresse du serveur des stats invalide.".into());
+    }
+    let script = format!(
+        r#"[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+try {{
+  Invoke-RestMethod -UseBasicParsing -TimeoutSec 25 -Uri {} -Headers @{{ 'X-FPS-Cagoule' = '1' }} | ConvertTo-Json -Compress -Depth 8
+}} catch {{
+  $code = 0; try {{ $code = [int]$_.Exception.Response.StatusCode }} catch {{}}
+  @{{ erreur_serveur = $code }} | ConvertTo-Json -Compress
+}}"#,
+        crate::ps::chaine(&url)
+    );
+    let texte = crate::ps::executer(&script)?;
+    let v: Value = serde_json::from_str(if texte.is_empty() { "null" } else { &texte }).map_err(|_| "Réponse du serveur des stats illisible".to_string())?;
+    match v.get("erreur_serveur").and_then(Value::as_i64) {
+        Some(429) => Err("Serveur des stats : trop de demandes, réessaie dans une minute.".into()),
+        Some(0) => Err("Serveur des stats injoignable.".into()),
+        Some(c) => Err(format!("Serveur des stats : erreur {c}.")),
+        None => Ok(v),
+    }
+}
+
+/// Stats de profils via le serveur (20 par requête)
+pub fn stats_serveur(base: &str, profils: &[String]) -> Result<HashMap<String, Option<StatsUbi>>, String> {
+    let mut out = HashMap::new();
+    let valides: Vec<String> = profils.iter().filter(|p| !p.is_empty() && !p.starts_with("pseudo:")).map(|p| p.to_lowercase()).collect();
+    for paquet in valides.chunks(20) {
+        let v = serveur(base, &format!("/v1/stats?profils={}", paquet.join(",")))?;
+        for p in paquet {
+            out.insert(p.clone(), v.get(p).and_then(|s| serde_json::from_value(s.clone()).ok()));
+        }
+    }
+    Ok(out)
+}
+
+pub fn chercher_serveur(base: &str, pseudo: &str) -> Result<Vec<(String, String)>, String> {
+    let encode: String = pseudo.trim().bytes().map(|o| if o.is_ascii_alphanumeric() || b"-_.~".contains(&o) { (o as char).to_string() } else { format!("%{o:02X}") }).collect();
+    let v = serveur(base, &format!("/v1/chercher?pseudo={encode}"))?;
+    // ConvertTo-Json transforme un tableau d'un seul élément en objet : on accepte les deux formes
+    let liste: Vec<Value> = match v {
+        Value::Array(a) if a.first().is_some_and(|x| x.is_string()) => vec![Value::Array(a)],
+        Value::Array(a) => a,
+        _ => vec![],
+    };
+    Ok(liste.into_iter().filter_map(|x| Some((x.get(0)?.as_str()?.to_string(), x.get(1)?.as_str()?.to_string()))).collect())
+}
+
+pub fn saisons_serveur(base: &str, profil: &str) -> Vec<StatsUbi> {
+    match serveur(base, &format!("/v1/saisons?profil={}", profil.to_lowercase())) {
+        Ok(Value::Array(a)) => a.into_iter().filter_map(|x| serde_json::from_value(x).ok()).collect(),
+        Ok(v @ Value::Object(_)) => serde_json::from_value(v).ok().into_iter().collect(),
+        _ => vec![],
+    }
+}
+
 /// Comptes Ubisoft (PC) dont le pseudo est exactement `pseudo` : (profil, pseudo)
 pub fn chercher(pseudo: &str) -> Result<Vec<(String, String)>, String> {
     let pseudo = pseudo.trim();

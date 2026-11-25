@@ -124,7 +124,7 @@ function rendre({ manches, rencontres, ubisoft = {}, ubisoft_connecte: ubiOk = f
     ${equipe(1 - monEquipe, 'eux', b.eux)}
     <div class="pied">D'après les replays de la partie : mis à jour à chaque fin de manche.${ubiOk
       ? ' Rang, KD et victoires : saison en cours (Ubisoft). Pic : meilleur rang vu par FPS Cagoule.'
-      : ' Connecte un compte Ubisoft dans les Réglages pour les rangs.'}</div>`;
+      : ' Tracker désactivé : rangs masqués (Rainbow Six → Réglages).'}</div>`;
   cadre.classList.toggle('sans-ubi', !ubiOk);
   cadre.insertAdjacentHTML('beforeend', '<aside id="fiche" class="fiche" hidden></aside>');
   etat = { b, rencontres, ubisoft, ubiOk, cumul };
@@ -172,7 +172,7 @@ async function ouvrirFiche(pseudo) {
     ${s ? `<div class="tuiles">${tuile('Rang', rang(s.rang), s.rang ? `${s.points} points` : '')}${tuile('Pic saison', rang(s.pic_saison))}
       ${tuile('Pic', rang(Math.max(s.pic_general, s.pic_saison)))}${tuile('KD saison', s.morts ? (s.kills / s.morts).toFixed(2) : '–')}
       ${tuile('Victoires', parts ? Math.round((100 * s.victoires) / parts) + ' %' : '–', `${parts} parties`)}${tuile('Cette partie', `${c.k} / ${c.d} / ${c.a}`, `${c.donnes} dégâts`)}</div>`
-      : `<p class="discret">${etat.ubiOk ? 'Stats Ubisoft en chemin…' : 'Connecte un compte Ubisoft dans FPS Cagoule pour ses rangs.'}</p>`}
+      : `<p class="discret">${etat.ubiOk ? 'Stats Ubisoft en chemin…' : 'Tracker désactivé dans FPS Cagoule.'}</p>`}
     <h4>Vos parties</h4><div id="fiche-parties" class="discret">…</div>
     <small class="fiche-aide">↑ ↓ pour changer de joueur · Entrée pour fermer</small>`;
   const parties = j.profil ? await invoke('r6_parties', { profil: j.profil }).catch(() => []) : [];

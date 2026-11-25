@@ -539,10 +539,7 @@ fn degats_manches(app: AppHandle) -> DegatsPartie {
         })
         .collect();
     // Stats Ubisoft (déjà en cache ; les manquantes sont demandées en arrière-plan)
-    let ubisoft_connecte = {
-        let r = &e.stock.donnees.lock().unwrap().reglages;
-        r.ubisoft_pseudo.is_some() && r.tracker_r6
-    };
+    let ubisoft_connecte = e.stock.donnees.lock().unwrap().reglages.tracker_r6;
     let mut ubisoft = std::collections::HashMap::new();
     if ubisoft_connecte {
         let profils: Vec<(String, String)> = manches.iter().flat_map(|b| &b.joueurs).map(|j| (j.pseudo.clone(), j.profil.to_lowercase())).collect();
@@ -572,46 +569,42 @@ fn r6_parties(app: AppHandle, profil: String) -> Vec<rencontres::PartieVue> {
 /// Stats Ubisoft de profils (cache de 20 min) ; None = rien reçu (nom caché…)
 #[tauri::command(async)]
 fn r6_stats(app: AppHandle, profils: Vec<String>) -> Res<std::collections::HashMap<String, Option<ubisoft::StatsUbi>>> {
-    let e = etat(&app);
-    {
-        let r = &e.stock.donnees.lock().unwrap().reglages;
-        if !r.tracker_r6 {
-            return Err("Le tracker est désactivé.".into());
-        }
-        if r.ubisoft_pseudo.is_none() {
-            return Err("Connecte un compte Ubisoft pour voir les rangs.".into());
-        }
-    }
-    let profils: Vec<String> = profils.into_iter().map(|p| p.to_lowercase()).collect();
-    let manquants: Vec<String> = {
-        let cache = e.ubisoft.lock().unwrap();
-        profils.iter().filter(|p| cache.get(*p).is_none_or(|(t, _)| t.elapsed() > std::time::Duration::from_secs(20 * 60))).cloned().collect()
-    };
-    if !manquants.is_empty() {
-        let mut recues = ubisoft::stats(&manquants)?;
-        ubisoft::pics_generaux(e.stock.dossier(), &mut recues);
-        let mut cache = e.ubisoft.lock().unwrap();
-        for p in &manquants {
-            cache.insert(p.clone(), (std::time::Instant::now(), recues.remove(p)));
-        }
-    }
-    let cache = e.ubisoft.lock().unwrap();
-    Ok(profils.iter().map(|p| (p.clone(), cache.get(p).and_then(|(_, s)| s.clone()))).collect())
+    jeux::stats_ubisoft(&etat(&app), &profils)
 }
 
-/// Saisons gardées par l'app pour un profil (Ubisoft ne donne que la saison en cours)
-#[tauri::command]
+/// Saisons d'un profil : celles du serveur (vues par tous les utilisateurs) et celles gardées sur ce PC
+#[tauri::command(async)]
 fn r6_saisons(app: AppHandle, profil: String) -> Vec<ubisoft::StatsUbi> {
-    ubisoft::saisons(etat(&app).stock.dossier(), &profil)
+    let e = etat(&app);
+    let serveur = {
+        let r = &e.stock.donnees.lock().unwrap().reglages;
+        r.tracker_r6.then(|| r.tracker_serveur.clone())
+    };
+    let mut toutes: std::collections::BTreeMap<u32, ubisoft::StatsUbi> = ubisoft::saisons(e.stock.dossier(), &profil).into_iter().map(|s| (s.saison, s)).collect();
+    if let Some(base) = serveur {
+        for s in ubisoft::saisons_serveur(&base, &profil) {
+            toutes.entry(s.saison).or_insert(s);
+        }
+    }
+    toutes.into_values().rev().collect()
 }
 
-/// Recherche d'un compte Ubisoft par pseudo
+/// Recherche d'un compte Ubisoft par pseudo (compte perso, sinon serveur FPS Cagoule)
 #[tauri::command(async)]
 fn r6_chercher(app: AppHandle, pseudo: String) -> Res<Vec<(String, String)>> {
-    if etat(&app).stock.donnees.lock().unwrap().reglages.ubisoft_pseudo.is_none() {
-        return Err("Connecte un compte Ubisoft pour chercher un joueur.".into());
+    let e = etat(&app);
+    let (actif, perso, serveur) = {
+        let r = &e.stock.donnees.lock().unwrap().reglages;
+        (r.tracker_r6, r.ubisoft_pseudo.is_some(), r.tracker_serveur.clone())
+    };
+    if !actif {
+        return Err("Le tracker est désactivé.".into());
     }
-    ubisoft::chercher(&pseudo)
+    if perso {
+        ubisoft::chercher(&pseudo)
+    } else {
+        ubisoft::chercher_serveur(&serveur, &pseudo)
+    }
 }
 
 /// Connexion du compte Ubisoft des rangs : renvoie son pseudo

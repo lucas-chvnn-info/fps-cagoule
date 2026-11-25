@@ -4308,8 +4308,8 @@ function afficherUbisoft() {
   $('#ubisoft-connecte').hidden = !pseudo;
   $('#ubisoft-formulaire').hidden = !!pseudo;
   $('#ubisoft-etat').textContent = pseudo
-    ? `Connecté avec ${pseudo} : rang, pic, niveau et KD dans le tableau Ctrl+X.`
-    : 'Rang, pic, niveau et KD dans le tableau Ctrl+X. Un compte Ubisoft secondaire sans double authentification suffit.';
+    ? `Ton compte ${pseudo} sert aux stats à la place du serveur FPS Cagoule.`
+    : 'Les rangs viennent du serveur FPS Cagoule : rien à faire. Facultatif : ton propre compte Ubisoft (sans double authentification).';
 }
 
 $('#btn-ubisoft-connecter').addEventListener('click', async (e) => {
@@ -4731,7 +4731,6 @@ async function afficherProfilR6() {
   // Stats Ubisoft
   let stats, note = '';
   if (!reglages.tracker_r6) note = 'Le tracker est désactivé (onglet Réglages).';
-  else if (!reglages.ubisoft_pseudo) note = 'Connecte un compte Ubisoft (onglet Réglages) pour voir les rangs.';
   else {
     profil.hidden = false;
     profil.innerHTML = `<div class="r6-tete"><div><h2>${esc(c.pseudo)}</h2><small class="discret">Chargement des stats…</small></div></div>`;

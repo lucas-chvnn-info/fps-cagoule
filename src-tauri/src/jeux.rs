@@ -78,36 +78,57 @@ pub struct Etat {
     pub ubisoft: Mutex<std::collections::HashMap<String, (Instant, Option<crate::ubisoft::StatsUbi>)>>,
 }
 
-/// Stats Ubisoft des profils pas encore connus (ou vieux de plus de 20 min), en arrière-plan ; « degats » prévient
-/// les fenêtres quand elles arrivent
+/// Stats Ubisoft de profils, depuis le cache (20 min) ou la source : le compte Ubisoft perso s'il y en a un,
+/// sinon le serveur FPS Cagoule. Chaque saison reçue est aussi gardée sur le PC. None = rien reçu (nom caché…).
+pub fn stats_ubisoft(etat: &Etat, profils: &[String]) -> Result<std::collections::HashMap<String, Option<crate::ubisoft::StatsUbi>>, String> {
+    let (actif, perso, serveur) = {
+        let r = &etat.stock.donnees.lock().unwrap().reglages;
+        (r.tracker_r6, r.ubisoft_pseudo.is_some(), r.tracker_serveur.clone())
+    };
+    if !actif {
+        return Err("Le tracker est désactivé.".into());
+    }
+    let profils: Vec<String> = profils.iter().filter(|p| !p.is_empty() && !p.starts_with("pseudo:")).map(|p| p.to_lowercase()).collect();
+    let manquants: Vec<String> = {
+        let cache = etat.ubisoft.lock().unwrap();
+        profils.iter().filter(|p| cache.get(*p).is_none_or(|(t, _)| t.elapsed() > Duration::from_secs(20 * 60))).cloned().collect()
+    };
+    if !manquants.is_empty() {
+        let mut recues: std::collections::HashMap<String, crate::ubisoft::StatsUbi> = if perso {
+            crate::ubisoft::stats(&manquants)?
+        } else {
+            crate::ubisoft::stats_serveur(&serveur, &manquants)?.into_iter().filter_map(|(p, s)| s.map(|s| (p, s))).collect()
+        };
+        crate::ubisoft::pics_generaux(etat.stock.dossier(), &mut recues);
+        let mut cache = etat.ubisoft.lock().unwrap();
+        for p in &manquants {
+            cache.insert(p.clone(), (Instant::now(), recues.remove(p)));
+        }
+    }
+    let cache = etat.ubisoft.lock().unwrap();
+    Ok(profils.iter().map(|p| (p.clone(), cache.get(p).and_then(|(_, s)| s.clone()))).collect())
+}
+
+/// Stats Ubisoft des profils pas encore en cache, en arrière-plan ; « degats » prévient les fenêtres à l'arrivée
 pub fn rafraichir_ubisoft(app: &AppHandle, profils: Vec<String>) {
     use std::sync::atomic::{AtomicBool, Ordering};
     static EN_COURS: AtomicBool = AtomicBool::new(false);
     let etat = app.state::<Arc<Etat>>();
-    {
-        let r = &etat.stock.donnees.lock().unwrap().reglages;
-        if r.ubisoft_pseudo.is_none() || !r.tracker_r6 {
-            return;
-        }
+    if !etat.stock.donnees.lock().unwrap().reglages.tracker_r6 {
+        return;
     }
-    let manquants: Vec<String> = {
+    let manquants = {
         let cache = etat.ubisoft.lock().unwrap();
-        profils.into_iter().filter(|p| !p.is_empty() && !p.starts_with("pseudo:")).map(|p| p.to_lowercase()).filter(|p| cache.get(p).is_none_or(|(t, _)| t.elapsed() > Duration::from_secs(20 * 60))).collect()
+        profils.iter().any(|p| !p.is_empty() && !p.starts_with("pseudo:") && cache.get(&p.to_lowercase()).is_none_or(|(t, _)| t.elapsed() > Duration::from_secs(20 * 60)))
     };
-    if manquants.is_empty() || EN_COURS.swap(true, Ordering::SeqCst) {
+    if !manquants || EN_COURS.swap(true, Ordering::SeqCst) {
         return;
     }
     let app = app.clone();
     let _ = thread::Builder::new().name("ubisoft".into()).spawn(move || {
         let etat = app.state::<Arc<Etat>>();
-        match crate::ubisoft::stats(&manquants) {
-            Ok(mut recues) => {
-                crate::ubisoft::pics_generaux(etat.stock.dossier(), &mut recues);
-                let mut cache = etat.ubisoft.lock().unwrap();
-                for p in &manquants {
-                    cache.insert(p.clone(), (Instant::now(), recues.remove(p)));
-                }
-                drop(cache);
+        match stats_ubisoft(&etat, &profils) {
+            Ok(_) => {
                 let _ = app.emit("degats", ());
             }
             Err(e) => crate::clips::noter(&etat.stock, &format!("Stats Ubisoft : {e}")),
