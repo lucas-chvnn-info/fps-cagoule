@@ -95,7 +95,7 @@ function rendre({ manches, rencontres, ubisoft = {}, ubisoft_connecte: ubiOk = f
     const s = ubisoft[j.pseudo];
     if (s === undefined || s === null) {
       const t = s === undefined ? '…' : '?';
-      return `<div class="v zero">${t}</div><div class="v zero">${t}</div><div class="v zero">${t}</div><div class="v zero">${t}</div><div class="v zero">${t}</div><div class="v zero">${t}</div>`;
+      return `<span class="rang v zero">${t}</span><span class="rang v zero">${t}</span><span class="rang v zero">${t}</span><div class="v zero">${t}</div><div class="v zero">${t}</div><div class="v zero">${t}</div>`;
     }
     const parties = s.victoires + s.defaites + s.abandons;
     const kd = s.morts ? (s.kills / s.morts).toFixed(2) : s.kills ? s.kills.toFixed(2) : '–';
