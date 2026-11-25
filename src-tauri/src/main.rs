@@ -543,7 +543,7 @@ fn degats_manches(app: AppHandle) -> DegatsPartie {
     let mut ubisoft = std::collections::HashMap::new();
     if ubisoft_connecte {
         let profils: Vec<(String, String)> = manches.iter().flat_map(|b| &b.joueurs).map(|j| (j.pseudo.clone(), j.profil.to_lowercase())).collect();
-        jeux::rafraichir_ubisoft(&app, profils.iter().map(|(_, p)| p.clone()).collect());
+        jeux::rafraichir_ubisoft(&app, profils.iter().map(|(n, p)| (p.clone(), n.clone())).collect());
         let cache = e.ubisoft.lock().unwrap();
         for (pseudo, p) in profils {
             if let Some((_, s)) = cache.get(&p) {
@@ -568,8 +568,8 @@ fn r6_parties(app: AppHandle, profil: String) -> Vec<rencontres::PartieVue> {
 
 /// Stats Ubisoft de profils (cache de 20 min) ; None = rien reçu (nom caché…)
 #[tauri::command(async)]
-fn r6_stats(app: AppHandle, profils: Vec<String>) -> Res<std::collections::HashMap<String, Option<ubisoft::StatsUbi>>> {
-    jeux::stats_ubisoft(&etat(&app), &profils)
+fn r6_stats(app: AppHandle, joueurs: Vec<(String, String)>) -> Res<std::collections::HashMap<String, Option<ubisoft::StatsUbi>>> {
+    jeux::stats_ubisoft(&etat(&app), &joueurs)
 }
 
 /// Saisons d'un profil : celles du serveur (vues par tous les utilisateurs) et celles gardées sur ce PC

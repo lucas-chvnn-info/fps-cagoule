@@ -260,13 +260,18 @@ try {{
     }
 }
 
-/// Stats de profils via le serveur (20 par requête)
-pub fn stats_serveur(base: &str, profils: &[String]) -> Result<HashMap<String, Option<StatsUbi>>, String> {
+fn encoder(t: &str) -> String {
+    t.bytes().map(|o| if o.is_ascii_alphanumeric() || b"-_.~".contains(&o) { (o as char).to_string() } else { format!("%{o:02X}") }).collect()
+}
+
+/// Stats de joueurs (profil, pseudo) via le serveur, qui interroge Arenyze par pseudo (20 par requête)
+pub fn stats_serveur(base: &str, joueurs: &[(String, String)]) -> Result<HashMap<String, Option<StatsUbi>>, String> {
     let mut out = HashMap::new();
-    let valides: Vec<String> = profils.iter().filter(|p| !p.is_empty() && !p.starts_with("pseudo:")).map(|p| p.to_lowercase()).collect();
+    let valides: Vec<(String, String)> = joueurs.iter().filter(|(p, n)| !p.is_empty() && !p.starts_with("pseudo:") && !n.is_empty()).map(|(p, n)| (p.to_lowercase(), n.clone())).collect();
     for paquet in valides.chunks(20) {
-        let v = serveur(base, &format!("/v1/stats?profils={}", paquet.join(",")))?;
-        for p in paquet {
+        let liste: Vec<String> = paquet.iter().map(|(p, n)| format!("{p}:{}", encoder(n))).collect();
+        let v = serveur(base, &format!("/v1/stats?joueurs={}", liste.join(",")))?;
+        for (p, _) in paquet {
             out.insert(p.clone(), v.get(p).and_then(|s| serde_json::from_value(s.clone()).ok()));
         }
     }
@@ -274,8 +279,7 @@ pub fn stats_serveur(base: &str, profils: &[String]) -> Result<HashMap<String, O
 }
 
 pub fn chercher_serveur(base: &str, pseudo: &str) -> Result<Vec<(String, String)>, String> {
-    let encode: String = pseudo.trim().bytes().map(|o| if o.is_ascii_alphanumeric() || b"-_.~".contains(&o) { (o as char).to_string() } else { format!("%{o:02X}") }).collect();
-    let v = serveur(base, &format!("/v1/chercher?pseudo={encode}"))?;
+    let v = serveur(base, &format!("/v1/chercher?pseudo={}", encoder(pseudo.trim())))?;
     // ConvertTo-Json transforme un tableau d'un seul élément en objet : on accepte les deux formes
     let liste: Vec<Value> = match v {
         Value::Array(a) if a.first().is_some_and(|x| x.is_string()) => vec![Value::Array(a)],

@@ -4735,7 +4735,7 @@ async function afficherProfilR6() {
     profil.hidden = false;
     profil.innerHTML = `<div class="r6-tete"><div><h2>${esc(c.pseudo)}</h2><small class="discret">Chargement des stats…</small></div></div>`;
     try {
-      stats = (await invoke('r6_stats', { profils: [c.profil] }))[c.profil.toLowerCase()];
+      stats = (await invoke('r6_stats', { joueurs: [[c.profil, c.pseudo]] }))[c.profil.toLowerCase()];
       if (stats === null) note = 'Ubisoft ne donne pas les stats de ce joueur (nom caché ?).';
     } catch (err) {
       note = String(err);

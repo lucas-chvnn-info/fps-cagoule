@@ -80,7 +80,7 @@ pub struct Etat {
 
 /// Stats Ubisoft de profils, depuis le cache (20 min) ou la source : le compte Ubisoft perso s'il y en a un,
 /// sinon le serveur FPS Cagoule. Chaque saison reçue est aussi gardée sur le PC. None = rien reçu (nom caché…).
-pub fn stats_ubisoft(etat: &Etat, profils: &[String]) -> Result<std::collections::HashMap<String, Option<crate::ubisoft::StatsUbi>>, String> {
+pub fn stats_ubisoft(etat: &Etat, joueurs: &[(String, String)]) -> Result<std::collections::HashMap<String, Option<crate::ubisoft::StatsUbi>>, String> {
     let (actif, perso, serveur) = {
         let r = &etat.stock.donnees.lock().unwrap().reglages;
         (r.tracker_r6, r.ubisoft_pseudo.is_some(), r.tracker_serveur.clone())
@@ -88,20 +88,21 @@ pub fn stats_ubisoft(etat: &Etat, profils: &[String]) -> Result<std::collections
     if !actif {
         return Err("Le tracker est désactivé.".into());
     }
-    let profils: Vec<String> = profils.iter().filter(|p| !p.is_empty() && !p.starts_with("pseudo:")).map(|p| p.to_lowercase()).collect();
-    let manquants: Vec<String> = {
+    let joueurs: Vec<(String, String)> = joueurs.iter().filter(|(p, _)| !p.is_empty() && !p.starts_with("pseudo:")).map(|(p, n)| (p.to_lowercase(), n.clone())).collect();
+    let profils: Vec<String> = joueurs.iter().map(|(p, _)| p.clone()).collect();
+    let manquants: Vec<(String, String)> = {
         let cache = etat.ubisoft.lock().unwrap();
-        profils.iter().filter(|p| cache.get(*p).is_none_or(|(t, _)| t.elapsed() > Duration::from_secs(20 * 60))).cloned().collect()
+        joueurs.iter().filter(|(p, _)| cache.get(p).is_none_or(|(t, _)| t.elapsed() > Duration::from_secs(20 * 60))).cloned().collect()
     };
     if !manquants.is_empty() {
         let mut recues: std::collections::HashMap<String, crate::ubisoft::StatsUbi> = if perso {
-            crate::ubisoft::stats(&manquants)?
+            crate::ubisoft::stats(&manquants.iter().map(|(p, _)| p.clone()).collect::<Vec<_>>())?
         } else {
             crate::ubisoft::stats_serveur(&serveur, &manquants)?.into_iter().filter_map(|(p, s)| s.map(|s| (p, s))).collect()
         };
         crate::ubisoft::pics_generaux(etat.stock.dossier(), &mut recues);
         let mut cache = etat.ubisoft.lock().unwrap();
-        for p in &manquants {
+        for (p, _) in &manquants {
             cache.insert(p.clone(), (Instant::now(), recues.remove(p)));
         }
     }
@@ -110,7 +111,7 @@ pub fn stats_ubisoft(etat: &Etat, profils: &[String]) -> Result<std::collections
 }
 
 /// Stats Ubisoft des profils pas encore en cache, en arrière-plan ; « degats » prévient les fenêtres à l'arrivée
-pub fn rafraichir_ubisoft(app: &AppHandle, profils: Vec<String>) {
+pub fn rafraichir_ubisoft(app: &AppHandle, joueurs: Vec<(String, String)>) {
     use std::sync::atomic::{AtomicBool, Ordering};
     static EN_COURS: AtomicBool = AtomicBool::new(false);
     let etat = app.state::<Arc<Etat>>();
@@ -119,7 +120,7 @@ pub fn rafraichir_ubisoft(app: &AppHandle, profils: Vec<String>) {
     }
     let manquants = {
         let cache = etat.ubisoft.lock().unwrap();
-        profils.iter().any(|p| !p.is_empty() && !p.starts_with("pseudo:") && cache.get(&p.to_lowercase()).is_none_or(|(t, _)| t.elapsed() > Duration::from_secs(20 * 60)))
+        joueurs.iter().any(|(p, _)| !p.is_empty() && !p.starts_with("pseudo:") && cache.get(&p.to_lowercase()).is_none_or(|(t, _)| t.elapsed() > Duration::from_secs(20 * 60)))
     };
     if !manquants || EN_COURS.swap(true, Ordering::SeqCst) {
         return;
@@ -127,7 +128,7 @@ pub fn rafraichir_ubisoft(app: &AppHandle, profils: Vec<String>) {
     let app = app.clone();
     let _ = thread::Builder::new().name("ubisoft".into()).spawn(move || {
         let etat = app.state::<Arc<Etat>>();
-        match stats_ubisoft(&etat, &profils) {
+        match stats_ubisoft(&etat, &joueurs) {
             Ok(_) => {
                 let _ = app.emit("degats", ());
             }
@@ -653,7 +654,7 @@ fn surveiller_replays(app: &AppHandle, etat: &Etat, pid: u32) {
                                 r.sauver();
                             }
                             b.partie = partie;
-                            rafraichir_ubisoft(&app, b.joueurs.iter().map(|j| j.profil.clone()).collect());
+                            rafraichir_ubisoft(&app, b.joueurs.iter().map(|j| (j.profil.clone(), j.pseudo.clone())).collect());
                             let inconnus: u32 = b.coups.iter().filter(|c| c.tireur.is_none()).map(|c| c.degats).sum();
                             let total: u32 = b.coups.iter().map(|c| c.degats).sum();
                             crate::clips::noter(&etat.stock, &format!("{nom} : dégâts lus en {:.1} s ({} coups, {inconnus}/{total} PV sans tireur)", debut.elapsed().as_secs_f64(), b.coups.len()));
