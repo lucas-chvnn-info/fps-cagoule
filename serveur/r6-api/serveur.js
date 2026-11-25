@@ -17,7 +17,8 @@ const DONNEES = path.join(__dirname, '.data');
 const APPID = '4391c956-8943-48eb-8859-07b0778f47b9';
 const APPID_RANGS = 'e3d5ea9e-50bd-43b7-88bf-39794f4e3d40';
 const ESPACE_R6 = '0d2ae42d-4c27-4cb7-af6c-2099062302bb';
-const AGENT = 'UbiServices_SDK_2020.Release.58_PC64_ansi_static';
+// Client annoncé à Ubisoft (l'ancien « UbiServices_SDK… » de siegeapi reçoit une page anti-robots)
+const AGENT = process.env.UBI_AGENT || 'r6-stats/1.0';
 const DUREE_SESSION = (2 * 60 + 45) * 60e3;
 const DUREE_CACHE = 20 * 60e3;
 const RANG_MAX = 40;
@@ -48,8 +49,16 @@ async function ouvrir(autorisation, appid) {
     body: JSON.stringify({ rememberMe: true }),
     signal: AbortSignal.timeout(20e3),
   });
-  const v = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(`Ubisoft refuse la connexion (${r.status})`);
+  const texte = await r.text();
+  let v = {};
+  try {
+    v = JSON.parse(texte);
+  } catch {}
+  if (!r.ok) {
+    // Raison donnée par Ubisoft (jamais les identifiants) : message JSON, sinon le début de la page reçue
+    const detail = v.message || v.errorCode ? `code ${v.errorCode ?? '?'} : ${v.message ?? ''}` : `${r.headers.get('server') || ''} ${texte.replace(/\s+/g, ' ').slice(0, 160)}`;
+    throw new Error(`Ubisoft refuse la connexion (${r.status}, ${detail.trim()})`);
+  }
   if (!v.ticket) throw new Error(v.twoFactorAuthenticationTicket ? 'Compte avec double authentification : il en faut un sans' : 'Connexion refusée');
   return { ticket: v.ticket, id: v.sessionId, debut: Date.now() };
 }
