@@ -4525,7 +4525,7 @@ const ICONES_NOUVEAUTES = {
 const NOUVEAUTES = {
   '0.30.0': [
     { icone: 'courbe', titre: 'Dégâts de la manche', texte: 'À la fin de chaque manche de Rainbow Six : tes dégâts, tes duels (balles à la tête, au corps, aux bras et jambes), les dégâts donnés et reçus de chacun, et les manches d\'avant.' },
-    { icone: 'jouer', titre: 'Tableau de la partie', texte: 'Ctrl+X en pleine partie de Rainbow Six : score, K/D/A, HS %, dégâts, opérateurs, joueurs déjà croisés et groupes.' },
+    { icone: 'jouer', titre: 'Tableau de la partie', texte: 'Ctrl+X en pleine partie de Rainbow Six : rangs, score, K/D/A, HS %, dégâts, opérateurs, joueurs déjà croisés et groupes.' },
     { icone: 'courbe', titre: 'Page Rainbow Six', texte: 'Tes comptes, la recherche d\'un joueur, les rangs (actuel, pic de la saison, pic général) et tes dernières parties. Les réglages R6 sont regroupés ici.' },
   ],
   '0.29.1': [
