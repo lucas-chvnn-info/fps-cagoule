@@ -4755,7 +4755,7 @@ async function afficherProfilR6() {
     ${s ? `<div class="r6-tuiles">
       ${tuile('Rang', rang(s.rang), s.rang ? `${s.points} points` : '')}
       ${tuile('Pic de la saison', rang(s.pic_saison))}
-      ${tuile('Pic général', rang(Math.max(s.pic_general, s.pic_saison)), 'Meilleur rang vu par FPS Cagoule')}
+      ${tuile('Pic', rang(Math.max(s.pic_general, s.pic_saison)), 'Meilleur rang vu par FPS Cagoule')}
       ${tuile('KD', s.morts ? (s.kills / s.morts).toFixed(2) : '–', `${s.kills} kills · ${s.morts} morts`)}
       ${tuile('Victoires', parts ? Math.round((100 * s.victoires) / parts) + ' %' : '–', `${parts} partie${parts > 1 ? 's' : ''} ${s.classe ? 'classées' : 'rapides'}`)}
     </div>` : ''}

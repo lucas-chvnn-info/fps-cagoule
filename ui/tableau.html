@@ -23,18 +23,11 @@
     .chiffre { display: grid; place-items: center; font-size: 76px; font-weight: 900; color: rgba(255, 255, 255, .95); }
     .nous .chiffre { background: linear-gradient(180deg, rgba(47, 111, 237, .55), rgba(47, 111, 237, .25)); }
     .eux .chiffre { background: linear-gradient(180deg, rgba(224, 72, 94, .5), rgba(224, 72, 94, .22)); }
-    .colonnes, .joueur { display: grid; grid-template-columns: 6px 36px minmax(110px, 1fr) 56px 76px 54px 58px 116px 116px 116px 44px 42px 46px 62px; align-items: center; gap: 10px; padding: 0 18px 0 14px; }
+    .colonnes, .joueur { display: grid; grid-template-columns: 6px 36px minmax(140px, 1fr) 58px 78px 56px 60px 70px 92px 98px 48px 46px 50px 64px; align-items: center; gap: 10px; padding: 0 18px 0 14px; }
     .sans-ubi .colonnes, .sans-ubi .joueur { grid-template-columns: 6px 36px minmax(120px, 1fr) 70px 88px 60px 74px 64px 92px; gap: 12px; }
     .sans-ubi .ubi { display: none; }
-    .rang { justify-self: end; display: inline-flex; align-items: center; gap: 5px; padding: 2px 7px 2px 4px; border-radius: 6px; font-size: 12px; font-weight: 700; white-space: nowrap; background: rgba(255, 255, 255, .06); color: var(--discret); }
-    .rang.cuivre { color: #d98a6c; background: rgba(181, 101, 74, .18); }
-    .rang.bronze { color: #d9a46c; background: rgba(192, 138, 82, .18); }
-    .rang.argent { color: #c9d0dc; background: rgba(169, 177, 191, .16); }
-    .rang.or { color: #f0cd63; background: rgba(232, 194, 90, .16); }
-    .rang.platine { color: #5fd6d6; background: rgba(69, 196, 196, .16); }
-    .rang.emeraude { color: #4fe3a3; background: rgba(61, 220, 151, .15); }
-    .rang.diamant { color: #c4a3ff; background: rgba(180, 140, 255, .17); }
-    .rang.champion { color: #ff7cbc; background: rgba(255, 92, 168, .18); }
+    .rang { justify-self: center; display: grid; place-items: center; }
+    .colonnes span.c { text-align: center; }
     .colonnes { height: 30px; font-size: 11.5px; font-weight: 600; color: var(--discret); text-transform: uppercase; letter-spacing: .05em; }
     .colonnes span, .joueur .v { text-align: right; white-space: nowrap; }
     .colonnes span.g { text-align: left; }

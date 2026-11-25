@@ -31,10 +31,9 @@ function groupesDe(b, rencontres) {
   return out;
 }
 
-// Rang : logo et nom (rangs.js)
+// Rang : son logo seul (rangs.js), le nom au survol
 function badge(id, saison) {
-  const palier = id ? nomRang(id).split(' ')[0].normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase() : '';
-  return `<span class="rang ${palier}">${logoRang(id, saison, 16)}${id ? nomRang(id) : '–'}</span>`;
+  return `<span class="rang">${logoRang(id, saison, 30)}</span>`;
 }
 
 function rendre({ manches, rencontres, ubisoft = {}, ubisoft_connecte: ubiOk = false }) {
@@ -108,7 +107,7 @@ function rendre({ manches, rencontres, ubisoft = {}, ubisoft_connecte: ubiOk = f
   const ordre = (x, y) => (groupes[y.pseudo]?.id ?? -1) - (groupes[x.pseudo]?.id ?? -1) || (cumul[y.pseudo].score ?? cumul[y.pseudo].k) - (cumul[x.pseudo].score ?? cumul[x.pseudo].k);
   const equipe = (e, classe, chiffre) => `<div class="equipe ${classe}"><div class="chiffre">${chiffre}</div><div>
     <div class="colonnes"><i></i><i></i><span class="g">Joueur</span><span>Score</span><span>K / D / A</span><span>HS %</span><span>Dégâts</span>${ubiOk
-      ? '<span>Rang</span><span>Pic saison</span><span>Pic général</span><span>Niveau</span><span>KD</span><span>Vict.</span>'
+      ? '<span class="c">Rang</span><span class="c">Pic saison</span><span class="c">Pic</span><span>Niveau</span><span>KD</span><span>Vict.</span>'
       : '<span>Reçus</span>'}<span>${ubiOk ? 'Ops' : 'Opérateurs'}</span></div>
     ${b.joueurs.filter((j) => j.equipe === e).sort(ordre).map(ligne).join('')}</div></div>`;
 
@@ -124,7 +123,7 @@ function rendre({ manches, rencontres, ubisoft = {}, ubisoft_connecte: ubiOk = f
     <div class="milieu"><div class="manches">${chips}</div>${totaux}</div>
     ${equipe(1 - monEquipe, 'eux', b.eux)}
     <div class="pied">D'après les replays de la partie : mis à jour à chaque fin de manche.${ubiOk
-      ? ' Rang, KD et victoires : saison en cours (Ubisoft). Pic général : meilleur rang vu par FPS Cagoule.'
+      ? ' Rang, KD et victoires : saison en cours (Ubisoft). Pic : meilleur rang vu par FPS Cagoule.'
       : ' Connecte un compte Ubisoft dans les Réglages pour les rangs.'}</div>`;
   cadre.classList.toggle('sans-ubi', !ubiOk);
   cadre.insertAdjacentHTML('beforeend', '<aside id="fiche" class="fiche" hidden></aside>');
@@ -171,7 +170,7 @@ async function ouvrirFiche(pseudo) {
     <div class="fiche-tete">${s ? logoRang(s.rang, s.saison, 46) : icone(j.operateur)}<div><h3>${esc(pseudo)}</h3>
       <small>${s?.niveau ? `Niveau ${s.niveau}` : ''}${r && (r.contre || r.avec) ? `${s?.niveau ? ' · ' : ''}Contre ${r.contre}× · Avec ${r.avec}×` : `${s?.niveau ? ' · ' : ''}Jamais croisé`}</small></div></div>
     ${s ? `<div class="tuiles">${tuile('Rang', rang(s.rang), s.rang ? `${s.points} points` : '')}${tuile('Pic saison', rang(s.pic_saison))}
-      ${tuile('Pic général', rang(Math.max(s.pic_general, s.pic_saison)))}${tuile('KD saison', s.morts ? (s.kills / s.morts).toFixed(2) : '–')}
+      ${tuile('Pic', rang(Math.max(s.pic_general, s.pic_saison)))}${tuile('KD saison', s.morts ? (s.kills / s.morts).toFixed(2) : '–')}
       ${tuile('Victoires', parts ? Math.round((100 * s.victoires) / parts) + ' %' : '–', `${parts} parties`)}${tuile('Cette partie', `${c.k} / ${c.d} / ${c.a}`, `${c.donnes} dégâts`)}</div>`
       : `<p class="discret">${etat.ubiOk ? 'Stats Ubisoft en chemin…' : 'Connecte un compte Ubisoft dans FPS Cagoule pour ses rangs.'}</p>`}
     <h4>Vos parties</h4><div id="fiche-parties" class="discret">…</div>
