@@ -16,6 +16,8 @@ const ID_JOUEUR: &[u8] = &[0xEE, 0xD4, 0x45, 0xC8, 0x08];
 const PV: &[u8] = &[0x00, 0x00, 0x00, 0x00, 0x25, 0x26, 0x76, 0xC9];
 const KILLFEED: &[u8] = &[0x59, 0x34, 0xE5, 0x8B, 0x04];
 const POSITION: &[u8] = &[0x73, 0x85, 0xFE];
+/// Lien avec le joueur qui enregistre (`22 05c7b949 04 valeur:u32`) dans le bloc de chaque joueur
+const LIEN: &[u8] = &[0x22, 0x05, 0xC7, 0xB9, 0x49, 0x04];
 /// État du joueur (4 = mort) et marqueur d'une mort dans la liste des PV
 const ETAT: &[u8] = &[0xE7, 0x88, 0xF6, 0xA5];
 const ETAT_MORT: u8 = 4;
@@ -29,6 +31,10 @@ const SEUIL: f32 = 1.5;
 #[derive(Serialize, Clone, Debug, Default)]
 pub struct JoueurDegats {
     pub pseudo: String,
+    /// Identifiant du profil Ubisoft (vide si le replay ne le donne pas)
+    pub profil: String,
+    /// Lien avec le joueur qui enregistre : 5 lui-même, 3 son groupe, 2 coéquipier, 1 adversaire (0 inconnu)
+    pub lien: u8,
     pub equipe: u8,
     pub operateur: Option<String>,
     /// Dégâts infligés aux ennemis
@@ -36,7 +42,49 @@ pub struct JoueurDegats {
     /// Dégâts reçus
     pub recu: u32,
     pub kills: u32,
+    /// Kills à la tête (killfeed)
+    pub kills_tete: u32,
+    /// Ennemis touchés puis achevés par un coéquipier (estimation, si les compteurs du jeu manquent)
+    pub assists: u32,
+    /// Compteurs du jeu depuis le début de la partie, à la fin de cette manche : score, kills, assists
+    pub partie: Option<Compteurs>,
     pub mort: bool,
+}
+
+#[derive(Serialize, Clone, Copy, Debug, Default, PartialEq)]
+pub struct Compteurs {
+    pub score: u32,
+    pub kills: u32,
+    pub assists: u32,
+}
+
+const SCORE: [u8; 4] = [0xEC, 0xDA, 0x4F, 0x80];
+const KILLS: [u8; 4] = [0x1C, 0xD2, 0xB1, 0x9D];
+const ASSISTS: [u8; 4] = [0x4D, 0x73, 0x7F, 0x9E];
+
+/// Champs d'un objet après `23 objet:u32 00000000` en `i` : `champ:u32 taille:u8 valeur`, enchaînés par `22`
+fn champs_objet(b: &[u8], i: usize) -> Vec<([u8; 4], u32)> {
+    let mut out = Vec::new();
+    let mut q = i + 9;
+    while let (Some(champ), Some(&n)) = (b.get(q..q + 4), b.get(q + 4)) {
+        if n > 16 {
+            break;
+        }
+        let v = b.get(q + 5..q + 5 + (n as usize).min(4)).map_or(0, |x| x.iter().rev().fold(0u32, |a, &o| (a << 8) | o as u32));
+        out.push((champ.try_into().unwrap(), v));
+        q += 5 + n as usize;
+        if b.get(q) != Some(&0x22) {
+            break;
+        }
+        q += 1;
+    }
+    out
+}
+
+/// Débuts des enregistrements `23 objet 00000000` (objet en …f0) dans `b[debut..fin]`
+fn enregistrements(b: &[u8], debut: usize, fin: usize) -> impl Iterator<Item = (usize, u32)> + '_ {
+    let fin = fin.min(b.len());
+    (debut..fin.saturating_sub(9)).filter(move |&i| b[i] == 0x23 && b[i + 4] == 0xF0 && b[i + 5..i + 9] == [0, 0, 0, 0]).map(move |i| (i, u32_a(b, i + 1).unwrap_or(0)))
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -295,6 +343,7 @@ struct Acteur {
     corps: Option<u32>,
     pv_obj: Option<u32>,
     pv_depart: Option<u32>,
+    lien: u8,
 }
 
 /// Dernière position connue avant `t`, avec le dernier cap valide (40 points en arrière au plus)
@@ -340,7 +389,8 @@ pub fn bilan(donnees: &[u8], m: &crate::replays_r6::Manche, historique: &mut Has
         let pid = trouver(b, ID_JOUEUR, *i, fin).and_then(|q| Some(u64::from_le_bytes(b.get(q + 5..q + 13)?.try_into().ok()?)));
         // Équipes : les 5 premiers blocs puis les 5 suivants (vérifié sur 53 manches)
         let equipe = u8::from(acteurs.len() >= 5);
-        acteurs.push(Acteur { pseudo: nom.clone(), equipe, pid, corps: None, pv_obj: None, pv_depart: None });
+        let lien = trouver(b, LIEN, *i, fin).and_then(|q| b.get(q + 6)).copied().unwrap_or(0);
+        acteurs.push(Acteur { pseudo: nom.clone(), equipe, pid, corps: None, pv_obj: None, pv_depart: None, lien });
     }
     if acteurs.len() < 2 {
         return None;
@@ -391,36 +441,42 @@ pub fn bilan(donnees: &[u8], m: &crate::replays_r6::Manche, historique: &mut Has
             }
         }
     }
-    // Mort sans passage des PV à 0 (tué d'une balle, souvent à la tête) : seul l'état du joueur passe à 4.
-    // Les PV restants deviennent alors le coup final.
     let pv_objets: Vec<u32> = acteurs.iter().filter_map(|a| a.pv_obj).collect();
     let debut_evenements = f.sections.get(1).map_or(f.debut, |s| s.0);
-    let mut p = trouver(b, &[0x00, 0x00, 0x00, 0x00], debut_evenements, b.len()).map(|_| debut_evenements);
-    while let Some(i) = p {
-        p = trouver(b, &[0x23], i + 1, b.len());
-        if b.get(i) != Some(&0x23) || b.get(i + 4) != Some(&0xF0) || b.get(i + 5..i + 9) != Some(&[0, 0, 0, 0]) {
+    // Compteurs de la partie (score, kills, assists) : l'objet qui les porte précède le bloc du joueur dans l'instantané
+    let mut compteurs: HashMap<u32, (String, Compteurs)> = HashMap::new();
+    for (i, obj) in enregistrements(b, 0, f.debut) {
+        let champs = champs_objet(b, i);
+        if !champs.iter().any(|(c, _)| *c == KILLS || *c == ASSISTS) || compteurs.contains_key(&obj) {
             continue;
         }
-        let obj = u32_a(b, i + 1).unwrap_or(0);
-        if !pv_objets.contains(&obj) {
+        let Some((_, nom)) = noms.iter().find(|(q, _)| *q > i) else { continue };
+        if compteurs.values().any(|(n, _)| n == nom) {
             continue;
         }
-        // Champs de l'objet : `champ:u32 taille:u8 valeur`, enchaînés par `22`
-        let mut q = i + 9;
-        while let (Some(champ), Some(&n)) = (b.get(q..q + 4), b.get(q + 4)) {
-            if n > 16 {
-                break;
+        compteurs.insert(obj, (nom.clone(), Compteurs::default()));
+    }
+    for (i, obj) in enregistrements(b, 0, f.debut).chain(enregistrements(b, debut_evenements, b.len())) {
+        let est_pv = pv_objets.contains(&obj);
+        if !est_pv && !compteurs.contains_key(&obj) {
+            continue;
+        }
+        for (champ, v) in champs_objet(b, i) {
+            if let Some((_, c)) = compteurs.get_mut(&obj) {
+                match champ {
+                    SCORE => c.score = v,
+                    KILLS => c.kills = v,
+                    ASSISTS => c.assists = v,
+                    _ => {}
+                }
             }
-            if champ == ETAT && b.get(q + 5) == Some(&ETAT_MORT) {
+            // Mort sans passage des PV à 0 (tué d'une balle, souvent à la tête) : seul l'état du joueur passe à 4.
+            // Les PV restants deviennent alors le coup final.
+            if est_pv && champ == ETAT && v == ETAT_MORT as u32 && i >= debut_evenements {
                 if let Some(t) = f.tick(i) {
                     maj.push((t, obj, MORT));
                 }
             }
-            q += 5 + n as usize;
-            if b.get(q) != Some(&0x22) {
-                break;
-            }
-            q += 1;
         }
     }
     // Dans un même tick, les PV avant l'état
@@ -529,10 +585,28 @@ pub fn bilan(donnees: &[u8], m: &crate::replays_r6::Manche, historique: &mut Has
         let ([t, co, me], n) = zones(c.degats, base, c.final_, tete);
         (c.tete, c.corps, c.membres, c.balles) = (t, co, me, n);
     }
+    // Assists : avoir touché une victime achevée par un coéquipier (une fois par victime)
+    let equipe_de = |n: &str| acteurs.iter().find(|a| a.pseudo == n).map(|a| a.equipe);
+    let mut assists: HashMap<&str, u32> = HashMap::new();
+    for k in &m.kills {
+        let mut vus: Vec<&str> = Vec::new();
+        for c in coups.iter().filter(|c| c.victime == k.victime) {
+            let Some(t) = c.tireur.as_deref() else { continue };
+            if t != k.tueur && equipe_de(t).is_some() && equipe_de(t) == equipe_de(&k.tueur) && !vus.contains(&t) {
+                vus.push(t);
+                *assists.entry(t).or_default() += 1;
+            }
+        }
+    }
     let joueurs = acteurs
         .iter()
         .map(|a| JoueurDegats {
             pseudo: a.pseudo.clone(),
+            profil: m.joueurs.iter().find(|j| j.pseudo == a.pseudo).map(|j| j.profil.clone()).unwrap_or_default(),
+            lien: a.lien,
+            kills_tete: m.kills.iter().filter(|k| k.tueur == a.pseudo && k.headshot).count() as u32,
+            assists: assists.get(a.pseudo.as_str()).copied().unwrap_or(0),
+            partie: compteurs.values().find(|(n, _)| n == &a.pseudo).map(|(_, c)| *c),
             equipe: a.equipe,
             operateur: m.joueurs.iter().find(|j| j.pseudo == a.pseudo).and_then(|j| j.operateur.clone()),
             inflige: coups.iter().filter(|c| c.tireur.as_deref() == Some(a.pseudo.as_str())).map(|c| c.degats).sum(),

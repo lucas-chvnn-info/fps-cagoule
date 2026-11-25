@@ -32,6 +32,7 @@ mod ps;
 mod raccourci;
 mod rampe;
 mod replays_r6;
+mod rencontres;
 mod reseau;
 mod stats;
 mod steam_comptes;
@@ -505,13 +506,45 @@ fn autoriser_dossiers_clips(app: &AppHandle) {
 
 /// Dégâts des manches de la dernière partie de R6, dans l'ordre (lus par la fenêtre de fin de manche)
 #[tauri::command]
-fn degats_manches(app: AppHandle) -> Vec<degats_r6::Bilan> {
+fn degats_manches(app: AppHandle) -> DegatsPartie {
     let e = etat(&app);
-    let liste = e.degats.lock().unwrap();
-    let Some(derniere) = liste.last() else { return vec![] };
-    let mut manches: Vec<_> = liste.iter().filter(|b| b.partie == derniere.partie).cloned().collect();
+    let mut manches: Vec<degats_r6::Bilan> = {
+        let liste = e.degats.lock().unwrap();
+        let Some(derniere) = liste.last() else { return DegatsPartie::default() };
+        liste.iter().filter(|b| b.partie == derniere.partie).cloned().collect()
+    };
     manches.sort_by_key(|b| b.manche);
-    manches
+    // Rencontres des joueurs du lobby (toutes manches), vues du compte qui joue, par pseudo
+    let mut lobby: Vec<(String, String)> = Vec::new(); // (pseudo, clé)
+    let mut mien = String::new();
+    for j in manches.iter().flat_map(|b| &b.joueurs) {
+        let cle = rencontres::cle(&j.profil, &j.pseudo);
+        if j.lien == 5 || manches.last().and_then(|b| b.moi.as_ref()) == Some(&j.pseudo) {
+            mien = cle.clone();
+        }
+        if !lobby.iter().any(|(p, _)| p == &j.pseudo) {
+            lobby.push((j.pseudo.clone(), cle));
+        }
+    }
+    let cles: Vec<String> = lobby.iter().map(|(_, c)| c.clone()).collect();
+    let partie = manches.last().map(|b| b.partie.clone()).unwrap_or_default();
+    let resume = e.rencontres.lock().unwrap().resume(&partie, &mien, &cles);
+    let pseudo_de = |c: &str| lobby.iter().find(|(_, x)| x == c).map(|(p, _)| p.clone()).unwrap_or_default();
+    let rencontres = resume
+        .into_iter()
+        .map(|(c, mut r)| {
+            r.ensemble = r.ensemble.into_iter().map(|(k, n)| (pseudo_de(&k), n)).collect();
+            (pseudo_de(&c), r)
+        })
+        .collect();
+    DegatsPartie { manches, rencontres }
+}
+
+#[derive(serde::Serialize, Default)]
+struct DegatsPartie {
+    manches: Vec<degats_r6::Bilan>,
+    /// Pseudo → contre / avec / autres comptes / joueurs du lobby déjà vus dans sa même équipe
+    rencontres: std::collections::HashMap<String, rencontres::Resume>,
 }
 
 /// La fenêtre des dégâts reste ouverte plus longtemps (clic sur une de ses pages)
@@ -948,6 +981,7 @@ fn main() {
             let dossier = app.path().app_data_dir()?;
             let presentmon = app.path().resource_dir()?.join("PresentMon.exe");
             let etat = Arc::new(Etat {
+                rencontres: Mutex::new(rencontres::Rencontres::ouvrir(&dossier)),
                 stock: Stockage::ouvrir(dossier),
                 session: Mutex::new(None),
                 fps_live: Arc::new(Mutex::new(None)),

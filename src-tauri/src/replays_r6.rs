@@ -322,11 +322,11 @@ impl Curseur<'_> {
     }
 }
 
-/// Décompresse les blocs zstd qui suivent l'en-tête
-fn decompresser(b: &[u8]) -> Result<Vec<u8>, String> {
+/// Décompresse les blocs zstd qui suivent l'en-tête (au plus ~`limite` octets)
+fn decompresser(b: &[u8], limite: usize) -> Result<Vec<u8>, String> {
     let mut sortie = Vec::new();
     let mut pos = 0;
-    while let Some(i) = b.get(pos..).and_then(|r| r.windows(4).position(|w| w == ZSTD)) {
+    while let Some(i) = b.get(pos..).filter(|_| sortie.len() < limite).and_then(|r| r.windows(4).position(|w| w == ZSTD)) {
         let debut = pos + i;
         let mut source = &b[debut..];
         let avant = source.len();
@@ -359,6 +359,16 @@ pub fn lire(fichier: &[u8]) -> Result<Manche, String> {
 
 /// Lit une manche et garde son flux décompressé (pour les dégâts)
 pub fn lire_avec_flux(fichier: &[u8]) -> Result<(Manche, Vec<u8>), String> {
+    lire_interne(fichier, usize::MAX)
+}
+
+/// Lit seulement le début d'une manche : map, joueurs, équipes et profils Ubisoft (pas le killfeed).
+/// Quelques Mo décompressés au lieu de ~56 : pour relire vite les anciennes parties.
+pub fn lire_debut(fichier: &[u8]) -> Result<Manche, String> {
+    lire_interne(fichier, 3_000_000).map(|(m, _)| m)
+}
+
+fn lire_interne(fichier: &[u8], limite: usize) -> Result<(Manche, Vec<u8>), String> {
     if !fichier.starts_with(b"dissect") {
         return Err("Ce n'est pas un replay de Rainbow Six Siege".into());
     }
@@ -433,7 +443,7 @@ pub fn lire_avec_flux(fichier: &[u8]) -> Result<(Manche, Vec<u8>), String> {
         fin_ms: 0,
     };
     manche.fin_ms = prop("endtime").and_then(|v| v.parse().ok()).unwrap_or(0);
-    let donnees = decompresser(&fichier[c.pos..])?;
+    let donnees = decompresser(&fichier[c.pos..], limite)?;
     lire_paquets(&donnees, &mut manche, !profil_moi.is_empty());
     manche.joueurs.retain(|j| !j.pseudo.is_empty());
     for j in &mut manche.joueurs {

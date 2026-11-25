@@ -72,7 +72,7 @@ function rendre(b) {
   });
   const p2 = `<div class="entetes"><span>Tes dégâts</span><span>Sur toi</span></div>${lignesDuels.join('') || '<div class="vide">Aucun duel cette manche</div>'}`;
 
-  // 3 · Dégâts donnés et reçus de chacun
+  // 3 · Dégâts donnés et reçus de chacun (cette manche)
   const duo = (j) => `
     <div class="ligne duo${classe(j)}">${icone(j.operateur)}<div class="nom">${esc(j.pseudo)}</div>
       <div class="val${j.inflige ? '' : ' zero'}">${j.inflige}</div><div class="val recu${j.recu ? '' : ' zero'}">${j.recu}</div></div>`;
@@ -111,7 +111,8 @@ function dessiner() {
 }
 
 async function afficher() {
-  manches = await invoke('degats_manches');
+  const r = await invoke('degats_manches');
+  manches = r.manches || [];
   if (!manches.length) return;
   indice = manches.length - 1;
   page = 1;

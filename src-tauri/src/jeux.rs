@@ -50,6 +50,8 @@ pub struct EnCours {
     clips_lances: bool,
     /// Recherche des dossiers de replays déjà notée dans le journal
     replays_cherches: bool,
+    /// Anciennes parties des dossiers de replays déjà relues pour l'historique des rencontres
+    rencontres_relues: bool,
     /// Pourquoi l'enregistrement n'a pas pu démarrer
     pub clips_erreur: Option<String>,
 }
@@ -66,6 +68,8 @@ pub struct Etat {
     pub degats: Mutex<Vec<crate::degats_r6::Bilan>>,
     /// Coups de chaque tireur (« pseudo|opérateur ») dans les manches déjà lues : dégât de base pour les zones touchées
     pub degats_historique: Mutex<std::collections::HashMap<String, Vec<u32>>>,
+    /// Joueurs croisés dans R6 (rencontres.json)
+    pub rencontres: Mutex<crate::rencontres::Rencontres>,
 }
 
 #[derive(Serialize, Clone)]
@@ -275,6 +279,7 @@ fn demarrer(app: &AppHandle, etat: &Etat, profil: &crate::config::Profil, pid: u
         clips_manuels: Vec::new(),
         clips_lances: false,
         replays_cherches: false,
+        rencontres_relues: false,
         clips_erreur: None,
         dossiers_replays: Vec::new(),
     });
@@ -531,6 +536,7 @@ fn surveiller_replays(app: &AppHandle, etat: &Etat, pid: u32) {
             deja
         }
     };
+    relire_anciennes_parties(app, etat, pid, &dossiers);
     for (fichier, modifie) in crate::replays_r6::manches_recentes(&dossiers, depuis) {
         // Fichier encore en cours d'écriture : on attendra le prochain passage
         let age = SystemTime::now().duration_since(modifie).unwrap_or_default();
@@ -563,6 +569,13 @@ fn surveiller_replays(app: &AppHandle, etat: &Etat, pid: u32) {
                     let bilan = crate::degats_r6::bilan(&flux, &manche, &mut etat.degats_historique.lock().unwrap());
                     match bilan {
                         Some(mut b) => {
+                            {
+                                let mut r = etat.rencontres.lock().unwrap();
+                                let date = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64);
+                                if r.noter(&partie, date, &manche) {
+                                    r.sauver();
+                                }
+                            }
                             b.partie = partie;
                             let inconnus: u32 = b.coups.iter().filter(|c| c.tireur.is_none()).map(|c| c.degats).sum();
                             let total: u32 = b.coups.iter().map(|c| c.degats).sum();
@@ -628,6 +641,39 @@ fn surveiller_replays(app: &AppHandle, etat: &Etat, pid: u32) {
             }
         });
     }
+}
+
+/// Historique des rencontres : les parties déjà présentes dans les dossiers de replays (juste le début de leur
+/// premier replay, quelques ms chacune), une fois par session, en arrière-plan et sans se presser
+fn relire_anciennes_parties(app: &AppHandle, etat: &Etat, pid: u32, dossiers: &[PathBuf]) {
+    if dossiers.is_empty() {
+        return;
+    }
+    {
+        let mut session = etat.session.lock().unwrap();
+        match session.as_mut().filter(|s| s.pid == pid) {
+            Some(s) if !s.rencontres_relues => s.rencontres_relues = true,
+            _ => return,
+        }
+    }
+    let a_relire = crate::rencontres::parties_a_relire(dossiers, &etat.rencontres.lock().unwrap());
+    if a_relire.is_empty() {
+        return;
+    }
+    let app = app.clone();
+    let _ = thread::Builder::new().name("rencontres".into()).spawn(move || {
+        let etat = app.state::<Arc<Etat>>();
+        let mut lues = 0;
+        for (partie, fichier, date) in &a_relire {
+            let Ok(octets) = std::fs::read(fichier) else { continue };
+            if let Ok(m) = crate::replays_r6::lire_debut(&octets) {
+                lues += usize::from(etat.rencontres.lock().unwrap().noter(partie, *date, &m));
+            }
+            thread::sleep(Duration::from_millis(150));
+        }
+        etat.rencontres.lock().unwrap().sauver();
+        crate::clips::noter(&etat.stock, &format!("Rencontres : {lues} anciennes parties relues sur {}", a_relire.len()));
+    });
 }
 
 /// Repères d'une manche qui tombent dans un clip couvrant les `secondes` avant `fin`
