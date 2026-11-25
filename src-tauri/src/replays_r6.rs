@@ -134,7 +134,9 @@ pub const MAPS: &[(u64, &str)] = &[
     // Y11 : identifiées par l'utilisateur d'après les zones d'apparition (Fountain/Ruins, Garden Ruins/Poolside,
     // Fuel Pumps, Helipad/Tower)
     (409325881472, "Villa"),
-    (419965653950, "Coastline"),
+    // Prise pour Coastline au départ : le tableau des scores et les noms de salles (Open Lobby, Mezzanine, Cash
+    // Counting, Vault…) disent Calypso Casino
+    (419965653950, "Calypso Casino"),
     (441825219764, "Outback"),
     (423767322185, "Skyscraper"),
 ];

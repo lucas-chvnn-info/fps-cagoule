@@ -3134,7 +3134,7 @@ $('#btn-partage-valider').addEventListener('click', async (e) => {
 const vueClips = { jeu: null, filtre: '', recherche: '', carte: '', operateur: '' };
 
 /** Cartes de R6 (le reste d'un nom de clip auto est l'opérateur) */
-const CARTES_R6 = new Set(['Bank', 'Bartlett', 'Border', 'Chalet', 'Clubhouse', 'Coastline', 'Consulate', 'Emerald Plains', 'Favela', 'Fortress', 'Hereford', 'House', 'Kafe', 'Kanal', 'Lair', 'Nighthaven Labs', 'Oregon', 'Outback', 'Presidential Plane', 'Skyscraper', 'Stadium', 'Stadium Bravo', 'Theme Park', 'Tower', 'Villa', 'Yacht', 'Litoral']);
+const CARTES_R6 = new Set(['Bank', 'Bartlett', 'Border', 'Calypso Casino', 'Chalet', 'Clubhouse', 'Coastline', 'Consulate', 'Emerald Plains', 'Favela', 'Fortress', 'Hereford', 'House', 'Kafe', 'Kanal', 'Lair', 'Nighthaven Labs', 'Oregon', 'Outback', 'Presidential Plane', 'Skyscraper', 'Stadium', 'Stadium Bravo', 'Theme Park', 'Tower', 'Villa', 'Yacht', 'Litoral']);
 
 /** Carte et opérateur d'après le nom d'un clip auto (« 3K · Rauora · Outback · Pseudo », opérateur ou carte parfois absents) */
 function detailsClip(c) {

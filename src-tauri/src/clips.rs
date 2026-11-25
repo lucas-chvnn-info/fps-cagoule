@@ -949,8 +949,36 @@ pub fn marqueurs(stock: &Stockage, clip: &Path) -> Vec<Marqueur> {
         }
         (Some((_, l)), None) => l,
         (None, Some((_, v))) => v,
-        (None, None) => vec![],
+        (None, None) => reperes_ancien_nom(stock, clip),
     }
+}
+
+/// Cartes renommées après coup (identifiant de carte mal reconnu) : (nom actuel, ancien nom dans le titre des clips)
+const ANCIENS_NOMS_CARTES: &[(&str, &str)] = &[("Calypso Casino", "Coastline")];
+
+/// Clip renommé parce que sa carte était mal reconnue : ses repères sont restés sous l'ancien nom. On les reprend
+/// (et on les recopie sous le nouveau nom).
+fn reperes_ancien_nom(stock: &Stockage, clip: &Path) -> Vec<Marqueur> {
+    let Some(nom) = clip.file_name().map(|n| n.to_string_lossy().to_string()) else { return vec![] };
+    for (actuel, ancien) in ANCIENS_NOMS_CARTES {
+        let motif = format!(" · {actuel} · ");
+        if !nom.contains(&motif) {
+            continue;
+        }
+        let vieux = clip.with_file_name(nom.replacen(&motif, &format!(" · {ancien} · "), 1));
+        let liste = fs::read_to_string(fichier_marqueurs(stock, &vieux))
+            .ok()
+            .and_then(|t| serde_json::from_str::<Vec<Marqueur>>(&t).ok())
+            .unwrap_or_default();
+        if !liste.is_empty() {
+            let f = fichier_marqueurs(stock, clip);
+            if let Ok(t) = serde_json::to_string(&liste) {
+                let _ = fs::write(f, t);
+            }
+            return liste;
+        }
+    }
+    vec![]
 }
 
 /// Ajoute des repères au clip (sans doublon à moins d'une demi-seconde du même genre)
@@ -1785,6 +1813,20 @@ mod tests {
         );
         assert_eq!(deplacer_repere(9.0, &m), Some(6.0));
         assert_eq!(deplacer_repere(6.0, &m), None);
+    }
+
+    #[test]
+    fn reperes_apres_correction_de_carte() {
+        let racine = std::env::temp_dir().join("fps-cagoule-test-reperes-carte");
+        let _ = fs::remove_dir_all(&racine);
+        let stock = Stockage::ouvrir(racine.join("donnees"));
+        let vieux = racine.join("2K · Sentry · Coastline · moi.mp4");
+        let nouveau = racine.join("2K · Sentry · Calypso Casino · moi.mp4");
+        ajouter_marqueurs(&stock, &vieux, &[Marqueur { t: 4.0, genre: "kill".into(), detail: "x".into(), headshot: false }]);
+        assert_eq!(marqueurs(&stock, &nouveau).len(), 1);
+        // Recopiés sous le nouveau nom
+        assert!(fichier_marqueurs(&stock, &nouveau).is_file());
+        let _ = fs::remove_dir_all(&racine);
     }
 
     #[test]
