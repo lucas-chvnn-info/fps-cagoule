@@ -580,9 +580,11 @@ fn surveiller_clips(app: &AppHandle, etat: &Etat, pid: u32) {
 /// Fins de manche dans R6 : le replay (.rec) de chaque manche est lu pour la fenêtre des dégâts et les clips
 /// automatiques (2 kills ou plus du joueur donnent un clip « 3K · Ace · Clubhouse » qui part 15 s avant le premier kill)
 fn surveiller_replays(app: &AppHandle, etat: &Etat, pid: u32) {
-    let (clips_auto, degats) = {
-        let d = etat.stock.donnees.lock().unwrap();
-        (d.reglages.clips_auto, d.reglages.degats_fin_manche)
+    // Suivi R6 (désactivé par défaut) : la fenêtre des dégâts, le tableau Ctrl+X ou le tracker ont besoin des
+    // dégâts de chaque manche ; le lobby du début de partie ne sert qu'au tableau
+    let (clips_auto, degats, tableau) = {
+        let r = &etat.stock.donnees.lock().unwrap().reglages;
+        (r.clips_auto, r.degats_fin_manche || r.tableau_r6 || r.tracker_r6, r.tableau_r6)
     };
     if !clips_auto && !degats {
         return;
@@ -622,11 +624,13 @@ fn surveiller_replays(app: &AppHandle, etat: &Etat, pid: u32) {
             deja
         }
     };
-    relire_anciennes_parties(app, etat, pid, &dossiers);
+    if degats {
+        relire_anciennes_parties(app, etat, pid, &dossiers);
+    }
     for (fichier, modifie) in crate::replays_r6::manches_recentes(&dossiers, depuis) {
         // Fichier encore en cours d'écriture : on attendra le prochain passage, mais on essaie d'y lire le lobby
         let age = SystemTime::now().duration_since(modifie).unwrap_or_default();
-        if !vus.contains(&fichier) && age < Duration::from_secs(4) && degats {
+        if !vus.contains(&fichier) && age < Duration::from_secs(4) && tableau {
             lire_lobby(app, etat, pid, &fichier);
         }
         if vus.contains(&fichier) || age < Duration::from_secs(4) {

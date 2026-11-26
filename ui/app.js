@@ -4726,6 +4726,22 @@ const datePartieR6 = (ms) => new Date(ms).toLocaleString('fr-CH', { day: 'numeri
 async function afficherProfilR6() {
   const c = r6.choisi;
   const message = $('#r6-message'), profil = $('#r6-profil'), histo = $('#r6-historique');
+  // Suivi R6 désactivé (par défaut) : un bouton pour tout activer
+  if (!reglages.tracker_r6 && !reglages.tableau_r6 && !reglages.degats_fin_manche) {
+    profil.hidden = histo.hidden = $('#r6-saisons').hidden = true;
+    message.hidden = false;
+    message.innerHTML = `<div class="r6-active"><div><strong>Suivi Rainbow Six désactivé</strong>
+      <small class="discret">Dégâts de fin de manche, tableau Ctrl+X, rangs et historique des joueurs.</small></div>
+      <button id="btn-r6-activer" class="principal">Activer</button></div>`;
+    $('#btn-r6-activer').addEventListener('click', () => {
+      Object.assign(reglages, { tracker_r6: true, tableau_r6: true, degats_fin_manche: true });
+      sauverReglages();
+      afficherReglages();
+      afficherProfilR6();
+      toast('Suivi Rainbow Six activé');
+    });
+    return;
+  }
   if (!c) {
     profil.hidden = histo.hidden = $('#r6-saisons').hidden = true;
     message.hidden = false;

@@ -1293,3 +1293,5 @@ kbd { font: 600 12px/1 inherit; padding: 3px 7px; border-radius: 6px; background
 .r6-saison + .r6-saison:not(.entete) { border-top: 1px solid var(--bordure); }
 .r6-saison.entete { color: var(--discret); font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
 .r6-saison .r6-rang { font-size: 14px; }
+.r6-active { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.r6-active small { display: block; margin-top: 2px; }
