@@ -4523,6 +4523,9 @@ const ICONES_NOUVEAUTES = {
 };
 
 const NOUVEAUTES = {
+  '0.30.2': [
+    { icone: 'reglages', titre: 'Réglages protégés', texte: 'FPS Cagoule garde une copie de secours de tes réglages : ils ne repartent plus jamais à zéro.' },
+  ],
   '0.30.1': [
     { icone: 'jouer', titre: 'Ctrl+X dès le début', texte: 'Le tableau de Rainbow Six peut montrer les 10 joueurs et leurs rangs dès le début de la partie.' },
     { icone: 'courbe', titre: 'Tracker plus fiable', texte: 'Toutes tes saisons, des rangs qui arrivent tout seuls, des logos plus discrets et la mémoire de l\'app mesurée comme le Gestionnaire des tâches.' },
