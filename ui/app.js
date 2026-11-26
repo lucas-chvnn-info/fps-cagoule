@@ -4523,6 +4523,9 @@ const ICONES_NOUVEAUTES = {
 };
 
 const NOUVEAUTES = {
+  '0.30.3': [
+    { icone: 'reglages', titre: 'Suivi Rainbow Six au choix', texte: 'Dégâts, tableau Ctrl+X et rangs se lancent depuis Rainbow Six → Tracker → Activer.' },
+  ],
   '0.30.2': [
     { icone: 'reglages', titre: 'Réglages protégés', texte: 'FPS Cagoule garde une copie de secours de tes réglages : ils ne repartent plus jamais à zéro.' },
   ],
