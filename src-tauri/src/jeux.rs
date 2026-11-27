@@ -526,7 +526,8 @@ fn surveiller_clips(app: &AppHandle, etat: &Etat, pid: u32) {
         match session.as_mut() {
             Some(s) => {
                 let arrete = s.enregistreur.as_mut().is_some_and(|e| {
-                    if e.relances >= RELANCES_MAX {
+                    // Passé le maximum, on n'abandonne plus pour toute la partie : un essai par minute
+                    if e.relances >= RELANCES_MAX && e.derniere_relance.is_some_and(|t| t.elapsed() < Duration::from_secs(60)) {
                         return false;
                     }
                     let mort = !e.vivant();

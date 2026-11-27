@@ -303,6 +303,8 @@ pub struct Enregistreur {
     fige: bool,
     /// Dernier message d'erreur de FFmpeg (capture d'écran perdue…)
     pub derniere_erreur: Arc<Mutex<Option<String>>>,
+    /// Dernière relance : passé le maximum de relances, on réessaie quand même toutes les minutes
+    pub derniere_relance: Option<Instant>,
     /// Raison de la dernière relance (pour le journal)
     pub raison: &'static str,
     /// Exécutable du jeu : capture de sa fenêtre quand c'est possible
@@ -339,6 +341,7 @@ impl Enregistreur {
         let _ = self.enfant.kill();
         let _ = self.enfant.wait();
         self.relances += 1;
+        self.derniere_relance = Some(Instant::now());
         // Morceau sans image (que du son) : inutilisable dans un clip
         if self.fige {
             if let Some(p) = self.dernier_morceau.take() {
@@ -601,6 +604,7 @@ pub fn demarrer(stock: &Stockage, jeu: &str, exe: Option<&str>) -> Result<Enregi
                         dernier_morceau: None,
                         depuis: Instant::now(),
                         fige: false,
+                        derniere_relance: None,
                         derniere_erreur,
                         raison: "",
                         exe: exe.map(String::from),
@@ -647,8 +651,48 @@ fn morceaux_recents(dossier: &Path, secondes: u32) -> Vec<PathBuf> {
         })
         .unwrap_or_default();
     liste.sort_by_key(|(t, _)| *t);
+    // Pour un clip : seulement les morceaux écrits dans la période voulue (plus une marge). Après un arrêt de la
+    // capture, les vieux morceaux restent dans le tampon : sans ça, un clip prenait l'image d'une partie précédente.
+    if secondes > 0 {
+        let limite = Duration::from_secs((secondes + 4 * MORCEAU_S + 10) as u64);
+        liste.retain(|(t, _)| t.elapsed().is_ok_and(|age| age <= limite));
+    }
     let n = (secondes.div_ceil(MORCEAU_S) + 1) as usize;
     liste.into_iter().rev().take(n).rev().map(|(_, p)| p).collect()
+}
+
+/// Dernier horodatage (90 kHz) de l'image et du son dans la fin d'un fichier MPEG-TS (8 derniers Mo, ~3 s)
+fn derniers_pts(fichier: &Path) -> (Option<u64>, Option<u64>) {
+    use std::io::{Read, Seek, SeekFrom};
+    let Ok(mut f) = fs::File::open(fichier) else { return (None, None) };
+    let taille = f.metadata().map_or(0, |m| m.len());
+    let lu = (8 * 1024 * 1024 / PAQUET_TS as u64 * PAQUET_TS as u64).min(taille / PAQUET_TS as u64 * PAQUET_TS as u64);
+    let mut fin = vec![0u8; lu as usize];
+    if f.seek(SeekFrom::Start(taille / PAQUET_TS as u64 * PAQUET_TS as u64 - lu)).is_err() || f.read_exact(&mut fin).is_err() {
+        return (None, None);
+    }
+    let (mut video, mut son) = (None, None);
+    for p in fin.chunks_exact(PAQUET_TS) {
+        if p[0] != 0x47 || p[1] & 0x40 == 0 {
+            continue;
+        }
+        let mut debut = 4;
+        if p[3] & 0x20 != 0 {
+            debut += 1 + p[4] as usize;
+        }
+        let Some(pes) = p.get(debut..) else { continue };
+        if pes.len() < 14 || pes[..3] != [0, 0, 1] || pes[7] & 0x80 == 0 {
+            continue;
+        }
+        let b = &pes[9..14];
+        let pts = (((b[0] as u64 >> 1) & 7) << 30) | ((b[1] as u64) << 22) | ((b[2] as u64 >> 1) << 15) | ((b[3] as u64) << 7) | (b[4] as u64 >> 1);
+        match pes[3] {
+            0xE0..=0xEF => video = Some(pts),
+            0xC0..=0xDF => son = Some(pts),
+            _ => {}
+        }
+    }
+    (video, son)
 }
 
 /// Journal des clips (%APPDATA%\ch.lucas-chvnn.fps-cagoule\journal-clips.txt, bouton « Journal » de la page Clips) : replays trouvés et lus, clips auto faits ou ratés.
@@ -814,6 +858,19 @@ pub fn sauver(stock: &Stockage, dossier_tampon: &Path, jeu: &str, secondes: u32,
                 f.write_all(&o[..complet]).map_err(|e| e.to_string())?;
             }
         }
+    }
+    // L'image doit aller jusqu'au bout, comme le son : sinon la capture de l'écran s'est arrêtée et le clip
+    // montrerait une image figée (ou d'une autre partie) sous le son du moment
+    match derniers_pts(&brut) {
+        (None, Some(_)) => {
+            let _ = fs::remove_file(&brut);
+            return Err("Pas d'image récente : la capture de l'écran est arrêtée".into());
+        }
+        (Some(v), Some(s)) if s > v + 5 * 90_000 => {
+            let _ = fs::remove_file(&brut);
+            return Err(format!("L'image s'arrête {} s avant le son : la capture de l'écran est arrêtée", (s - v) / 90_000));
+        }
+        _ => {}
     }
     // Dossier choisi (serveur…) ; s'il est injoignable, le clip reste sur le PC
     let mut dossier_jeu = dossier_clips(stock).join(nom_fichier(jeu));
