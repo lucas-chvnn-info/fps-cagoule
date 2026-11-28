@@ -4523,6 +4523,9 @@ const ICONES_NOUVEAUTES = {
 };
 
 const NOUVEAUTES = {
+  '0.30.4': [
+    { icone: 'clips', titre: 'Clips fiables', texte: 'Plus jamais l\'image d\'une autre partie : la capture se relance seule si elle bloque.' },
+  ],
   '0.30.3': [
     { icone: 'reglages', titre: 'Suivi Rainbow Six au choix', texte: 'Dégâts, tableau Ctrl+X et rangs se lancent depuis Rainbow Six → Tracker → Activer.' },
   ],
